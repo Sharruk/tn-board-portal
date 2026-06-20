@@ -62,7 +62,6 @@ run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
 [userenv]
 
 [userenv.shared]
-JWT_SECRET_KEY = "tn-board-replit-secret-2024-secure-key-xyz789"
 CORS_ORIGINS = "*"
 STORAGE_BACKEND = "local"
 ENVIRONMENT = "development"
