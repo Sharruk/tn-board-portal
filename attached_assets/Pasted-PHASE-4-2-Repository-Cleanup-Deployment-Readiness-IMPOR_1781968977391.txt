@@ -1,0 +1,160 @@
+PHASE 4.2 — Repository Cleanup & Deployment Readiness
+
+IMPORTANT:
+Create a git checkpoint before making changes.
+
+Goal:
+Convert the repository into a clean FastAPI + React production codebase.
+
+Use PROJECT_AUDIT_REPORT.txt as the source of truth.
+
+====================================================
+TASK 1 — Verify Before Deleting
+====================================================
+
+Before deleting anything:
+
+1. Search entire repository for imports/references to:
+
+app.py
+main.py (root)
+models.py (root)
+templates/
+static/
+update_admin.py
+init_db.py
+
+2. Produce a dependency report.
+
+3. Only delete files that have ZERO references.
+
+====================================================
+TASK 2 — Remove Legacy Flask Layer
+====================================================
+
+If confirmed unused:
+
+Delete:
+
+app.py
+main.py (root)
+models.py (root)
+init_db.py
+update_admin.py
+
+Delete folders:
+
+templates/
+static/
+
+Delete root requirements.txt
+
+Keep backend/requirements.txt as the only requirements file.
+
+====================================================
+TASK 3 — Create Archive Folder
+====================================================
+
+Create:
+
+/archive
+
+Move historical reports into archive:
+
+PHASE3_REPORT.txt
+PHASE37_REPORT.txt
+PHASE38_REPORT.txt
+PHASE39_REPORT.txt
+FIX_REPORT.txt
+VALIDATION_REPORT.txt
+VALIDATION_REPORT_PHASE36.txt
+FRONTEND_PHASE2_REPORT.txt
+PRODUCTION_READINESS_REPORT.txt
+ARCHITECTURE_BLUEPRINT.txt
+
+Do NOT delete.
+
+====================================================
+TASK 4 — Deployment Configuration Audit
+====================================================
+
+Inspect:
+
+.replit
+replit.nix
+deployment config
+workflow config
+
+Verify:
+
+Production runs FastAPI backend.
+
+Production does NOT start Flask.
+
+Show exact startup command currently configured.
+
+Recommend corrected production startup command.
+
+Do not deploy yet.
+
+====================================================
+TASK 5 — Requirements Cleanup
+====================================================
+
+Inspect backend/requirements.txt
+
+Remove packages confirmed unused:
+
+passlib[bcrypt]
+
+Only remove after verifying no imports exist.
+
+Produce final dependency list.
+
+====================================================
+TASK 6 — FastAPI Production Build Check
+====================================================
+
+Verify:
+
+frontend npm build works
+
+Run:
+
+cd frontend
+npm run build
+
+Check for:
+
+errors
+warnings
+large bundle issues
+
+Report results.
+
+====================================================
+TASK 7 — Create FINAL_CLEANUP_REPORT.txt
+====================================================
+
+Include:
+
+Files removed
+Files archived
+Dependencies removed
+Deployment configuration status
+Remaining launch blockers
+Final repository structure
+
+====================================================
+RULES
+====================================================
+
+Do NOT deploy.
+
+Do NOT add features.
+
+Do NOT change database schema.
+
+Do NOT change authentication.
+
+Focus only on cleanup, audit validation, and deployment readiness.
