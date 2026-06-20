@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.pythonlibs/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Uploads (local dev only — use Supabase in prod)
+uploads/*
+!uploads/.gitkeep
+
+# Git
+.git/
+.gitignore
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Replit-specific
+.replit
+replit.nix
+.cache/
+.upm/
+uv.lock
+
+# Test / docs
+*.log
+attached_assets/
+archive/

@@ -1,0 +1,185 @@
+Perform a complete production-readiness audit and documentation update for the TN State Board Learning Platform.
+
+Current stack:
+
+* Frontend: React + Vite
+* Backend: FastAPI
+* Database: PostgreSQL
+* Storage: Supabase Storage (bucket: papers)
+* Deployment target:
+
+  * Frontend → Vercel
+  * Backend → Railway
+  * Database → Supabase
+  * Storage → Supabase Storage
+
+Tasks:
+
+1. README.md
+
+* Rewrite README completely.
+* Include project overview.
+* Architecture diagram.
+* Tech stack.
+* Folder structure.
+* Environment variables.
+* Local setup instructions.
+* Development workflow.
+* Production deployment workflow.
+* Supabase configuration.
+* Railway deployment steps.
+* Vercel deployment steps.
+* Troubleshooting section.
+
+2. Terminal Commands Documentation
+   Create RUNNING_GUIDE.md containing:
+
+Development commands:
+Backend:
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+Frontend:
+cd frontend
+npm install
+npm run dev
+
+Production build:
+cd frontend
+npm run build
+
+Production backend:
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+Include every command required to run the project from a fresh machine.
+
+3. Dependency Audit
+   Verify:
+
+* backend/requirements.txt is complete.
+* No missing Python packages.
+* No unused critical dependencies.
+* No references to deleted Flask code.
+* No references to removed templates/static folders.
+
+Generate DEPENDENCY_AUDIT.md.
+
+4. Docker Readiness
+   Check whether the project can be containerized.
+
+If missing:
+
+* Create Dockerfile for backend.
+* Create .dockerignore.
+* Create docker-compose.yml for local development.
+
+Generate DOCKER_DEPLOYMENT.md explaining:
+
+* docker build
+* docker run
+* docker compose up
+
+5. Environment Variables Audit
+   Generate ENVIRONMENT_VARIABLES.md listing all required variables:
+
+JWT_SECRET_KEY
+DATABASE_URL
+STORAGE_BACKEND
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_BUCKET
+CORS_ORIGINS
+
+For each variable:
+
+* Purpose
+* Example format
+* Required or optional
+* Development value
+* Production value
+
+Never expose actual secrets.
+
+6. Deployment Readiness Audit
+   Verify:
+
+* Railway deployment readiness
+* Vercel deployment readiness
+* Supabase integration readiness
+* CORS configuration readiness
+* JWT configuration readiness
+* API routing readiness
+* SPA routing readiness
+* Build process readiness
+* GitHub readiness
+
+Generate FINAL_DEPLOYMENT_AUDIT.md.
+
+Score:
+
+* Security
+* Deployment
+* Code Quality
+* Architecture
+* Documentation
+* Maintainability
+
+Provide a final score out of 100.
+
+7. GitHub Readiness
+   Verify:
+
+* .gitignore is correct.
+* No secrets committed.
+* No environment variables committed.
+* No temporary files.
+* No build artifacts that should be ignored.
+
+Generate GITHUB_READINESS.md.
+
+8. Self-Run Verification
+   Pretend the project is cloned onto a brand-new Windows machine.
+
+Document:
+
+* Exact commands to run.
+* Expected output.
+* Possible errors.
+* Fixes.
+
+Generate SELF_HOSTING_GUIDE.md.
+
+9. Final Cleanup Check
+   Search entire repository for:
+
+* Flask imports
+* app.py references
+* templates references
+* static references
+* unused legacy code
+* hardcoded secrets
+* local upload assumptions
+
+Generate CLEANUP_VERIFICATION.md.
+
+At the end produce:
+
+PROJECT_HANDOVER.md
+
+containing:
+
+* Current architecture
+* All services used
+* How to run locally
+* How to deploy
+* Required accounts
+* Required secrets
+* Known limitations
+* Future roadmap
+
+Do not make assumptions.
+Inspect the actual repository and generate documentation from the real codebase.
+List every issue found before making changes.
+Then implement fixes and provide a final report.

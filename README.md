@@ -1,105 +1,178 @@
-# College Materials & PYQs Portal
+# TN State Board Learning Platform
 
-A comprehensive Flask-based web portal for college students to upload, organize, and download study materials, previous year question papers (PYQs), and academic resources.
+A production-ready portal for Tamil Nadu State Board students to access question papers and answer keys for Classes 9–12. Admins manage content through a secure JWT-protected dashboard.
 
-## Features
+---
 
-- **Hierarchical Navigation**: Organized by Course Types (UG/PG/MBA) → Departments → Semesters → Categories
-- **File Upload**: Drag-and-drop interface with all file type support
-- **File Management**: Download and delete functionality with confirmation dialogs
-- **Academic Calculators**: GPA, CGPA, Percentage, and Internal Marks calculators
-- **Responsive Design**: Bootstrap 5 with mobile-first approach
-- **Syllabus Management**: Separate section for curriculum documents
-
-## Project Structure
+## Architecture
 
 ```
-├── app.py                 # Main Flask application
-├── main.py               # Entry point
-├── models.py             # Database models (PostgreSQL ready)
-├── data.json             # JSON-based file storage
-├── requirements.txt      # Python dependencies
-├── templates/            # Jinja2 templates
-│   ├── base.html
+┌──────────────────────────────────────────────────┐
+│                     Browser                      │
+│          React 18 + Vite 5 + Tailwind CSS        │
+│      Public portal  │  Admin dashboard (JWT)     │
+└──────────┬──────────┴──────────────┬─────────────┘
+           │ /api/v1/*  (proxied)    │ PDF links
+           ▼                         ▼
+┌──────────────────────┐   ┌──────────────────────┐
+│     FastAPI           │   │   File Storage        │
+│   (Python 3.11+)     │   │  local  (dev)         │
+│                       │   │  Supabase CDN (prod)  │
+│  classes / subjects   │   └──────────────────────┘
+│  papers / auth        │
+│  admin / search       │
+│  rate_limit / audit   │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  PostgreSQL Database  │
+│  classes, subjects,   │
+│  papers, admins,      │
+│  audit_logs           │
+└──────────────────────┘
+```
+
+---
+
+## Tech Stack
+
+| Layer      | Technology                                  |
+|------------|---------------------------------------------|
+| Frontend   | React 18, Vite 5, Tailwind CSS 3, Axios     |
+| Backend    | FastAPI, Uvicorn, Python 3.11+              |
+| ORM        | SQLAlchemy 2.x                              |
+| Database   | PostgreSQL 14+                              |
+| Auth       | JWT (PyJWT), Werkzeug password hashing      |
+| Storage    | Local filesystem (dev) / Supabase (prod)    |
+| Container  | Docker / Docker Compose                     |
+
+---
+
+## Folder Structure
+
+```
+.
+├── backend/
+│   ├── app/
+│   │   ├── api/            # Route handlers (classes, subjects, papers, auth, admin)
+│   │   ├── database/       # SQLAlchemy engine + session factory
+│   │   ├── models/         # ORM models: Class, Subject, Paper, Admin, AuditLog
+│   │   ├── schemas/        # Pydantic request/response schemas
+│   │   ├── services/       # auth, storage, rate_limit, audit, analytics
+│   │   ├── config.py       # Environment variable loading + validation
+│   │   └── main.py         # FastAPI app entry point
+│   ├── Dockerfile          # Backend container
+│   ├── requirements.txt    # Python dependencies
+│   ├── seed.py             # Populate DB: classes, subjects, default admin
+│   └── migrate_41.py       # One-time schema migration utility
+├── frontend/
+│   ├── src/
+│   │   ├── components/     # Shared UI components
+│   │   ├── contexts/       # AuthContext (JWT state)
+│   │   ├── hooks/          # Custom hooks
+│   │   ├── layouts/        # Page shell layouts
+│   │   ├── pages/          # Public + admin pages
+│   │   ├── router/         # React Router v6 definitions
+│   │   └── services/       # Axios API clients
 │   ├── index.html
-│   ├── upload.html
-│   ├── category.html
-│   └── calculators/
-├── static/              # CSS, JS, images
-│   ├── css/
-│   └── js/
-└── uploads/             # File storage directory
+│   ├── package.json
+│   └── vite.config.js      # Dev server + API proxy config
+├── docker-compose.yml       # Local dev stack (db + backend + frontend)
+├── .env.example             # Environment variable template (never commit .env)
+├── change_admin_password.py # Interactive admin credential updater
+└── uploads/                 # Local PDF storage (dev only — ephemeral in prod)
 ```
 
-## Installation
+---
 
-### Local Development
+## Environment Variables
 
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd college-materials-portal
-   ```
+See `.env.example` for a fully annotated list. Minimum required:
 
-2. Create and activate virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   # or
-   venv\Scripts\activate     # Windows
-   ```
+| Variable                    | Required         | Notes                                      |
+|-----------------------------|------------------|--------------------------------------------|
+| `DATABASE_URL`              | Yes              | `postgresql://user:pass@host:5432/dbname`  |
+| `JWT_SECRET_KEY`            | Yes              | 32+ random chars — generate with `secrets` |
+| `ENVIRONMENT`               | No (development) | `development` or `production`              |
+| `CORS_ORIGINS`              | Yes in prod      | Comma-separated allowed origins            |
+| `STORAGE_BACKEND`           | No (local)       | `local`, `supabase`, or `s3`              |
+| `SUPABASE_URL`              | If supabase      | `https://<project>.supabase.co`            |
+| `SUPABASE_SERVICE_ROLE_KEY` | If supabase      | Service role key (not anon key)            |
+| `SUPABASE_BUCKET`           | No (papers)      | Supabase storage bucket name               |
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+---
 
-4. Run the application:
-   ```bash
-   python main.py
-   ```
+## Local Setup
 
-5. Open browser to `http://localhost:5000`
+### Prerequisites
+- Python 3.11+, Node.js 20+, PostgreSQL 14+
 
-### Production Deployment
-
-The application uses Gunicorn for production deployment:
-
+### 1 — Configure environment
 ```bash
-gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app
+cp .env.example .env
+# Edit .env — set DATABASE_URL and JWT_SECRET_KEY
 ```
 
-## Configuration
+### 2 — Backend
+```bash
+cd backend
+pip install -r requirements.txt
+python seed.py          # create tables + seed classes/subjects/admin
+uvicorn app.main:app --reload --port 8000
+```
 
-- **Storage**: Currently uses JSON-based file storage (`data.json`)
-- **Database**: PostgreSQL support included but not required
-- **File Uploads**: No size restrictions (configurable)
-- **Session Management**: Uses Flask sessions with configurable secret key
+### 3 — Frontend
+```bash
+cd frontend
+npm install
+npm run dev             # http://localhost:5000 (proxies /api to :8000)
+```
 
-## Usage
+API docs: `http://localhost:8000/docs`
+Admin login: `http://localhost:5000/admin/login`
 
-1. **Navigate**: Start from homepage → Select course type → Choose department → Pick semester → Select category
-2. **Upload**: Use drag-and-drop interface or browse files
-3. **Download**: Click download button on any file
-4. **Delete**: Use delete button with confirmation dialog
-5. **Calculate**: Access GPA/CGPA calculators from main menu
+**Change the default admin password immediately:**
+```bash
+python change_admin_password.py
+```
 
-## Technical Details
+---
 
-- **Framework**: Flask 3.1+
-- **Frontend**: Bootstrap 5.3, Font Awesome 6.4
-- **Storage**: JSON + Local filesystem
-- **Server**: Gunicorn WSGI server
-- **Security**: Werkzeug secure filename handling
+## Production Deployment
 
-## Contributing
+### Docker Compose (self-hosted)
+```bash
+docker compose up --build -d
+```
 
-1. Fork the repository
-2. Create feature branch
-3. Make changes
-4. Test functionality
-5. Submit pull request
+### Railway (backend) + Vercel (frontend)
+See `FINAL_DEPLOYMENT_AUDIT.md` for step-by-step instructions.
 
-## License
+---
 
-MIT License - See LICENSE file for details
+## Supabase Storage Setup
+
+1. Create a Supabase project → Storage → New bucket named `papers` → set **Public**.
+2. Copy **Project URL** and **service_role** key from Settings → API.
+3. Set environment variables:
+   ```
+   STORAGE_BACKEND=supabase
+   SUPABASE_URL=https://<project-id>.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
+   SUPABASE_BUCKET=papers
+   ```
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `RuntimeError: DATABASE_URL is not set` | Add `DATABASE_URL` to `.env` or secrets |
+| `RuntimeError: JWT_SECRET_KEY is still the insecure default` | Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `RuntimeError: SUPABASE_URL … must be set` | Add Supabase secrets or use `STORAGE_BACKEND=local` |
+| `409 Conflict` on upload | Duplicate paper — use a unique title or delete the existing one |
+| Login returns 423 Locked | Account locked after 5 failed attempts — wait 15 min or reset via DB |
+| CORS error in browser | Add exact frontend origin to `CORS_ORIGINS` |
+| PDFs missing after redeploy | Local storage is ephemeral — switch to `STORAGE_BACKEND=supabase` |

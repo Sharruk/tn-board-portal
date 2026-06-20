@@ -10,13 +10,10 @@ ENV/
 env.bak/
 venv.bak/
 
-# Flask
-instance/
-.webassets-cache
-
 # Environment variables
 .env
-.flaskenv
+.env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -45,10 +42,14 @@ uploads/*
 *.db
 *.sqlite
 
-# Package files
+# Package / build artifacts
 *.egg-info/
 dist/
 build/
+
+# Frontend
+frontend/dist/
+frontend/node_modules/
 
 # Replit specific
 replit.nix
@@ -56,3 +57,4 @@ replit.nix
 .cache/
 .upm/
 uv.lock
+.pythonlibs/
