@@ -24,3 +24,9 @@ id = "s8reqrlCK5k2LMIZuqgVW"
 uri = "file://BACKEND_REMOVAL_VERIFICATION.md"
 type = "text"
 title = "BACKEND_REMOVAL_VERIFICATION.md"
+
+[[outputs]]
+id = "JFCa3w1vHkKOSxjvsbdP8"
+uri = "file://FINAL_CLEAN_REPOSITORY_REPORT.md"
+type = "text"
+title = "FINAL_CLEAN_REPOSITORY_REPORT.md"
