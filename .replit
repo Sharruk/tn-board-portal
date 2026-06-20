@@ -57,11 +57,12 @@ externalPort = 8000
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["sh", "-c", "cd frontend && npm run build && cd ../backend && ENVIRONMENT=production uvicorn app.main:app --host 0.0.0.0 --port 5000"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
 
 [userenv]
 
 [userenv.shared]
 JWT_SECRET_KEY = "tn-board-replit-secret-2024-secure-key-xyz789"
 CORS_ORIGINS = "*"
-STORAGE_BACKEND = "supabase"
+STORAGE_BACKEND = "local"
+ENVIRONMENT = "development"
