@@ -1,0 +1,296 @@
+I want to transform this project into a production-style full-stack software engineering project.
+
+Current Project:
+
+* Educational portal for Tamil Nadu State Board students
+* Question Papers
+* Answer Keys
+* Study Materials
+* Timetables
+* YouTube integration
+* Downloadable PDFs
+
+My Goals:
+
+1. Strong Software Engineering portfolio project
+2. Resume-worthy project for SWE, AI Engineer, and Full Stack roles
+3. Real users can use it
+4. Easy deployment
+5. Scalable architecture
+6. Future AI integration
+
+Do NOT simply improve the existing Flask project.
+
+First analyze the entire project and then create a migration plan.
+
+I want the new architecture to use:
+
+Frontend:
+
+* React
+* Vite
+* Tailwind CSS
+
+Backend:
+
+* FastAPI
+
+Database:
+
+* PostgreSQL (Supabase)
+
+Storage:
+
+* Supabase Storage
+
+Deployment:
+
+* Frontend → Vercel
+* Backend → Railway
+
+Containerization:
+
+* Docker
+
+====================================================
+STEP 1: ARCHITECTURE REVIEW
+===========================
+
+Analyze the current project.
+
+Tell me:
+
+* Which parts should be kept?
+* Which parts should be removed?
+* Which parts should be redesigned?
+* Which parts are over-engineered?
+* Which parts are missing?
+
+====================================================
+STEP 2: NEW SYSTEM DESIGN
+=========================
+
+Design a complete modern architecture.
+
+Show:
+
+Student
+↓
+React Frontend
+↓
+FastAPI Backend
+↓
+Supabase PostgreSQL
+↓
+Supabase Storage
+
+Explain every component.
+
+====================================================
+STEP 3: DATABASE DESIGN
+=======================
+
+Create a normalized PostgreSQL schema.
+
+Generate tables for:
+
+papers
+subjects
+classes
+exam_types
+videos
+downloads
+
+For every table provide:
+
+* Columns
+* Data Types
+* Primary Keys
+* Foreign Keys
+* Indexes
+
+Explain why each table exists.
+
+====================================================
+STEP 4: FEATURE DESIGN
+======================
+
+Design the MVP.
+
+Public Features:
+
+* Homepage
+* Search
+* Class Pages
+* Subject Pages
+* Question Paper Pages
+* Answer Key Pages
+* Download PDF
+* Watch YouTube Explanation Video
+
+Admin Features:
+
+* Upload Question Paper
+* Upload Answer Key
+* Add YouTube Video
+* Manage Files
+* Edit Records
+* Delete Records
+
+====================================================
+STEP 5: API DESIGN
+==================
+
+Generate FastAPI endpoints.
+
+Example:
+
+GET /papers
+
+GET /papers/{id}
+
+POST /papers
+
+PUT /papers/{id}
+
+DELETE /papers/{id}
+
+GET /search
+
+Generate complete REST API documentation.
+
+====================================================
+STEP 6: REACT FRONTEND DESIGN
+=============================
+
+Design React pages.
+
+Pages:
+
+Home
+Class Page
+Subject Page
+Paper Details Page
+Admin Dashboard
+
+For each page provide:
+
+* Components
+* State
+* API calls
+* UI layout
+
+====================================================
+STEP 7: STORAGE DESIGN
+======================
+
+Explain how PDFs will be stored in Supabase Storage.
+
+Example:
+
+class-10/
+maths/
+monthly-test/
+june-2026.pdf
+
+Create a scalable folder structure.
+
+====================================================
+STEP 8: SEARCH DESIGN
+=====================
+
+Design search functionality.
+
+Students should be able to search:
+
+* Class
+* Subject
+* Exam Type
+* Year
+* Question Paper
+
+Provide PostgreSQL search strategy.
+
+====================================================
+STEP 9: SEO DESIGN
+==================
+
+This project should rank on Google.
+
+Generate:
+
+* SEO strategy
+* Meta tags
+* URL structure
+
+Example:
+
+/class-10/maths/monthly-test-2026
+
+Explain how to make pages searchable.
+
+====================================================
+STEP 10: AI INTEGRATION ROADMAP
+===============================
+
+Future features:
+
+* AI Answer Key Generator
+* AI Summary Generator
+* AI Question Extractor
+* AI Important Questions Generator
+
+Explain how FastAPI can support these features.
+
+====================================================
+STEP 11: DOCKER DEPLOYMENT
+==========================
+
+Generate:
+
+* Docker architecture
+* Dockerfile requirements
+* Environment variables
+* Production deployment flow
+
+====================================================
+STEP 12: RESUME VALUE ANALYSIS
+==============================
+
+Compare:
+
+Old Flask Project
+
+vs
+
+New React + FastAPI + PostgreSQL Project
+
+Tell me:
+
+* Which one has stronger SWE value?
+* Which one has stronger AI value?
+* Which one has stronger Full Stack value?
+* Which one is better for internships?
+
+====================================================
+STEP 13: IMPLEMENTATION ROADMAP
+===============================
+
+Create a week-by-week implementation plan.
+
+Week 1
+Week 2
+Week 3
+Week 4
+
+Tell me exactly what should be built first and what should be postponed.
+
+IMPORTANT:
+
+Do not generate code yet.
+
+Act as a Senior Software Architect.
+
+Create the complete technical blueprint first.
+
+Only after the architecture is approved should implementation begin.

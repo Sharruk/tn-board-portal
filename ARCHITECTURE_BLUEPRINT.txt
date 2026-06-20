@@ -1,0 +1,1302 @@
+==============================================================================
+     TN STATE BOARD PORTAL — PRODUCTION ARCHITECTURE BLUEPRINT
+     Role: Senior Software Architect | Status: Pre-Implementation Blueprint
+     Date: June 2026 | Version: 1.0
+==============================================================================
+
+EXECUTIVE SUMMARY
+-----------------
+This document is the complete technical blueprint for transforming the current
+Flask-based TN State Board Portal into a production-grade, full-stack software
+engineering project using React + Vite + Tailwind CSS (frontend), FastAPI
+(backend), PostgreSQL via Supabase (database), and Supabase Storage (files).
+
+This is NOT a code file. It is the architectural specification that must be
+reviewed and approved before any implementation begins.
+
+==============================================================================
+STEP 1: ARCHITECTURE REVIEW — WHAT TO KEEP, REMOVE, REDESIGN
+==============================================================================
+
+--- KEEP (Reuse as-is or migrate logic) ---
+
+1. Domain Logic — Class/Subject/Exam Type hierarchy is correct and well-thought.
+   Keep the 4-class, multi-subject, multi-exam-type structure.
+
+2. Database Schema Concepts — The Subject, File, Comment, User model
+   relationships are solid. Migrate and normalize into new schema.
+
+3. Admin Feature Set — Upload, delete, visibility toggle, comment moderation
+   are the right admin features. Re-implement in new stack.
+
+4. Practical Exam Filtering — Logic to hide Practical Exam for theory-only
+   subjects is domain-smart. Re-implement in API layer.
+
+5. "Coming Soon" UX — Show empty categories as placeholders, not hidden links.
+   Re-implement in React frontend.
+
+6. Voting System — Like/dislike concept is good for engagement. Keep it.
+
+--- REMOVE (Do not migrate) ---
+
+1. data.json dual-write sync — This is a technical debt workaround. Supabase
+   PostgreSQL is fast enough; no need for a JSON cache layer.
+
+2. SQLite fallback — Production project uses only PostgreSQL (Supabase).
+   No SQLite. No fallback. One source of truth.
+
+3. Local /uploads/ file storage — Replaced entirely by Supabase Storage.
+   Files on local disk are lost on redeploy; cloud storage is permanent.
+
+4. Flask sessions for admin auth — Replace with JWT-based auth (FastAPI).
+   More stateless, scalable, and standard for API-driven projects.
+
+5. Jinja2 templates — Replaced entirely by React frontend.
+
+6. Gunicorn + Flask — Replaced by FastAPI + Uvicorn.
+
+7. requirements.txt / pyproject.toml (Flask deps) — New requirements.txt
+   for FastAPI only.
+
+--- REDESIGN (Keep concept, rebuild properly) ---
+
+1. Search — Currently client-side JS only. Redesign as server-side
+   PostgreSQL full-text search with tsvector indexes.
+
+2. Admin Authentication — Change from session-based to JWT tokens.
+   Admin logs in → receives JWT → all protected API calls use Bearer token.
+
+3. File Upload — Remove direct filesystem save. All uploads go through
+   FastAPI → Supabase Storage SDK → return public URL stored in DB.
+
+4. URL Structure — Redesign for SEO:
+   Current:  /class-10/maths/quarterly-exam
+   New:      /class/10/subject/maths/exam/quarterly-exam-2026
+
+5. Comments — Currently anonymous with any author name. Redesign with
+   optional display name validation, or tie to lightweight student accounts.
+
+--- OVER-ENGINEERED PARTS (Simplify) ---
+
+1. data.json class/subject bootstrap in load_data() — 80+ lines just to
+   define a static hierarchy that should be in the database or a config file.
+
+2. ADMIN_SECRET_PATH env var for hiding the admin URL — Security through
+   obscurity. Replace with proper JWT auth. Admin at /admin is fine if auth works.
+
+3. Dual-write pattern (DB + JSON) — Replaced by direct DB writes.
+
+--- MISSING PARTS (Add in new architecture) ---
+
+1. YouTube video integration per subject/paper (stated in goals)
+2. Study materials section (stated in goals)
+3. Timetable section (stated in goals)
+4. Full-text search across all content
+5. SEO-optimized URL structure and meta tags
+6. AI integration layer (future-ready API endpoints)
+7. Rate limiting on API
+8. CORS configuration
+9. Input validation (Pydantic models in FastAPI)
+10. Proper error handling and HTTP status codes
+11. Docker containerization
+12. CI/CD pipeline readiness
+
+==============================================================================
+STEP 2: NEW SYSTEM DESIGN — COMPLETE MODERN ARCHITECTURE
+==============================================================================
+
+SYSTEM ARCHITECTURE DIAGRAM:
+------------------------------
+
+  ┌─────────────────────────────────────────────────────────┐
+  │                     STUDENT / ADMIN                      │
+  │                   (Browser / Mobile)                     │
+  └────────────────────────┬────────────────────────────────┘
+                           │  HTTPS
+                           ↓
+  ┌─────────────────────────────────────────────────────────┐
+  │              VERCEL (Frontend Hosting)                   │
+  │                                                         │
+  │   React 18 + Vite + Tailwind CSS + React Router v6      │
+  │                                                         │
+  │   Pages: Home · Class · Subject · Paper · Admin         │
+  │   State: TanStack Query (server state) + Zustand (UI)   │
+  │   Auth: JWT token stored in httpOnly cookie             │
+  └────────────────────────┬────────────────────────────────┘
+                           │  REST API Calls (HTTPS/JSON)
+                           ↓
+  ┌─────────────────────────────────────────────────────────┐
+  │              RAILWAY (Backend Hosting)                   │
+  │                                                         │
+  │   FastAPI + Uvicorn + Python 3.12                       │
+  │                                                         │
+  │   Modules: papers · subjects · classes · search ·       │
+  │            admin · videos · downloads · ai (future)     │
+  │   Auth: JWT (python-jose) + bcrypt password hashing     │
+  │   Validation: Pydantic v2 schemas                       │
+  │   File Handling: Supabase Python SDK                    │
+  └───────────┬──────────────────────────┬──────────────────┘
+              │                          │
+              ↓                          ↓
+  ┌─────────────────────┐   ┌────────────────────────────────┐
+  │  SUPABASE (Database) │   │  SUPABASE (File Storage)        │
+  │                      │   │                                │
+  │  PostgreSQL 15       │   │  Bucket: tn-board-papers       │
+  │  Tables:             │   │  Folder: class-{n}/{subject}/  │
+  │  - classes           │   │          {exam_type}/          │
+  │  - subjects          │   │          {year}/{filename}.pdf │
+  │  - exam_types        │   │                                │
+  │  - papers            │   │  Public URLs for downloads     │
+  │  - videos            │   │  Signed URLs for admin access  │
+  │  - downloads         │   │                                │
+  │  - comments          │   └────────────────────────────────┘
+  │  - votes             │
+  │  - users (admin)     │
+  └─────────────────────┘
+
+COMPONENT EXPLANATIONS:
+------------------------
+
+React + Vite (Frontend)
+  - React 18 with concurrent features
+  - Vite for fast dev server and optimized production builds
+  - Tailwind CSS for utility-first styling (no custom CSS files)
+  - React Router v6 for client-side routing (SEO URLs)
+  - TanStack Query for server state management (caching, re-fetching)
+  - Axios for HTTP requests to FastAPI
+
+FastAPI (Backend)
+  - Python 3.12 async framework — the fastest Python web framework
+  - Auto-generates OpenAPI/Swagger docs at /docs (resume worthy)
+  - Pydantic v2 for request/response validation
+  - SQLAlchemy 2.0 async ORM for database queries
+  - JWT authentication for admin routes
+  - CORS middleware for Vercel domain
+
+Supabase PostgreSQL (Database)
+  - Managed PostgreSQL 15 with connection pooling
+  - Row Level Security (RLS) policies for data protection
+  - Full-text search with tsvector + GIN indexes
+  - Automatic backups
+
+Supabase Storage (Files)
+  - S3-compatible object storage
+  - Organized bucket structure for PDFs
+  - Public download URLs (no auth needed for students)
+  - Signed URLs for admin uploads
+
+Vercel (Frontend Deploy)
+  - Zero-config deploy from GitHub
+  - Edge network for global fast loads
+  - Environment variables for API URL
+
+Railway (Backend Deploy)
+  - Docker container deployment
+  - Automatic deploys from GitHub
+  - Environment variable management
+  - Built-in PostgreSQL option (using Supabase instead)
+
+Docker (Containerization)
+  - Dockerfile for FastAPI backend
+  - docker-compose for local development
+  - Same container runs in Railway production
+
+==============================================================================
+STEP 3: DATABASE DESIGN — NORMALIZED POSTGRESQL SCHEMA
+==============================================================================
+
+SCHEMA PHILOSOPHY:
+- Fully normalized (3NF) — no denormalized fields
+- UUID primary keys (not integers) — better for distributed systems
+- Timestamps on all tables (created_at, updated_at)
+- Soft deletes on papers (deleted_at) — preserve download history
+- GIN indexes for full-text search
+- Foreign keys with CASCADE rules
+
+------------------------------------------------------------------------------
+TABLE: classes
+------------------------------------------------------------------------------
+Purpose: Stores the 4 Tamil Nadu State Board class levels.
+         Static reference table — rarely changes.
+
+Column        | Type         | Constraints
+--------------|--------------|-------------------------------------------
+id            | SMALLINT     | PRIMARY KEY
+name          | VARCHAR(20)  | NOT NULL, UNIQUE  -- "Class 10"
+slug          | VARCHAR(10)  | NOT NULL, UNIQUE  -- "10"
+description   | TEXT         | NULLABLE
+created_at    | TIMESTAMPTZ  | DEFAULT NOW()
+
+Indexes: PRIMARY KEY on id, UNIQUE on slug
+Sample data: (9, 'Class 9', '9'), (10, 'Class 10', '10'), etc.
+
+------------------------------------------------------------------------------
+TABLE: subjects
+------------------------------------------------------------------------------
+Purpose: Stores all subjects per class level.
+         Separate row per class (e.g., Maths for Class 9 and Class 10
+         are two separate rows — different class, same subject name).
+
+Column          | Type         | Constraints
+----------------|--------------|-------------------------------------------
+id              | UUID         | PRIMARY KEY, DEFAULT gen_random_uuid()
+class_id        | SMALLINT     | NOT NULL, FK → classes(id) ON DELETE CASCADE
+name            | VARCHAR(100) | NOT NULL               -- "Mathematics"
+slug            | VARCHAR(50)  | NOT NULL               -- "maths"
+is_practical    | BOOLEAN      | NOT NULL, DEFAULT FALSE
+display_order   | SMALLINT     | DEFAULT 0
+created_at      | TIMESTAMPTZ  | DEFAULT NOW()
+
+Indexes:
+  - PRIMARY KEY on id
+  - UNIQUE on (class_id, slug)  -- no duplicate subjects per class
+  - INDEX on class_id
+
+FK: class_id → classes(id)
+
+------------------------------------------------------------------------------
+TABLE: exam_types
+------------------------------------------------------------------------------
+Purpose: Defines the exam categories (Unit Test 1, Annual Exam, etc.).
+         Global table — not per class or subject.
+
+Column          | Type         | Constraints
+----------------|--------------|-------------------------------------------
+id              | UUID         | PRIMARY KEY, DEFAULT gen_random_uuid()
+name            | VARCHAR(100) | NOT NULL, UNIQUE    -- "Unit Test 1"
+slug            | VARCHAR(100) | NOT NULL, UNIQUE    -- "unit-test-1"
+category        | VARCHAR(50)  | NOT NULL            -- "Unit Tests" (group)
+is_practical    | BOOLEAN      | DEFAULT FALSE
+display_order   | SMALLINT     | DEFAULT 0
+created_at      | TIMESTAMPTZ  | DEFAULT NOW()
+
+Indexes:
+  - PRIMARY KEY on id
+  - UNIQUE on slug
+  - INDEX on category
+
+------------------------------------------------------------------------------
+TABLE: papers
+------------------------------------------------------------------------------
+Purpose: Core table — each row is one uploaded question paper or answer key.
+         Links subject + exam_type + year to a file in Supabase Storage.
+
+Column           | Type          | Constraints
+-----------------|---------------|-------------------------------------------
+id               | UUID          | PRIMARY KEY, DEFAULT gen_random_uuid()
+subject_id       | UUID          | NOT NULL, FK → subjects(id)
+exam_type_id     | UUID          | NOT NULL, FK → exam_types(id)
+year             | SMALLINT      | NOT NULL            -- 2024
+title            | VARCHAR(255)  | NOT NULL            -- "Class 10 Maths Unit Test 1 2024"
+paper_type       | VARCHAR(20)   | NOT NULL            -- 'question' | 'answer_key'
+storage_path     | TEXT          | NOT NULL            -- Supabase Storage path
+public_url       | TEXT          | NOT NULL            -- CDN public URL
+file_size_bytes  | INTEGER       | NULLABLE
+description      | TEXT          | NULLABLE
+is_visible       | BOOLEAN       | DEFAULT TRUE
+download_count   | INTEGER       | DEFAULT 0
+likes            | INTEGER       | DEFAULT 0
+dislikes         | INTEGER       | DEFAULT 0
+search_vector    | TSVECTOR      | (auto-generated, see trigger below)
+created_at       | TIMESTAMPTZ   | DEFAULT NOW()
+updated_at       | TIMESTAMPTZ   | DEFAULT NOW()
+deleted_at       | TIMESTAMPTZ   | NULLABLE  -- soft delete
+
+Indexes:
+  - PRIMARY KEY on id
+  - INDEX on subject_id
+  - INDEX on exam_type_id
+  - INDEX on (subject_id, exam_type_id, year)  -- composite browse index
+  - INDEX on is_visible
+  - GIN INDEX on search_vector  -- full-text search
+  - INDEX on deleted_at WHERE deleted_at IS NULL  -- partial index
+
+FKs:
+  - subject_id   → subjects(id) ON DELETE RESTRICT
+  - exam_type_id → exam_types(id) ON DELETE RESTRICT
+
+Search Vector Trigger (PostgreSQL):
+  search_vector = to_tsvector('english',
+    coalesce(title, '') || ' ' ||
+    coalesce(description, '') || ' ' ||
+    coalesce(paper_type, '')
+  )
+  -- Automatically updated on INSERT/UPDATE via DB trigger
+
+------------------------------------------------------------------------------
+TABLE: videos
+------------------------------------------------------------------------------
+Purpose: YouTube video links associated with a subject + exam_type.
+         Students can watch explanation videos alongside papers.
+
+Column           | Type          | Constraints
+-----------------|---------------|-------------------------------------------
+id               | UUID          | PRIMARY KEY, DEFAULT gen_random_uuid()
+subject_id       | UUID          | NOT NULL, FK → subjects(id)
+exam_type_id     | UUID          | NULLABLE, FK → exam_types(id)
+title            | VARCHAR(255)  | NOT NULL
+youtube_url      | TEXT          | NOT NULL
+youtube_video_id | VARCHAR(20)   | NOT NULL   -- extracted from URL
+description      | TEXT          | NULLABLE
+is_visible       | BOOLEAN       | DEFAULT TRUE
+created_at       | TIMESTAMPTZ   | DEFAULT NOW()
+
+Indexes:
+  - PRIMARY KEY on id
+  - INDEX on subject_id
+  - INDEX on (subject_id, exam_type_id)
+
+------------------------------------------------------------------------------
+TABLE: downloads
+------------------------------------------------------------------------------
+Purpose: Download event log — tracks every download for analytics.
+         Intentionally denormalized for fast analytics queries.
+
+Column      | Type         | Constraints
+------------|--------------|-------------------------------------------
+id          | UUID         | PRIMARY KEY, DEFAULT gen_random_uuid()
+paper_id    | UUID         | NOT NULL, FK → papers(id) ON DELETE CASCADE
+ip_hash     | VARCHAR(64)  | NULLABLE  -- hashed IP for privacy
+downloaded_at | TIMESTAMPTZ | DEFAULT NOW()
+
+Indexes:
+  - PRIMARY KEY on id
+  - INDEX on paper_id
+  - INDEX on downloaded_at
+
+Note: IP is hashed (SHA-256) before storage — no raw PII stored.
+
+------------------------------------------------------------------------------
+TABLE: comments
+------------------------------------------------------------------------------
+Purpose: Student comments on papers for community discussion.
+
+Column       | Type         | Constraints
+-------------|--------------|-------------------------------------------
+id           | UUID         | PRIMARY KEY, DEFAULT gen_random_uuid()
+paper_id     | UUID         | NOT NULL, FK → papers(id) ON DELETE CASCADE
+author_name  | VARCHAR(80)  | NOT NULL
+content      | TEXT         | NOT NULL
+is_approved  | BOOLEAN      | DEFAULT TRUE
+created_at   | TIMESTAMPTZ  | DEFAULT NOW()
+
+Indexes:
+  - PRIMARY KEY on id
+  - INDEX on paper_id
+  - INDEX on (paper_id, is_approved)
+
+------------------------------------------------------------------------------
+TABLE: users (admin only)
+------------------------------------------------------------------------------
+Purpose: Admin user accounts. Students do not register.
+
+Column          | Type          | Constraints
+----------------|---------------|-------------------------------------------
+id              | UUID          | PRIMARY KEY, DEFAULT gen_random_uuid()
+username        | VARCHAR(80)   | NOT NULL, UNIQUE
+email           | VARCHAR(120)  | NOT NULL, UNIQUE
+password_hash   | VARCHAR(255)  | NOT NULL  -- bcrypt hashed
+is_active       | BOOLEAN       | DEFAULT TRUE
+last_login_at   | TIMESTAMPTZ   | NULLABLE
+created_at      | TIMESTAMPTZ   | DEFAULT NOW()
+
+Indexes:
+  - PRIMARY KEY on id
+  - UNIQUE on username
+  - UNIQUE on email
+
+==============================================================================
+STEP 4: FEATURE DESIGN — MVP SCOPE
+==============================================================================
+
+--- PUBLIC FEATURES ---
+
+1. HOMEPAGE
+   - Hero section with portal name and search bar
+   - 4 class cards (Class 9, 10, 11, 12) with subject counts
+   - Recently added papers section (last 6 uploads)
+   - Stats: total papers, total downloads, total subjects
+   - SEO: title, description, Open Graph meta tags
+
+2. SEARCH
+   - Input field on homepage and navbar
+   - Query sent to GET /api/search?q=<term>
+   - Backend: PostgreSQL full-text search (tsvector GIN index)
+   - Results show: paper title, class, subject, exam type, year
+   - Filter sidebar: class, subject, exam type, year, paper type
+   - Pagination: 20 results per page
+
+3. CLASS PAGE (/class/{class_id})
+   - Header: "Class 10 Question Papers & Answer Keys"
+   - Grid of subject cards with paper counts
+   - SEO: unique title + description per class page
+
+4. SUBJECT PAGE (/class/{class_id}/subject/{subject_slug})
+   - List of exam types with paper counts
+   - Non-interactive "Coming soon" cards for empty exam types
+   - YouTube video links if available for this subject
+   - SEO: unique title per subject page
+
+5. PAPER LISTING PAGE (/class/{class_id}/subject/{subject_slug}/exam/{exam_slug})
+   - List of papers with year, type (Q/AK), size, downloads, likes
+   - Filter by year, paper type (question/answer key)
+   - Each paper has Download button + View Details link
+   - YouTube embed if video linked to this subject + exam type
+
+6. PAPER DETAIL PAGE (/papers/{paper_id})
+   - Full paper metadata
+   - Download button → logs download event → redirects to Supabase public URL
+   - Like / Dislike buttons
+   - Comments section (add comment with name + message)
+   - Related papers (same subject + exam type)
+   - SEO: paper-specific title, description, canonical URL
+
+7. DOWNLOAD
+   - GET /api/papers/{id}/download
+   - Logs download event to downloads table
+   - Returns Supabase Storage public URL
+   - Browser opens PDF in new tab or triggers download
+
+8. YOUTUBE VIDEO WATCH
+   - Embedded YouTube player on subject page or paper detail
+   - No YouTube API key required for basic embed
+
+--- ADMIN FEATURES ---
+
+1. ADMIN LOGIN (/admin/login)
+   - Username + password form
+   - POST /api/auth/login → returns JWT token
+   - Token stored in httpOnly cookie (not localStorage)
+
+2. ADMIN DASHBOARD (/admin)
+   - Stats: total papers, total downloads today, total comments
+   - Recent uploads list
+   - Quick links: Upload Paper, Manage Files, Comments
+
+3. UPLOAD PAPER (/admin/upload)
+   - Form: class, subject, exam type, year, paper type, title, file, description
+   - File validation: PDF only, max 50MB
+   - On submit: upload file to Supabase Storage → save record to DB
+   - Success: redirect to manage files
+
+4. MANAGE FILES (/admin/files)
+   - Paginated table of all papers
+   - Filter by class, subject, visibility
+   - Actions: toggle visibility, delete, edit metadata
+
+5. MANAGE VIDEOS (/admin/videos)
+   - Add YouTube URL + title + linked subject + exam type
+   - List existing videos with delete option
+
+6. MANAGE COMMENTS (/admin/comments)
+   - List all comments (newest first), paginated
+   - Delete individual comments
+   - Approve/reject if is_approved flow added
+
+7. EDIT PAPER RECORD (/admin/files/{id}/edit)
+   - Edit title, year, exam type, description
+   - Toggle visibility
+   - Replace PDF file (re-upload to Supabase)
+
+==============================================================================
+STEP 5: API DESIGN — FASTAPI ENDPOINTS
+==============================================================================
+
+BASE URL: https://api.tnboardportal.com/api/v1
+
+All responses follow standard structure:
+  { "data": ..., "meta": { "total": N, "page": N, "per_page": N } }
+  { "error": { "code": "...", "message": "..." } }
+
+------------------------------------------------------------------------------
+CLASSES
+------------------------------------------------------------------------------
+GET  /classes
+     Returns all classes with subject counts
+     Response: [{ id, name, slug, subject_count }]
+
+GET  /classes/{class_id}/subjects
+     Returns all subjects for a class with paper counts per exam type
+     Response: [{ id, name, slug, is_practical, paper_count }]
+
+------------------------------------------------------------------------------
+SUBJECTS
+------------------------------------------------------------------------------
+GET  /subjects/{subject_id}
+     Returns subject details including class info
+     Response: { id, name, slug, class: {...}, is_practical }
+
+GET  /subjects/{subject_id}/exam-types
+     Returns exam types that have at least one paper for this subject
+     Includes total_count per exam type
+     Response: [{ exam_type: {...}, paper_count }]
+
+------------------------------------------------------------------------------
+EXAM TYPES
+------------------------------------------------------------------------------
+GET  /exam-types
+     Returns all exam types grouped by category
+     Response: [{ category, types: [{ id, name, slug, is_practical }] }]
+
+------------------------------------------------------------------------------
+PAPERS
+------------------------------------------------------------------------------
+GET  /papers
+     Query params: class_id, subject_id, exam_type_id, year,
+                   paper_type, page, per_page
+     Returns paginated paper list
+     Response: { data: [...], meta: { total, page, per_page } }
+
+GET  /papers/{paper_id}
+     Returns full paper details with comments and related papers
+     Response: { id, title, year, paper_type, public_url, likes,
+                 dislikes, download_count, subject: {...},
+                 exam_type: {...}, comments: [...], related: [...] }
+
+POST /papers (ADMIN ONLY, requires JWT)
+     Body: { subject_id, exam_type_id, year, title, paper_type,
+             description } + multipart file
+     Action: Upload to Supabase Storage, save record
+     Response: { id, title, public_url, ... }
+
+PUT  /papers/{paper_id} (ADMIN ONLY)
+     Body: { title, year, description, is_visible }
+     Response: updated paper object
+
+DELETE /papers/{paper_id} (ADMIN ONLY)
+     Soft delete (sets deleted_at timestamp)
+     Also deletes file from Supabase Storage
+     Response: { message: "deleted" }
+
+POST /papers/{paper_id}/download
+     Logs download event, returns public URL
+     Response: { download_url: "https://..." }
+
+POST /papers/{paper_id}/vote (PUBLIC)
+     Body: { type: "like" | "dislike" }
+     Response: { likes: N, dislikes: N }
+
+------------------------------------------------------------------------------
+COMMENTS
+------------------------------------------------------------------------------
+GET  /papers/{paper_id}/comments
+     Returns approved comments for a paper (paginated)
+     Response: [{ id, author_name, content, created_at }]
+
+POST /papers/{paper_id}/comments (PUBLIC with rate limit)
+     Body: { author_name, content }
+     Response: { id, author_name, content, created_at }
+
+DELETE /comments/{comment_id} (ADMIN ONLY)
+     Response: { message: "deleted" }
+
+------------------------------------------------------------------------------
+VIDEOS
+------------------------------------------------------------------------------
+GET  /subjects/{subject_id}/videos
+     Returns YouTube videos for a subject
+     Response: [{ id, title, youtube_video_id, exam_type: {...} }]
+
+POST /videos (ADMIN ONLY)
+     Body: { subject_id, exam_type_id, title, youtube_url, description }
+     Response: created video object
+
+DELETE /videos/{video_id} (ADMIN ONLY)
+     Response: { message: "deleted" }
+
+------------------------------------------------------------------------------
+SEARCH
+------------------------------------------------------------------------------
+GET  /search?q=<query>&class_id=&subject_id=&exam_type_id=&year=&page=1
+     Full-text search using PostgreSQL tsvector
+     Returns paginated results from papers table
+     Response: { data: [...], meta: { total, page, per_page, query } }
+
+------------------------------------------------------------------------------
+AUTHENTICATION (ADMIN)
+------------------------------------------------------------------------------
+POST /auth/login
+     Body: { username, password }
+     Response: { access_token, token_type: "bearer", expires_in: 3600 }
+
+POST /auth/logout
+     Invalidates JWT (blacklist or short expiry)
+     Response: { message: "logged out" }
+
+GET  /auth/me (requires JWT)
+     Returns current admin user info
+     Response: { id, username, email, last_login_at }
+
+------------------------------------------------------------------------------
+ANALYTICS (ADMIN ONLY)
+------------------------------------------------------------------------------
+GET  /admin/stats
+     Returns: total_papers, total_downloads, downloads_today,
+              total_comments, most_downloaded (top 5 papers)
+
+GET  /admin/downloads?paper_id=&from=&to=
+     Download event log with date filtering
+
+==============================================================================
+STEP 6: REACT FRONTEND DESIGN
+==============================================================================
+
+PROJECT STRUCTURE:
+  /src
+    /pages           — Route-level components
+    /components      — Reusable UI components
+    /hooks           — Custom React hooks (useSearch, usePapers, etc.)
+    /api             — Axios API client + endpoint functions
+    /store           — Zustand stores (auth, UI)
+    /utils           — Helper functions
+    /types           — TypeScript interfaces
+    /styles          — Tailwind config, global CSS
+
+------------------------------------------------------------------------------
+PAGE: Home (/  )
+------------------------------------------------------------------------------
+Components:
+  - HeroSection: headline, search bar, "Explore Classes" CTA
+  - ClassGrid: 4 class cards with subject counts (fetched from GET /classes)
+  - RecentPapers: last 6 uploaded papers (GET /papers?page=1&per_page=6)
+  - StatsBar: total papers, downloads, subjects (GET /admin/stats — public subset)
+
+State:
+  - searchQuery (local state — controlled input)
+  - classes (TanStack Query — GET /classes)
+  - recentPapers (TanStack Query — GET /papers with sort)
+
+API Calls:
+  - GET /api/v1/classes
+  - GET /api/v1/papers?sort=newest&per_page=6
+
+UI Layout:
+  - Full-width hero with gradient background
+  - Below hero: class cards in responsive 4-column grid
+  - Below cards: "Recently Added" horizontal scroll row
+  - Footer with portal info
+
+------------------------------------------------------------------------------
+PAGE: Class Page (/class/{classId})
+------------------------------------------------------------------------------
+Components:
+  - PageHeader: "Class 10 Question Papers" + breadcrumb
+  - SubjectGrid: cards for each subject showing paper count
+  - SEOHead: sets <title> and <meta description>
+
+State:
+  - subjects (TanStack Query — GET /classes/{id}/subjects)
+
+API Calls:
+  - GET /api/v1/classes/{classId}/subjects
+
+UI Layout:
+  - Breadcrumb: Home > Class 10
+  - Grid of subject cards (3-4 per row on desktop, 2 on tablet, 1 on mobile)
+  - Each card: subject name, paper count badge, "View Papers" button
+
+------------------------------------------------------------------------------
+PAGE: Subject Page (/class/{classId}/subject/{subjectSlug})
+------------------------------------------------------------------------------
+Components:
+  - PageHeader: "Class 10 Mathematics — Question Papers"
+  - ExamTypeGrid: exam category cards with file counts
+  - VideoSection: YouTube embedded videos for this subject (if any)
+  - SEOHead: subject-level meta tags
+
+State:
+  - subject (TanStack Query — GET /subjects/{id})
+  - examTypes (TanStack Query — GET /subjects/{id}/exam-types)
+  - videos (TanStack Query — GET /subjects/{id}/videos)
+
+API Calls:
+  - GET /api/v1/subjects/{id}/exam-types
+  - GET /api/v1/subjects/{id}/videos
+
+UI Layout:
+  - Breadcrumb: Home > Class 10 > Mathematics
+  - Exam type cards in grid (6 cards: Unit Tests, Midterm, Quarterly,
+    Half Yearly, Annual, Practical*)
+  - Cards with 0 papers shown in muted style with "Coming Soon" badge
+  - Video section below cards (collapsible)
+
+------------------------------------------------------------------------------
+PAGE: Paper Listing (/class/{classId}/subject/{subjectSlug}/exam/{examSlug})
+------------------------------------------------------------------------------
+Components:
+  - PageHeader: "Class 10 Maths — Unit Test 1 Question Papers"
+  - FilterBar: year dropdown, paper type toggle (Q/AK)
+  - PaperList: scrollable list of PaperCard components
+  - PaperCard: title, year, type badge, download count, like/dislike, download btn
+  - YouTubeEmbed: embedded video (if linked)
+  - Pagination
+
+State:
+  - papers (TanStack Query — GET /papers with filters)
+  - selectedYear (local state)
+  - selectedType (local state — 'question' | 'answer_key' | 'all')
+  - currentPage (local state)
+
+API Calls:
+  - GET /api/v1/papers?subject_id=X&exam_type_id=Y&year=Z&paper_type=W&page=N
+
+UI Layout:
+  - Breadcrumb: Home > Class 10 > Mathematics > Unit Test 1
+  - Filter bar at top (year selector + Q/Answer Key toggle)
+  - Paper cards in list view
+  - Each card: title, year badge, type badge, size, download count
+  - Download button opens PDF in new tab
+
+------------------------------------------------------------------------------
+PAGE: Paper Detail (/papers/{paperId})
+------------------------------------------------------------------------------
+Components:
+  - PaperHero: title, class, subject, exam type, year, paper type badge
+  - DownloadButton: large CTA — POST /papers/{id}/download → open URL
+  - VoteButtons: 👍 Like / 👎 Dislike with counts
+  - CommentsSection: comment list + add comment form
+  - RelatedPapers: same subject + exam type, different year
+  - SEOHead: paper-specific title + description + Open Graph
+
+State:
+  - paper (TanStack Query — GET /papers/{id})
+  - comments (TanStack Query — GET /papers/{id}/comments)
+  - isDownloading (local state)
+
+API Calls:
+  - GET /api/v1/papers/{id}
+  - GET /api/v1/papers/{id}/comments
+  - POST /api/v1/papers/{id}/download
+  - POST /api/v1/papers/{id}/vote
+  - POST /api/v1/papers/{id}/comments
+
+------------------------------------------------------------------------------
+PAGE: Admin Dashboard (/admin)
+------------------------------------------------------------------------------
+Components:
+  - AdminNav: sidebar navigation (Dashboard, Upload, Files, Videos, Comments)
+  - StatsCards: total papers, today's downloads, pending comments
+  - RecentUploads: last 10 papers table
+  - QuickActions: Upload Paper button
+
+State:
+  - stats (TanStack Query — GET /admin/stats)
+  - recentPapers (TanStack Query)
+  - isAuthenticated (Zustand auth store)
+
+Guards:
+  - All /admin/* routes wrapped in ProtectedRoute component
+  - If no JWT → redirect to /admin/login
+
+API Calls:
+  - GET /api/v1/admin/stats
+
+==============================================================================
+STEP 7: STORAGE DESIGN — SUPABASE STORAGE
+==============================================================================
+
+BUCKET NAME: tn-board-papers
+
+FOLDER STRUCTURE:
+  tn-board-papers/
+  ├── class-9/
+  │   ├── tamil/
+  │   │   ├── unit-test-1/2024/
+  │   │   │   ├── question-paper.pdf
+  │   │   │   └── answer-key.pdf
+  │   │   └── annual-exam/2024/
+  │   └── mathematics/
+  │       └── quarterly-exam/2024/
+  ├── class-10/
+  │   ├── mathematics/
+  │   │   ├── unit-test-1/
+  │   │   │   ├── 2024/
+  │   │   │   │   ├── class10-maths-ut1-2024-question.pdf
+  │   │   │   │   └── class10-maths-ut1-2024-answerkey.pdf
+  │   │   │   └── 2023/
+  │   ├── science/
+  │   └── social/
+  ├── class-11/
+  └── class-12/
+
+FILE NAMING CONVENTION:
+  class{N}-{subject-slug}-{exam-slug}-{year}-{type}.pdf
+  Example: class10-maths-unit-test-1-2024-question.pdf
+  Example: class10-maths-unit-test-1-2024-answer-key.pdf
+
+STORAGE PATH STORED IN DB (papers.storage_path):
+  class-10/mathematics/unit-test-1/2024/class10-maths-unit-test-1-2024-question.pdf
+
+PUBLIC URL FORMAT:
+  https://{project}.supabase.co/storage/v1/object/public/tn-board-papers/{path}
+
+UPLOAD FLOW:
+  1. Admin selects file on React frontend
+  2. React sends multipart form to FastAPI POST /papers
+  3. FastAPI validates file (PDF only, ≤50MB)
+  4. FastAPI generates storage_path from class/subject/exam_type/year
+  5. FastAPI uploads file to Supabase Storage via Python SDK
+  6. Supabase returns public URL
+  7. FastAPI saves paper record to PostgreSQL with storage_path + public_url
+  8. FastAPI returns 201 Created with paper object
+
+DELETE FLOW:
+  1. Admin clicks delete
+  2. FastAPI receives DELETE /papers/{id}
+  3. FastAPI deletes file from Supabase Storage
+  4. FastAPI soft-deletes paper record (sets deleted_at)
+  5. Returns 200 OK
+
+BUCKET POLICY:
+  - Public read: YES (anyone can download PDFs via public URL)
+  - Public write: NO (only authenticated backend can upload)
+  - MIME type restriction: application/pdf only
+
+==============================================================================
+STEP 8: SEARCH DESIGN
+==============================================================================
+
+SEARCH STRATEGY: PostgreSQL Full-Text Search with tsvector
+
+WHY POSTGRESQL FTS (not Elasticsearch):
+  - No additional service needed — search lives in the same DB
+  - tsvector + GIN index is fast enough for this scale (<10,000 papers)
+  - Supabase supports it natively
+  - Simpler to maintain
+
+HOW IT WORKS:
+  1. papers table has a search_vector TSVECTOR column
+  2. A PostgreSQL trigger auto-updates search_vector on INSERT/UPDATE:
+     to_tsvector('english', title || ' ' || description || ' ' || year)
+  3. A GIN index is created on search_vector
+  4. Search query uses:
+     WHERE search_vector @@ plainto_tsquery('english', :query)
+     ORDER BY ts_rank(search_vector, plainto_tsquery('english', :query)) DESC
+
+SEARCH ENDPOINT DESIGN:
+  GET /api/v1/search?q=maths+quarterly+2024&class_id=10&year=2024&page=1
+
+  Query logic:
+    - If q provided: full-text search on tsvector
+    - If class_id provided: filter by class
+    - If year provided: filter by year
+    - If paper_type provided: 'question' or 'answer_key'
+    - If exam_type provided: filter by exam_type_id
+
+WHAT STUDENTS CAN SEARCH:
+  ✓ "Class 10 Maths Annual Exam 2024"
+  ✓ "Physics Practical 2023"
+  ✓ "Quarterly Tamil Class 9"
+  ✓ "Answer key biology class 12"
+
+SEARCH RESULT FIELDS:
+  - Paper title (highlighted match)
+  - Class name
+  - Subject name
+  - Exam type name
+  - Year
+  - Paper type badge (Q / Answer Key)
+  - Download count
+  - Link to paper detail page
+
+AUTOCOMPLETE (FUTURE):
+  - GET /api/v1/search/suggest?q=ma
+  - Returns top 5 matching paper titles
+  - Implemented with PostgreSQL ILIKE on title
+
+==============================================================================
+STEP 9: SEO DESIGN
+==============================================================================
+
+URL STRUCTURE (SEO-FRIENDLY):
+  /                                          → Homepage
+  /class/10                                  → Class 10 papers
+  /class/10/subject/maths                    → Maths papers for Class 10
+  /class/10/subject/maths/exam/annual-exam   → Annual Exam papers list
+  /papers/{uuid}                             → Paper detail (canonical)
+
+  Redirect: /class-10 → /class/10  (backward compat with old Flask URLs)
+
+META TAGS STRATEGY:
+  Every page gets unique <title> and <meta description>
+
+  Homepage:
+    title: "TN State Board Question Papers & Answer Keys | Free Download"
+    description: "Download Tamil Nadu State Board question papers and answer
+                  keys for Class 9, 10, 11, 12. Free PDF download."
+
+  Class Page (/class/10):
+    title: "Class 10 TN State Board Question Papers | All Subjects"
+    description: "Download Class 10 Tamil Nadu State Board question papers
+                  for Maths, Science, Social, Tamil, English. Unit Tests,
+                  Quarterly, Half Yearly, Annual Exam papers."
+
+  Subject Page (/class/10/subject/maths):
+    title: "Class 10 Maths Question Papers | TN State Board | Free PDF"
+    description: "Download Class 10 Mathematics question papers — Unit Test,
+                  Quarterly, Half Yearly, Annual Exam. Tamil Nadu State Board."
+
+  Paper Detail (/papers/{id}):
+    title: "{title} | TN State Board | Free Download"
+    description: "Download {title} PDF for Class {n} {subject}. Tamil Nadu
+                  State Board {exam_type} {year} question paper."
+
+OPEN GRAPH TAGS (for social sharing):
+  og:title, og:description, og:image (portal logo), og:url, og:type
+
+STRUCTURED DATA (JSON-LD):
+  Add schema.org/EducationalMaterial markup on paper detail pages
+  This helps Google understand the content type
+
+SITEMAP.XML:
+  Auto-generated from database — one URL per paper, class, and subject page
+  FastAPI endpoint: GET /sitemap.xml → returns XML
+
+ROBOTS.TXT:
+  Allow: /
+  Disallow: /admin/
+  Sitemap: https://tnboardportal.com/sitemap.xml
+
+ADDITIONAL SEO PRACTICES:
+  - Canonical URLs on all pages (avoid duplicate content)
+  - Fast page loads via Vercel edge network + React lazy loading
+  - Mobile-responsive design (Google mobile-first indexing)
+  - Alt text on all images
+
+==============================================================================
+STEP 10: AI INTEGRATION ROADMAP
+==============================================================================
+
+PHILOSOPHY: Build the API layer now to be AI-ready. Add AI models later.
+
+HOW FASTAPI SUPPORTS AI FEATURES:
+  - FastAPI natively supports async — perfect for slow AI inference calls
+  - Background tasks for long-running AI jobs
+  - OpenAI SDK or local model via API call from FastAPI
+  - AI endpoints sit alongside regular endpoints — no separate AI service needed
+
+FUTURE AI ENDPOINTS (design now, implement later):
+
+FEATURE 1: AI ANSWER KEY GENERATOR
+  POST /api/v1/ai/generate-answer-key
+  Body: { paper_id } or { file: <uploaded PDF> }
+  Action: Extract text from PDF → send to GPT-4o → return structured answers
+  Response: { answers: [{ question_no, answer, explanation }] }
+
+FEATURE 2: AI SUMMARY GENERATOR
+  POST /api/v1/ai/summarize-paper
+  Body: { paper_id }
+  Action: Extract text from PDF → summarize key topics covered
+  Response: { summary, key_topics: [...], difficulty_level }
+
+FEATURE 3: AI QUESTION EXTRACTOR
+  POST /api/v1/ai/extract-questions
+  Body: { paper_id }
+  Action: Parse PDF text → identify and number all questions
+  Response: { questions: [{ number, text, marks }] }
+
+FEATURE 4: AI IMPORTANT QUESTIONS GENERATOR
+  POST /api/v1/ai/important-questions
+  Body: { subject_id, exam_type_id }
+  Action: Analyze all papers for subject → identify frequently-asked questions
+  Response: { questions: [{ text, frequency, years_asked: [...] }] }
+
+IMPLEMENTATION APPROACH:
+  - Use FastAPI BackgroundTasks for async AI processing
+  - Store AI results in a separate ai_results table (keyed by paper_id + task_type)
+  - Return task_id immediately → poll GET /ai/tasks/{task_id} for status
+  - This prevents timeout issues with slow AI inference
+
+AI STACK RECOMMENDATION:
+  - OpenAI GPT-4o for text generation
+  - PyMuPDF (fitz) for PDF text extraction
+  - LangChain (optional) for prompt management
+
+OPENAI INTEGRATION COST ESTIMATE:
+  - GPT-4o input: $5 per 1M tokens
+  - Average TN Board paper: ~2,000 tokens
+  - 100 papers/month: ~$1/month (negligible)
+
+==============================================================================
+STEP 11: DOCKER DEPLOYMENT
+==============================================================================
+
+DOCKER ARCHITECTURE:
+
+  Local Development (docker-compose):
+  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+  │  frontend    │  │  backend     │  │  postgres    │
+  │  (React/Vite)│  │  (FastAPI)   │  │  (local DB)  │
+  │  port: 3000  │  │  port: 8000  │  │  port: 5432  │
+  └──────────────┘  └──────────────┘  └──────────────┘
+  Note: In production, frontend → Vercel, backend → Railway, DB → Supabase
+
+DOCKERFILE REQUIREMENTS (Backend — FastAPI):
+  Base: python:3.12-slim
+  Working dir: /app
+  Copy: requirements.txt + source code
+  Install: pip install -r requirements.txt
+  Expose: 8000
+  CMD: uvicorn main:app --host 0.0.0.0 --port 8000
+
+DOCKERFILE REQUIREMENTS (Frontend — React):
+  Stage 1 (build): node:20-alpine → npm run build → /dist
+  Stage 2 (serve): nginx:alpine → copy /dist → serve static
+  Expose: 80
+  Note: In production Vercel handles this natively (no Dockerfile needed)
+
+ENVIRONMENT VARIABLES:
+
+  Backend (Railway):
+    DATABASE_URL          — Supabase PostgreSQL connection string
+    SUPABASE_URL          — Supabase project URL
+    SUPABASE_SERVICE_KEY  — Supabase service role key (admin SDK access)
+    JWT_SECRET_KEY        — Random 32-char secret for signing JWTs
+    JWT_ALGORITHM         — HS256
+    JWT_EXPIRE_MINUTES    — 60
+    CORS_ORIGINS          — https://tnboardportal.vercel.app
+    ENVIRONMENT           — production
+
+  Frontend (Vercel):
+    VITE_API_BASE_URL     — https://api.tnboardportal.railway.app/api/v1
+    VITE_SUPABASE_URL     — Supabase project URL (for direct storage URLs)
+
+PRODUCTION DEPLOYMENT FLOW:
+  1. Push code to GitHub (main branch)
+  2. Railway auto-detects Dockerfile → builds backend container
+  3. Railway deploys backend → https://api.tnboardportal.railway.app
+  4. Vercel auto-detects Vite project → builds frontend
+  5. Vercel deploys frontend → https://tnboardportal.vercel.app
+  6. Database: Supabase (managed, no deployment needed)
+
+DOCKER COMPOSE (local dev):
+  Services:
+    - backend: builds from ./backend/Dockerfile, maps port 8000
+    - frontend: uses node:20-alpine, runs "npm run dev", maps port 3000
+    - db: postgres:15-alpine (local dev only), maps port 5432
+  Volumes:
+    - backend code hot-reload via volume mount
+    - postgres data persisted in named volume
+  Networks:
+    - All services on shared "app" network
+
+==============================================================================
+STEP 12: RESUME VALUE ANALYSIS
+==============================================================================
+
+------------------------------------------------------------------------------
+COMPARISON: Flask Project vs. New React + FastAPI + PostgreSQL Project
+------------------------------------------------------------------------------
+
+Dimension           | Flask Project (Current)      | New Project
+--------------------|------------------------------|-----------------------------
+SWE Value           | Medium — single-process web  | HIGH — separated frontend/
+                    | app, Jinja templates          | backend, REST API, typed
+                    |                              | Python, async FastAPI
+AI Engineer Value   | Low — no AI integration      | HIGH — async FastAPI ready
+                    | points                        | for OpenAI integration,
+                    |                              | AI roadmap documented
+Full Stack Value    | Medium — same language        | HIGH — true full-stack
+                    | for frontend + backend        | separation: React (TS) +
+                    |                              | Python (FastAPI)
+Internship Ready    | Moderate — shows Flask &     | HIGH — shows React, FastAPI,
+                    | SQLAlchemy, basic auth        | Docker, JWT, Supabase,
+                    |                              | Vercel, REST API design,
+                    |                              | CI/CD readiness
+Interview Topics    | Flask, SQLAlchemy,           | FastAPI, async Python,
+                    | Jinja2, sessions, JSON sync  | React Query, JWT auth,
+                    |                              | PostgreSQL FTS, Docker,
+                    |                              | cloud storage, SEO
+Portfolio Wow       | Low — looks like a           | HIGH — looks like a real
+                    | tutorial project              | production SaaS tool
+Resume Keywords     | Python, Flask, SQLAlchemy,   | React, TypeScript, FastAPI,
+                    | PostgreSQL, Bootstrap         | PostgreSQL, Docker, Supabase,
+                    |                              | Vercel, Railway, REST API,
+                    |                              | JWT, Tailwind CSS, Vite
+
+VERDICT:
+  - SWE roles: New project wins clearly
+  - AI Engineer roles: New project wins (async FastAPI + AI roadmap)
+  - Full Stack roles: New project wins decisively
+  - Internships: New project wins — modern stack matches industry expectations
+
+RESUME LINE UPGRADE:
+  Old: "Built a Flask portal with Bootstrap and PostgreSQL for TN State Board"
+  New: "Designed and deployed a full-stack educational portal with React +
+        FastAPI + PostgreSQL (Supabase); implemented JWT auth, full-text search,
+        cloud PDF storage, SEO-optimized routing, and Docker containerization"
+
+==============================================================================
+STEP 13: IMPLEMENTATION ROADMAP — WEEK BY WEEK
+==============================================================================
+
+TOTAL TIMELINE: 4 Weeks
+START CONDITION: Architecture approved, GitHub repo created, Supabase project set up
+
+------------------------------------------------------------------------------
+WEEK 1: FOUNDATION (Backend + Database)
+Goal: Working FastAPI backend with all endpoints returning real data
+
+Days 1-2: Environment Setup
+  - Create GitHub repository with /frontend and /backend folders
+  - Set up Supabase project (get DATABASE_URL, SUPABASE_URL, SERVICE_KEY)
+  - Create Supabase Storage bucket "tn-board-papers" with public read policy
+  - Write FastAPI project skeleton with folder structure
+  - Set up Docker Compose for local dev (FastAPI + local Postgres)
+
+Days 3-4: Database + Models
+  - Run SQL migrations to create all 8 tables in Supabase
+  - Add GIN index on papers.search_vector
+  - Write tsvector update trigger
+  - Seed classes, subjects, exam_types with initial data
+  - Write SQLAlchemy async models for all tables
+  - Write Pydantic schemas for all request/response types
+
+Day 5-7: Core API Endpoints
+  - GET /classes, GET /classes/{id}/subjects
+  - GET /subjects/{id}/exam-types
+  - GET /papers (with filtering), GET /papers/{id}
+  - POST /auth/login (JWT auth)
+  - POST /papers (admin upload to Supabase Storage)
+  - DELETE /papers/{id} (soft delete + storage delete)
+  - GET /search (PostgreSQL FTS)
+  - Test all endpoints in FastAPI /docs
+
+DELIVERABLE: All API endpoints working, tested via Swagger UI
+
+------------------------------------------------------------------------------
+WEEK 2: REACT FRONTEND (Public Pages)
+Goal: Students can browse and download papers
+
+Days 1-2: React Project Setup
+  - Vite + React 18 + TypeScript project initialized
+  - Tailwind CSS configured
+  - React Router v6 routes set up
+  - Axios API client configured with base URL
+  - TanStack Query set up with QueryClientProvider
+
+Days 3-5: Public Pages
+  - HomePage: hero, class cards, recent papers section
+  - ClassPage: subject grid with paper counts
+  - SubjectPage: exam type cards with coming-soon states, video embeds
+  - PaperListPage: filterable paper list with pagination
+  - PaperDetailPage: download button, vote buttons, comments
+
+Day 6-7: Search + SEO
+  - SearchPage: query input → API call → results list with filters
+  - React Helmet for dynamic <title> and <meta> tags per page
+  - Breadcrumb component used on all inner pages
+
+DELIVERABLE: Full student browsing experience working end-to-end
+
+------------------------------------------------------------------------------
+WEEK 3: ADMIN PANEL + POLISH
+Goal: Admin can log in, upload, and manage all content
+
+Days 1-2: Admin Authentication
+  - Admin login page with JWT flow
+  - ProtectedRoute HOC for all /admin/* routes
+  - JWT stored in httpOnly cookie via FastAPI Set-Cookie
+  - Auth state in Zustand store
+
+Days 3-4: Admin Pages
+  - Admin Dashboard (stats cards, recent uploads)
+  - Upload Paper form (class/subject/exam type selectors, file picker)
+  - Manage Files table (paginated, filter by class, toggle visibility, delete)
+  - Add/Manage Videos page
+  - Manage Comments page with delete
+
+Day 5: File Upload UX
+  - Drag-and-drop file upload on React upload form
+  - Upload progress indicator
+  - File type validation before sending to API
+
+Days 6-7: Error Handling + Loading States
+  - All API calls have loading skeletons (not spinners)
+  - Error boundaries on page level
+  - 404 page for unknown routes
+  - Empty states for zero-result pages
+
+DELIVERABLE: Full admin panel, all CRUD operations working
+
+------------------------------------------------------------------------------
+WEEK 4: DEPLOYMENT + OPTIMIZATION
+Goal: Live on the internet, SEO-ready, production-grade
+
+Days 1-2: Docker + Deployment
+  - Finalize FastAPI Dockerfile
+  - Deploy backend to Railway — get live API URL
+  - Set all environment variables on Railway
+  - Deploy frontend to Vercel — connect GitHub repo
+  - Set VITE_API_BASE_URL on Vercel
+  - Test end-to-end on live URLs
+
+Days 3-4: SEO Implementation
+  - React Helmet Async for per-page meta tags
+  - Sitemap.xml endpoint on FastAPI
+  - Robots.txt on FastAPI
+  - Verify URL structure matches SEO plan
+  - Test with Google's Rich Results Test
+
+Day 5: Data Migration
+  - Export existing Flask DB content (papers, subjects) to CSV
+  - Write migration script to import into Supabase
+  - Upload existing PDFs from /uploads/ to Supabase Storage
+
+Day 6: Performance + Security
+  - Add rate limiting on POST /papers/{id}/comments and /api/vote (slowapi)
+  - CORS configured to allow only Vercel domain
+  - Add HTTP security headers on FastAPI
+  - Lighthouse audit on frontend (aim for 90+ score)
+
+Day 7: Documentation + Handoff
+  - Update README.md with setup instructions
+  - Document all env variables
+  - Record a demo video for portfolio
+  - Write LinkedIn post describing the project
+
+DELIVERABLE: Live, SEO-indexed, production-deployed full-stack portal
+
+------------------------------------------------------------------------------
+WHAT TO BUILD FIRST (Critical Path):
+  Database schema → FastAPI models → Core GET endpoints →
+  React public pages → Admin auth → Admin CRUD → Deployment
+
+WHAT TO POSTPONE (Phase 2):
+  - AI integration (add after MVP is live and deployed)
+  - YouTube video embeds (add in week 3 if time allows)
+  - Analytics dashboard (add post-launch)
+  - Student accounts / favorites (add post-launch)
+  - Autocomplete search (add post-launch)
+  - Dark mode (add post-launch)
+
+==============================================================================
+BLUEPRINT SIGN-OFF
+==============================================================================
+
+STATUS: Ready for Review
+
+This blueprint covers:
+  ✓ Step 1:  Architecture Review (keep/remove/redesign/over-engineered/missing)
+  ✓ Step 2:  New System Design (complete diagram with all components explained)
+  ✓ Step 3:  Database Design (8 normalized tables with all columns, PKs, FKs, indexes)
+  ✓ Step 4:  Feature Design (all public + admin features defined)
+  ✓ Step 5:  API Design (18+ endpoints with methods, params, responses)
+  ✓ Step 6:  React Frontend Design (5 pages with components, state, API calls)
+  ✓ Step 7:  Storage Design (Supabase bucket structure + upload/delete flow)
+  ✓ Step 8:  Search Design (PostgreSQL FTS with tsvector + GIN index strategy)
+  ✓ Step 9:  SEO Design (URL structure, meta tags, sitemap, robots.txt)
+  ✓ Step 10: AI Integration Roadmap (4 future AI features + FastAPI async approach)
+  ✓ Step 11: Docker Deployment (Dockerfile reqs, env vars, production deploy flow)
+  ✓ Step 12: Resume Value Analysis (old vs. new — full comparison table)
+  ✓ Step 13: Implementation Roadmap (4-week plan, day by day, critical path)
+
+NEXT STEP:
+  Review this blueprint. When approved, implementation begins with Week 1.
+  Implementation order: Backend first (FastAPI + DB) → Frontend → Admin → Deploy
+
+==============================================================================
+END OF ARCHITECTURE BLUEPRINT
+Project: TN State Board Portal (v2.0)
+Blueprint Author: Senior Software Architect AI
+==============================================================================

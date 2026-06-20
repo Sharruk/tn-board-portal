@@ -6,3 +6,9 @@ id = "rceCGFFVfRmdqCAbTgFza"
 uri = "file://PROJECT_AUDIT_REPORT.txt"
 type = "text"
 title = "TN State Board Portal — Complete Project Audit Report"
+
+[[outputs]]
+id = "UcZBWPvMujEAaLg55fBao"
+uri = "file://ARCHITECTURE_BLUEPRINT.txt"
+type = "text"
+title = "TN State Board Portal v2.0 — Complete Architecture Blueprint"
