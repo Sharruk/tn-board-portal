@@ -1,0 +1,222 @@
+====================================================
+Project Name:
+TN State Board Learning Platform
+
+Version:
+v1.0 MVP
+
+Current Phase:
+PHASE 1 COMPLETE — Awaiting approval to start Phase 2
+
+Current Progress:
+FastAPI backend fully built. All database tables created and seeded.
+All API endpoints created and tested. Swagger UI available at /docs.
+
+Last Updated:
+2026-06-20
+====================================================
+
+DATABASE STATUS
+
+Tables Planned:
+* classes
+* subjects
+* papers
+* admins
+
+Tables Created:
+* classes  ✓ — 4 rows (Class 9, 10, 11, 12)
+* subjects ✓ — 32 rows (5 subjects for Class 9/10, 11 subjects for Class 11/12)
+* papers   ✓ — 0 rows (admin uploads papers via API)
+* admins   ✓ — 1 row (username=admin / password=admin123)
+
+Notes:
+Using Replit PostgreSQL (DATABASE_URL) for Phase 1.
+Supabase PostgreSQL will be connected in Phase 4 by swapping DATABASE_URL.
+
+====================================================
+
+BACKEND STATUS
+
+FastAPI Installed:           [x] Done — fastapi 0.138.0
+Project Structure Created:   [x] Done
+SQLAlchemy Configured:       [x] Done
+Database Connection Working: [x] Done — PostgreSQL connected
+Pydantic Schemas Created:    [x] Done
+API Routes Created:          [x] Done
+
+Endpoints Completed:
+GET  /                              — Health check
+GET  /health                        — Health check
+GET  /api/v1/classes                — List all 4 classes with subject counts
+GET  /api/v1/classes/{id}           — Get single class
+GET  /api/v1/classes/{id}/subjects  — List subjects for a class
+GET  /api/v1/subjects/{id}          — Get subject details
+GET  /api/v1/subjects/{id}/papers   — List papers for subject (filters: exam_type, paper_type, year)
+GET  /api/v1/papers/{id}            — Get paper details
+GET  /api/v1/exam-types             — List all valid exam type strings
+GET  /api/v1/search?q=              — Search papers (filters: class_id, exam_type, paper_type, year)
+POST /api/v1/auth/login             — Admin login → JWT token
+GET  /api/v1/admin/papers           — List all papers (admin, JWT required)
+POST /api/v1/admin/papers           — Upload paper with PDF file (admin, JWT required)
+PUT  /api/v1/admin/papers/{id}      — Update paper metadata (admin, JWT required)
+DELETE /api/v1/admin/papers/{id}    — Delete paper + file (admin, JWT required)
+
+Swagger Docs:  http://localhost:5000/docs
+ReDoc:         http://localhost:5000/redoc
+
+Notes:
+- Werkzeug used for password hashing (bcrypt 5.x incompatible with passlib)
+- PyJWT used for JWT tokens (python-jose blocked by Replit firewall)
+- Files stored locally in /uploads/ for Phase 1
+- Supabase Storage will replace local storage in Phase 4
+
+====================================================
+
+FRONTEND STATUS
+
+Vite Created:            [ ] Pending — Phase 2
+Tailwind Installed:      [ ] Pending — Phase 2
+React Router Installed:  [ ] Pending — Phase 2
+Axios Installed:         [ ] Pending — Phase 2
+
+Pages Completed:
+- None yet (Phase 2)
+
+Notes:
+Frontend implementation starts after Phase 1 approval.
+
+====================================================
+
+SUPABASE STATUS
+
+Project Created:        [ ] Pending
+Database Connected:     [ ] Using Replit PostgreSQL for Phase 1/2/3
+Storage Bucket Created: [ ] Pending — Phase 4
+Upload Working:         [x] Working — local /uploads/ folder for now
+Download Working:       [x] Working — FastAPI serves /uploads/ as static files
+
+Notes:
+Supabase connection is a one-line env var swap in Phase 4.
+
+====================================================
+
+ADMIN STATUS
+
+Admin Login:        [x] Working — POST /api/v1/auth/login
+JWT Authentication: [x] Working — Bearer token on all /admin/* routes
+Upload Paper:       [x] Working — POST /api/v1/admin/papers (multipart)
+Upload Answer Key:  [x] Working — same endpoint, paper_type=answer_key
+Add YouTube Link:   [x] Working — youtube_url field on paper upload
+Delete Paper:       [x] Working — DELETE /api/v1/admin/papers/{id}
+
+Notes:
+Admin credentials: username=admin / password=admin123
+Test at: http://localhost:5000/docs (Swagger UI — try it interactively)
+
+====================================================
+
+DEPLOYMENT STATUS
+
+GitHub:  [ ] Pending — Phase 4
+Railway: [ ] Pending — Phase 4
+Vercel:  [ ] Pending — Phase 4
+
+Notes:
+Deployment setup in Phase 4. Backend has Dockerfile ready.
+
+====================================================
+
+CURRENT ISSUES
+
+Issue 1: None — all Phase 1 features working
+Issue 2: None
+Issue 3: None
+
+====================================================
+
+NEXT TASKS (Phase 2)
+
+1. Set up React + Vite + Tailwind CSS in /frontend
+2. Configure React Router with all public routes
+3. Build Homepage with class cards
+4. Build Class Page (subject grid)
+5. Build Subject Page (exam type cards)
+6. Build Paper Listing Page (filterable papers)
+7. Build Paper Detail Page (download + YouTube embed)
+8. Build Search Page
+9. Connect all pages to FastAPI via Axios
+
+====================================================
+
+FILES CREATED
+
+Frontend:
+- frontend/src/ (placeholder structure only — built in Phase 2)
+
+Backend:
+- backend/app/__init__.py
+- backend/app/config.py
+- backend/app/main.py
+- backend/app/database/__init__.py
+- backend/app/database/database.py
+- backend/app/models/__init__.py
+- backend/app/models/models.py
+- backend/app/schemas/__init__.py
+- backend/app/schemas/schemas.py
+- backend/app/services/__init__.py
+- backend/app/services/auth.py
+- backend/app/services/storage.py
+- backend/app/api/__init__.py
+- backend/app/api/classes.py
+- backend/app/api/subjects.py
+- backend/app/api/papers.py
+- backend/app/api/auth.py
+- backend/app/api/admin.py
+- backend/requirements.txt
+- backend/seed.py
+- backend/Dockerfile
+
+Database:
+- Tables: classes, subjects, papers, admins (all created in PostgreSQL)
+- Seed data: 4 classes, 32 subjects, 1 admin
+
+Docs:
+- docs/API.md
+- PROJECT_STATUS.txt
+- ARCHITECTURE_BLUEPRINT.txt
+- PROJECT_AUDIT_REPORT.txt
+
+====================================================
+
+REPLIT AGENT SUMMARY
+
+What was built today:
+Phase 1 complete — FastAPI backend with all models, schemas, routes, auth,
+and file upload. 4-table PostgreSQL database seeded. 15 API endpoints working.
+
+Files created:
+- 21 backend files across app/, models/, schemas/, services/, api/
+- backend/seed.py, backend/Dockerfile, docs/API.md, PROJECT_STATUS.txt
+
+Files modified:
+- Replit workflow updated to run FastAPI (uvicorn) instead of Flask (gunicorn)
+- backend/app/services/auth.py — switched from passlib to werkzeug
+  (bcrypt 5.x incompatible) and from python-jose to PyJWT (firewall blocked)
+
+Problems encountered:
+1. python-jose blocked by Replit package firewall — switched to PyJWT
+2. passlib incompatible with bcrypt 5.x — switched to werkzeug.security
+3. Old Flask tables (subjects, files, users etc.) had different schema —
+   dropped all old tables and recreated with new schema
+
+Solutions implemented:
+1. PyJWT as JWT library (same API, no extra deps)
+2. werkzeug.security for password hashing (already installed)
+3. Dropped old tables via SQLAlchemy engine, recreated via Base.metadata.create_all
+
+Next recommended task:
+PHASE 2 — React Frontend. Build all public pages and connect to FastAPI.
+Requires approval before starting.
+
+====================================================

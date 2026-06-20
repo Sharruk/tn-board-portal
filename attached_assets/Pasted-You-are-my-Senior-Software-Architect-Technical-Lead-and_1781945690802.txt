@@ -1,0 +1,416 @@
+You are my Senior Software Architect, Technical Lead, and Implementation Engineer.
+
+We are building a real project, not a tutorial project.
+
+Project Name:
+TN State Board Learning Platform
+
+Goal:
+Build a production-style educational platform for Tamil Nadu State Board students that can become:
+
+1. A strong Software Engineering portfolio project
+2. A strong resume project
+3. A real website with actual users
+4. A future content platform connected to YouTube
+5. A foundation for future AI features
+
+IMPORTANT:
+
+This is MVP Version 1.
+
+DO NOT build enterprise-level architecture.
+
+DO NOT over-engineer.
+
+DO NOT create unnecessary complexity.
+
+DO NOT add features that are not requested.
+
+Build the simplest version that can be deployed and used by real users.
+
+====================================================
+TECH STACK
+==========
+
+Frontend:
+
+* React
+* Vite
+* Tailwind CSS
+* React Router
+* Axios
+
+Backend:
+
+* FastAPI
+* SQLAlchemy
+* Pydantic
+
+Database:
+
+* Supabase PostgreSQL
+
+Storage:
+
+* Supabase Storage
+
+Deployment:
+
+* Vercel (Frontend)
+* Railway (Backend)
+
+====================================================
+FEATURES TO BUILD
+=================
+
+PUBLIC FEATURES
+
+1. Homepage
+2. Class Pages
+3. Subject Pages
+4. Search Papers
+5. Paper Details Page
+6. Download Question Paper PDF
+7. Download Answer Key PDF
+8. Embedded YouTube Video
+
+ADMIN FEATURES
+
+1. Admin Login
+2. Upload Question Paper
+3. Upload Answer Key
+4. Add YouTube Video Link
+5. Delete Paper
+
+====================================================
+DATABASE RULES
+==============
+
+Create ONLY these tables:
+
+classes
+subjects
+papers
+admins
+
+Do NOT create:
+
+comments
+downloads
+votes
+analytics
+notifications
+favorites
+student_accounts
+ai_results
+
+Keep the schema simple.
+
+====================================================
+FRONTEND RULES
+==============
+
+Use:
+
+* React Router
+* Axios
+* React Hooks
+
+Avoid:
+
+* Redux
+* Zustand
+* TanStack Query
+* Next.js
+
+Keep state management simple.
+
+====================================================
+BACKEND RULES
+=============
+
+Use:
+
+* FastAPI
+* SQLAlchemy
+* Pydantic
+
+Avoid:
+
+* Microservices
+* Event systems
+* Redis
+* Background workers
+* Advanced caching
+
+====================================================
+PROJECT STRUCTURE
+=================
+
+Create a professional structure:
+
+/frontend
+/backend
+/docs
+
+Backend should contain:
+
+/app
+/api
+/models
+/schemas
+/services
+/database
+
+Frontend should contain:
+
+/src
+/pages
+/components
+/services
+/router
+
+====================================================
+IMPLEMENTATION PROCESS
+======================
+
+FIRST:
+
+Generate and explain:
+
+1. Folder Structure
+2. Database Schema
+3. API Endpoints
+4. React Page Structure
+5. FastAPI Structure
+6. Supabase Integration Plan
+7. Railway Deployment Plan
+8. Vercel Deployment Plan
+
+After that:
+
+Start implementation.
+
+====================================================
+PHASES
+======
+
+PHASE 1
+Database + FastAPI
+
+Tasks:
+
+* Setup FastAPI
+* Setup SQLAlchemy
+* Setup Supabase PostgreSQL
+* Create tables
+* Create models
+* Create schemas
+* Create API endpoints
+* Test APIs
+
+====================================================
+
+PHASE 2
+React Frontend
+
+Tasks:
+
+* Setup React
+* Setup Vite
+* Setup Tailwind
+* Setup Router
+* Create pages
+* Connect APIs
+
+====================================================
+
+PHASE 3
+Admin Panel
+
+Tasks:
+
+* Admin Login
+* Upload Paper
+* Upload Answer Key
+* Add YouTube Link
+* Delete Paper
+
+====================================================
+
+PHASE 4
+Deployment
+
+Tasks:
+
+* GitHub
+* Railway
+* Vercel
+* Environment Variables
+* Production Testing
+
+====================================================
+STATUS TRACKING
+===============
+
+Create a file named:
+
+PROJECT_STATUS.txt
+
+Use this format exactly.
+
+Update it after every major task.
+
+====================================================
+
+Project Name:
+TN State Board Learning Platform
+
+Version:
+v1.0 MVP
+
+Current Phase:
+
+Current Progress:
+
+Last Updated:
+
+====================================================
+
+DATABASE STATUS
+
+Tables Planned:
+
+* classes
+* subjects
+* papers
+* admins
+
+Tables Created:
+
+Notes:
+
+====================================================
+
+BACKEND STATUS
+
+FastAPI Installed:
+Project Structure Created:
+SQLAlchemy Configured:
+Database Connection Working:
+Pydantic Schemas Created:
+API Routes Created:
+
+Endpoints Completed:
+
+Notes:
+
+====================================================
+
+FRONTEND STATUS
+
+Vite Created:
+Tailwind Installed:
+React Router Installed:
+Axios Installed:
+
+Pages Completed:
+
+Notes:
+
+====================================================
+
+SUPABASE STATUS
+
+Project Created:
+Database Connected:
+Storage Bucket Created:
+Upload Working:
+Download Working:
+
+Notes:
+
+====================================================
+
+ADMIN STATUS
+
+Admin Login:
+JWT Authentication:
+Upload Paper:
+Upload Answer Key:
+Add YouTube Link:
+Delete Paper:
+
+Notes:
+
+====================================================
+
+DEPLOYMENT STATUS
+
+GitHub:
+Railway:
+Vercel:
+
+Notes:
+
+====================================================
+
+CURRENT ISSUES
+
+Issue 1:
+Issue 2:
+Issue 3:
+
+====================================================
+
+NEXT TASKS
+
+1.
+2.
+3.
+4.
+5.
+
+====================================================
+
+FILES CREATED
+
+Frontend:
+
+Backend:
+
+Database:
+
+====================================================
+
+REPLIT AGENT SUMMARY
+
+What was built today:
+
+Files created:
+
+Files modified:
+
+Problems encountered:
+
+Solutions implemented:
+
+Next recommended task:
+
+====================================================
+
+VERY IMPORTANT
+
+After every phase:
+
+1. Update PROJECT_STATUS.txt
+2. Explain what was built
+3. Explain why it was built
+4. Explain how it works
+5. List files created
+6. List files modified
+7. Recommend the next task
+
+Do NOT jump to the next phase automatically.
+
+Stop after completing each phase and wait for approval.
