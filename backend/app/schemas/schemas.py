@@ -22,6 +22,8 @@ class SubjectOut(BaseModel):
     slug: str
     is_practical: bool
     paper_count: Optional[int] = 0
+    class_id: Optional[int] = None
+    class_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

@@ -20,6 +20,17 @@ def get_exam_types():
     return {"exam_types": EXAM_TYPES}
 
 
+@router.get("/papers/recent", response_model=List[PaperOut])
+def get_recent_papers(limit: int = 6, db: Session = Depends(get_db)):
+    return (
+        db.query(Paper)
+        .filter(Paper.is_visible == True)
+        .order_by(Paper.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 @router.get("/subjects/{subject_id}/papers", response_model=List[PaperOut])
 def get_papers_for_subject(
     subject_id: int,
@@ -53,7 +64,7 @@ def get_paper(paper_id: int, db: Session = Depends(get_db)):
 
 @router.get("/search", response_model=SearchResponse)
 def search_papers(
-    q: str = Query(..., min_length=1, description="Search query"),
+    q: str = Query(..., min_length=1),
     class_id: Optional[int] = None,
     exam_type: Optional[str] = None,
     paper_type: Optional[str] = None,
@@ -67,16 +78,15 @@ def search_papers(
         .filter(Paper.is_visible == True)
     )
 
-    search_term = f"%{q.lower()}%"
+    term = f"%{q.lower()}%"
     from sqlalchemy import or_, func
     query = query.filter(
         or_(
-            func.lower(Paper.title).like(search_term),
-            func.lower(Paper.exam_type).like(search_term),
-            func.lower(Subject.name).like(search_term),
+            func.lower(Paper.title).like(term),
+            func.lower(Paper.exam_type).like(term),
+            func.lower(Subject.name).like(term),
         )
     )
-
     if class_id:
         query = query.filter(Subject.class_id == class_id)
     if exam_type:
@@ -87,19 +97,14 @@ def search_papers(
         query = query.filter(Paper.year == year)
 
     papers = query.order_by(Paper.created_at.desc()).limit(50).all()
-
     results = [
         SearchResult(
-            id=p.id,
-            title=p.title,
-            exam_type=p.exam_type,
-            year=p.year,
-            paper_type=p.paper_type,
+            id=p.id, title=p.title, exam_type=p.exam_type,
+            year=p.year, paper_type=p.paper_type,
             subject_name=p.subject.name,
             class_name=p.subject.class_.name,
             public_url=p.public_url,
         )
         for p in papers
     ]
-
     return SearchResponse(query=q, total=len(results), results=results)

@@ -1,0 +1,255 @@
+====================================================
+FRONTEND PHASE 2 REPORT
+TN State Board Learning Platform
+Date: 2026-06-20
+====================================================
+
+WHAT WAS BUILT
+==============
+
+A complete public-facing React frontend (React 18 + Vite + Tailwind CSS)
+for the TN State Board Learning Platform. All 7 pages are built, styled,
+and connected to the live FastAPI backend via Axios.
+
+Tech stack used:
+  - React 18.3.1
+  - Vite 5.4.10 (dev server on port 5000)
+  - Tailwind CSS 3.4.14
+  - React Router v6.27.0 (client-side routing)
+  - Axios 1.7.7 (API calls)
+
+====================================================
+
+WHICH PAGES WORK
+================
+
+1. HOME PAGE  (/)
+   ✓ Hero section: blue gradient, headline, search bar
+   ✓ Stats bar: 4 classes, 32 subjects, 100% free
+   ✓ Class cards: loads live from GET /api/v1/classes
+   ✓ Recent papers: loads from GET /api/v1/papers/recent
+     (shows "No papers yet" empty state — correct for current DB state)
+   ✓ "How it works" explainer section
+   ✓ Footer with links
+
+2. CLASS PAGE  (/class/:id)
+   ✓ Breadcrumb: Home → Class 10
+   ✓ Subject grid: loads from GET /api/v1/classes/{id}/subjects
+   ✓ Subject icons (emoji-based per subject slug)
+   ✓ Shows paper count or "Coming soon" per subject
+   ✓ "Practical" badge on lab subjects
+   ✓ Hover animations on subject cards
+
+3. SUBJECT PAGE  (/subject/:id)
+   ✓ Breadcrumb: Home → Class 10 → Mathematics
+   ✓ Exam type category cards grouped by type:
+       Unit Tests (1, 2, 3), Quarterly, Half Yearly,
+       Annual/Public/Model, Practical (conditional)
+   ✓ Shows paper count per category (aggregated on frontend)
+   ✓ Cards with papers → link to /papers?subject_id=X&exam_type=Y
+   ✓ Cards with 0 papers → greyed out "Coming soon"
+   ✓ Correct class name shown in subheading
+
+4. PAPER LIST PAGE  (/papers?subject_id=X&exam_type=Y)
+   ✓ Breadcrumb from query params
+   ✓ Paper count filter tabs: All / Question Papers / Answer Keys
+   ✓ Grid of PaperCard components
+   ✓ Empty state when no papers match filter
+   ✓ Download button per card (links to public_url)
+
+5. PAPER DETAIL PAGE  (/paper/:id)
+   ✓ Full paper metadata cards (Class, Subject, Exam Type, Year)
+   ✓ Download Question Paper button (primary blue)
+   ✓ Download Answer Key button (secondary)
+   ✓ PDF missing notice (amber warning if no file)
+   ✓ YouTube video embed (auto-extracts video ID from URL)
+     — supports youtu.be, youtube.com/watch, youtube.com/embed
+   ✓ Related papers section (same subject + exam type)
+   ✓ Breadcrumb back through full path
+   ✓ "Back to Subject" link
+
+6. SEARCH PAGE  (/search?q=...)
+   ✓ Pre-filled search bar from URL ?q= param
+   ✓ Class filter dropdown (All / Class 9 / 10 / 11 / 12)
+   ✓ Type filter dropdown (All / Question Paper / Answer Key)
+   ✓ Result count display ("X results for Y")
+   ✓ Result cards with all metadata badges
+   ✓ Direct download link per result
+   ✓ Empty state with search suggestions
+   ✓ "No results" state with advice
+   ✓ Clear filters button
+
+7. 404 PAGE  (/*)
+   ✓ Clean 404 error page
+   ✓ Buttons to go Home or Search
+
+====================================================
+
+WHICH APIS ARE CONNECTED
+========================
+
+All API calls go through Vite's proxy: /api/* → http://localhost:8000
+
+Service                 Endpoint Used
+──────────────────────────────────────────────────────────
+classes.js              GET /api/v1/classes
+                        GET /api/v1/classes/{id}
+                        GET /api/v1/classes/{id}/subjects
+
+subjects.js             GET /api/v1/subjects/{id}
+                        GET /api/v1/subjects/{id}/papers
+                        GET /api/v1/subjects/{id}/papers?exam_type=X
+
+papers.js               GET /api/v1/papers/recent?limit=6
+                        GET /api/v1/papers/{id}
+                        GET /api/v1/exam-types
+
+search.js               GET /api/v1/search?q=X&class_id=Y&paper_type=Z
+
+All public endpoints confirmed working via direct curl tests.
+No admin endpoints are called from the public frontend.
+
+====================================================
+
+WHICH FILES WERE CREATED
+=========================
+
+Config & Setup (5 files):
+  frontend/package.json
+  frontend/index.html
+  frontend/vite.config.js
+  frontend/tailwind.config.js
+  frontend/postcss.config.js
+
+Entry Points (2 files):
+  frontend/src/index.css
+  frontend/src/main.jsx
+
+Router & Layout (2 files):
+  frontend/src/router/index.jsx
+  frontend/src/layouts/MainLayout.jsx
+
+Service Layer (5 files):
+  frontend/src/services/api.js
+  frontend/src/services/classes.js
+  frontend/src/services/subjects.js
+  frontend/src/services/papers.js
+  frontend/src/services/search.js
+
+Hooks (1 file):
+  frontend/src/hooks/useFetch.js
+
+Components (8 files):
+  frontend/src/components/Navbar.jsx
+  frontend/src/components/Footer.jsx
+  frontend/src/components/ClassCard.jsx
+  frontend/src/components/PaperCard.jsx
+  frontend/src/components/SearchBar.jsx
+  frontend/src/components/Breadcrumb.jsx
+  frontend/src/components/LoadingSpinner.jsx
+  frontend/src/components/ErrorMessage.jsx
+
+Pages (7 files):
+  frontend/src/pages/HomePage.jsx
+  frontend/src/pages/ClassPage.jsx
+  frontend/src/pages/SubjectPage.jsx
+  frontend/src/pages/PaperListPage.jsx
+  frontend/src/pages/PaperDetailPage.jsx
+  frontend/src/pages/SearchPage.jsx
+  frontend/src/pages/NotFoundPage.jsx
+
+Backend additions for Phase 2 (3 files modified):
+  backend/app/api/papers.py       — added /papers/recent endpoint
+  backend/app/api/subjects.py     — added class_id + class_name in responses
+  backend/app/schemas/schemas.py  — updated SubjectOut schema
+
+TOTAL: 30 frontend files created, 3 backend files modified
+
+====================================================
+
+DESIGN DECISIONS
+================
+
+1. Mobile-first responsive design
+   - All pages use responsive Tailwind grids (1 → 2 → 3/4 columns)
+   - Navbar collapses to hamburger menu on mobile
+   - Touch-friendly button sizes
+
+2. No Redux / no Zustand
+   - useState + useEffect per page
+   - useFetch hook for shared data fetching pattern
+   - No global state needed for public-only pages
+
+3. API proxy via Vite (not hardcoded URL)
+   - All requests go to /api/v1/... (relative)
+   - Vite proxies to FastAPI at localhost:8000 during dev
+   - Will work in production if served from same origin OR
+     VITE_API_URL env var can be set to an absolute API URL
+
+4. Exam type grouping on frontend
+   - SubjectPage groups all exam types into 5 category cards
+   - No extra API endpoint needed
+   - Counts computed by filtering the full papers list
+
+5. Color-coded class cards
+   - Class 9: Blue
+   - Class 10: Violet
+   - Class 11: Emerald
+   - Class 12: Orange
+
+====================================================
+
+PROBLEMS ENCOUNTERED & SOLUTIONS
+==================================
+
+1. Problem: SubjectPage needed class name for breadcrumbs, but
+   GET /subjects/{id} didn't return class info.
+   Solution: Updated SubjectOut schema + endpoint to return
+   class_id and class_name fields.
+
+2. Problem: No public "all recent papers" endpoint existed.
+   Solution: Added GET /api/v1/papers/recent?limit=N endpoint
+   to the papers router.
+
+3. Problem: React Router v6 future flag console warnings.
+   Solution: Informational only — not errors. Will add
+   v7_startTransition flag in Phase 3 if needed.
+
+====================================================
+
+CURRENT STATE (What you see right now)
+=======================================
+
+  Home Page     → Hero + empty "Recently Added" section (no papers yet)
+  Class 9/10    → 5 subjects visible, all "Coming soon"
+  Class 11/12   → 11 subjects visible, all "Coming soon"
+  Subject pages → Exam type cards visible, all "Coming soon"
+  Search page   → Works, returns 0 results (no papers in DB)
+  404 page      → Works at any unknown URL
+
+This is expected. Papers will populate once the admin uploads them
+in Phase 3.
+
+====================================================
+
+NEXT RECOMMENDED TASK: PHASE 3 — ADMIN PANEL
+=============================================
+
+Build admin UI at /admin/* (NOT part of public pages):
+
+  /admin/login       Admin login form → POST /api/v1/auth/login → store JWT
+  /admin/dashboard   Protected: stats, quick actions
+  /admin/papers      Protected: list all papers, filter, paginate
+  /admin/papers/new  Protected: upload form (file + metadata + YouTube URL)
+  /admin/papers/:id  Protected: edit form
+  /admin/            Redirect to dashboard if logged in, else /admin/login
+
+Technical requirements for Phase 3:
+  - JWT stored in localStorage (since httpOnly cookies require backend change)
+  - Axios interceptor to attach Authorization: Bearer {token}
+  - ProtectedRoute component (redirect if no token)
+  - File upload via multipart/form-data (Axios supports this)
+
+SAY "start Phase 3" TO PROCEED.
+
+====================================================

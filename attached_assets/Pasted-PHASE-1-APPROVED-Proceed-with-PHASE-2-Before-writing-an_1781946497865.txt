@@ -1,0 +1,179 @@
+PHASE 1 APPROVED.
+
+Proceed with PHASE 2.
+
+Before writing any React code:
+
+====================================================
+STEP 1 - FRONTEND ARCHITECTURE
+==============================
+
+Design the React application structure first.
+
+Generate:
+
+frontend/
+├── src/
+│   ├── components/
+│   ├── pages/
+│   ├── services/
+│   ├── router/
+│   ├── layouts/
+│   ├── hooks/
+│   └── assets/
+
+Explain every folder.
+
+====================================================
+STEP 2 - BUILD PUBLIC MVP ONLY
+==============================
+
+DO NOT build Admin UI yet.
+
+DO NOT build Dashboard yet.
+
+DO NOT build Authentication UI yet.
+
+Build ONLY public pages:
+
+1. Home Page
+2. Class Page
+3. Subject Page
+4. Paper Listing Page
+5. Paper Detail Page
+6. Search Page
+7. 404 Page
+
+====================================================
+STEP 3 - ROUTING
+================
+
+Use React Router.
+
+Routes:
+
+/
+/class/:id
+/subject/:id
+/papers
+/paper/:id
+/search
+/*
+
+====================================================
+STEP 4 - API INTEGRATION
+========================
+
+Create Axios service layer.
+
+Do not call APIs directly inside components.
+
+Create:
+
+services/api.js
+
+services/classes.js
+
+services/subjects.js
+
+services/papers.js
+
+services/search.js
+
+====================================================
+STEP 5 - UI DESIGN
+==================
+
+Theme:
+
+Modern
+Professional
+Educational
+
+Color palette:
+
+Blue
+White
+Gray
+
+Mobile-first responsive design.
+
+Use Tailwind only.
+
+No custom CSS unless necessary.
+
+====================================================
+STEP 6 - HOMEPAGE
+=================
+
+Homepage must contain:
+
+Hero Section
+
+Search Bar
+
+Class Cards:
+
+Class 9
+Class 10
+Class 11
+Class 12
+
+Recent Papers Section
+
+====================================================
+STEP 7 - PAPER DETAILS PAGE
+===========================
+
+Paper Details Page should contain:
+
+Title
+
+Class
+
+Subject
+
+Exam Type
+
+Year
+
+Download Question Paper Button
+
+Download Answer Key Button
+
+Embedded YouTube Video
+
+====================================================
+STEP 8 - PROJECT STATUS
+=======================
+
+Update PROJECT_STATUS.txt after every major milestone.
+
+Add:
+
+Current Progress %
+
+Files Created
+
+Files Modified
+
+Problems Encountered
+
+Next Recommended Task
+
+====================================================
+STEP 9 - STOP
+=============
+
+After completing Phase 2:
+
+1. Update PROJECT_STATUS.txt
+2. Generate FRONTEND_PHASE2_REPORT.txt
+3. Explain:
+
+   * What was built
+   * Which pages work
+   * Which APIs are connected
+   * Which files were created
+
+STOP and wait for approval before starting Phase 3.

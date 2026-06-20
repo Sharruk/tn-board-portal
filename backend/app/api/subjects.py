@@ -16,11 +16,13 @@ def get_subjects_for_class(class_id: int, db: Session = Depends(get_db)):
     result = []
     for s in cls.subjects:
         count = db.query(Paper).filter(
-            Paper.subject_id == s.id,
-            Paper.is_visible == True
+            Paper.subject_id == s.id, Paper.is_visible == True
         ).count()
-        result.append(SubjectOut(id=s.id, name=s.name, slug=s.slug,
-                                 is_practical=s.is_practical, paper_count=count))
+        result.append(SubjectOut(
+            id=s.id, name=s.name, slug=s.slug,
+            is_practical=s.is_practical, paper_count=count,
+            class_id=cls.id, class_name=cls.name,
+        ))
     return result
 
 
@@ -30,8 +32,10 @@ def get_subject(subject_id: int, db: Session = Depends(get_db)):
     if not s:
         raise HTTPException(status_code=404, detail="Subject not found")
     count = db.query(Paper).filter(
-        Paper.subject_id == s.id,
-        Paper.is_visible == True
+        Paper.subject_id == s.id, Paper.is_visible == True
     ).count()
-    return SubjectOut(id=s.id, name=s.name, slug=s.slug,
-                      is_practical=s.is_practical, paper_count=count)
+    return SubjectOut(
+        id=s.id, name=s.name, slug=s.slug,
+        is_practical=s.is_practical, paper_count=count,
+        class_id=s.class_.id, class_name=s.class_.name,
+    )
