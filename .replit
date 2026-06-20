@@ -49,3 +49,4 @@ run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
 CORS_ORIGINS = "*"
 STORAGE_BACKEND = "local"
 ENVIRONMENT = "development"
+VITE_SUPABASE_URL = "https://fcxvrsgcvmlowehpilvr.supabase.co"
