@@ -6,7 +6,7 @@ Version:
 v1.0 MVP
 
 Current Phase:
-PHASE 3.8 COMPLETE — Production Readiness & Content Workflow
+PHASE 3.9 COMPLETE — Admin Productivity & Content Management
 
 Last Updated:
 2026-06-20
@@ -21,6 +21,7 @@ Phase 3.5 — Content Validation:        [x] COMPLETE
 Phase 3.6 — Student Experience:        [x] COMPLETE
 Phase 3.7 — Search & Content Mgmt:    [x] COMPLETE
 Phase 3.8 — Production Readiness:      [x] COMPLETE
+Phase 3.9 — Admin Productivity:        [x] COMPLETE
 Phase 4 — Deployment:                  [ ] PENDING (awaiting approval)
 
 ====================================================
@@ -31,7 +32,6 @@ Name: "FastAPI Backend"
 Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000
 Port: 8000 (console)
 Status: Running
-Note: No --reload flag
 
 Name: "Start application"
 Command: cd frontend && npm run dev
@@ -52,10 +52,7 @@ Tables:
 * papers        — 6 rows   (sample content)
 * admins        — 1 row    (admin / admin123)
 
-Schema changes applied:
-* papers.download_count  INTEGER DEFAULT 0 NOT NULL  ← Phase 3.6
-
-No new schema changes in Phase 3.8 (slugs computed dynamically).
+No new schema changes in Phase 3.9.
 
 ====================================================
 
@@ -66,20 +63,22 @@ GET    /api/v1/classes/{id}                  working
 GET    /api/v1/classes/{id}/subjects         working
 GET    /api/v1/subjects/{id}                 working
 GET    /api/v1/subjects/{id}/papers          working
-GET    /api/v1/papers/recent?limit=N         working  (default 10)
-GET    /api/v1/papers/popular?limit=N        working  ← NEW Phase 3.8
-GET    /api/v1/papers/by-slug/{slug}         working  ← NEW Phase 3.8
+GET    /api/v1/papers/recent?limit=N         working
+GET    /api/v1/papers/popular?limit=N        working
+GET    /api/v1/papers/by-slug/{slug}         working
 GET    /api/v1/papers/{id}                   working
 POST   /api/v1/papers/{id}/download          working
 GET    /api/v1/exam-types                    working
 GET    /api/v1/search                        working
 POST   /api/v1/auth/login                    working
-GET    /api/v1/admin/stats                   working (JWT)  ← NEW Phase 3.8
+GET    /api/v1/admin/stats                   working (JWT)
 GET    /api/v1/admin/papers                  working (JWT)
 POST   /api/v1/admin/papers                  working (JWT + multipart, PDF required)
 PUT    /api/v1/admin/papers/{id}             working (JWT)
 DELETE /api/v1/admin/papers/{id}             working (JWT, removes file)
 GET    /api/v1/admin/search-analytics        working (JWT)
+GET    /api/v1/admin/recent-uploads?limit=N  working (JWT)  ← NEW Phase 3.9
+GET    /api/v1/admin/content-status          working (JWT)  ← NEW Phase 3.9
 
 ====================================================
 
@@ -91,15 +90,58 @@ Public:
   /subject/:id                 Subject page — exam type cards
   /papers                      Paper list with filtering
   /paper/:id                   Paper detail — numeric ID (backward compat)
-  /paper/:slug                 Paper detail — SEO slug URL  ← NEW Phase 3.8
+  /paper/:slug                 Paper detail — SEO slug URL
   /search                      Search with filters + suggestion chips
   /*                           404 page
 
 Admin:
   /admin/login                 Login form (JWT)
-  /admin/dashboard             7-stat cards + recent papers + popular searches
-  /admin/papers                Upload / edit / delete (PDF required)
+  /admin/dashboard             Stats + recent papers + popular searches + upload activity
+  /admin/papers                Papers tab + Bulk Upload tab + CSV export
+  /admin/content-status        Coverage grid showing missing content  ← NEW Phase 3.9
   /admin                       Redirects to /admin/dashboard
+
+====================================================
+
+PHASE 3.9 FEATURES
+
+1. Bulk Upload (Admin Papers → Bulk Upload tab)
+   - Select multiple PDF files at once
+   - Metadata auto-extracted from filename patterns:
+     Class10_Maths_Quarterly_2024.pdf → Class 10 / Mathematics / Quarterly Exam / 2024
+   - Subject aliases: maths→Mathematics, phy→Physics, chem→Chemistry, bio→Biology, eng→English
+   - Exam aliases: quarterly→Quarterly Exam, annual→Annual Exam, halfyearly→Half Yearly Exam, etc.
+   - Per-file editable form fields (class, subject, exam type, year, title, paper type)
+   - Quality warnings (non-blocking):
+     * Title too short (< 10 chars)
+     * Year missing
+     * Duplicate filename in batch
+     * Suspiciously small PDF (< 10 KB)
+   - Sequential upload with per-file progress bar
+   - Upload summary (succeeded / failed counts)
+
+2. Content Status Dashboard (/admin/content-status)
+   - Grid view: rows = subjects, columns = exam types
+   - Exam types tracked: Annual Exam, Half Yearly Exam, Quarterly Exam, Unit Test 1/2/3
+   - Green ✓ = at least one paper exists for that combination
+   - Red ✗ = no paper uploaded yet
+   - Per-class completion percentage
+   - Overall coverage progress bar
+
+3. Recent Upload Activity (Admin Dashboard)
+   - Card showing the latest 20 uploads
+   - Columns: Paper Title, Class/Subject, Exam Type, Upload Date, Uploaded By
+   - Backend endpoint: GET /admin/recent-uploads?limit=20
+
+4. CSV Export (Admin Papers page header)
+   - "Export CSV" button visible when papers exist
+   - Client-side CSV generation (no extra API call)
+   - Columns: id, title, class, subject, exam_type, year, paper_type, download_count
+   - Downloads as papers.csv
+
+5. Content Quality Validation (Bulk Upload)
+   - Warns (does not block) on: short title, missing year, duplicate filename, tiny PDF
+   - Warnings shown inline per file, recalculated live as admin edits fields
 
 ====================================================
 
@@ -115,55 +157,6 @@ Examples:
 Backend lookup: rsplit('-', 1) extracts ID from end of slug.
 Old numeric routes still work: /paper/1, /paper/2, etc.
 All paper API responses include a computed `slug` field.
-
-====================================================
-
-PHASE 3.8 CHANGES — Production Readiness
-
-1. PDF-Only Platform
-   config.py: ALLOWED_EXTENSIONS = {"pdf"}  (was {"pdf","doc","docx"})
-   storage.py: Error message: "Only PDF files are supported."
-   Frontend: file input uses accept=".pdf"
-   Frontend: client-side check before submit (shows inline error)
-   Backend: PDF required for new uploads (400 if missing)
-
-2. Content Quality — Duplicate Detection
-   Before inserting a new paper, admin.py checks for:
-     same title + subject_id + year + exam_type
-   Returns 409 Conflict if duplicate found.
-   Message: "A paper with the same title, subject, year, and exam type already exists."
-
-3. Recently Added Papers
-   Homepage: "Recently Added" section shows latest 10 uploads (was 6).
-   Endpoint already existed; limit increased to 10.
-
-4. Popular Papers
-   NEW endpoint: GET /api/v1/papers/popular?limit=10
-   Sorts by download_count DESC, then created_at DESC.
-   Homepage: "Most Downloaded" section (conditionally shown when papers exist).
-   PaperCard: new `showDownloads` prop shows download count badge.
-
-5. Admin Dashboard — Stats Cards
-   NEW endpoint: GET /api/v1/admin/stats (JWT-protected)
-   Returns: total_papers, total_downloads, total_subjects, total_classes,
-            visible_papers, question_papers, answer_keys
-   Dashboard: 4 primary cards (Papers, Downloads, Subjects, Classes)
-              3 secondary cards (Q Papers, Answer Keys, Visible)
-
-6. SEO Slug URLs
-   slugify() in backend/app/schemas/schemas.py:
-     - lowercases, strips non-alphanumeric, collapses hyphens
-   slug is a @computed_field @property on PaperOut and SearchResult.
-   All paper API responses automatically include slug.
-   NEW endpoint: GET /api/v1/papers/by-slug/{slug}
-     Extracts ID from slug suffix, looks up paper by ID.
-   Frontend: PaperCard links use slug URL if available.
-   Frontend: PaperDetailPage detects numeric vs. slug param (regex check).
-
-7. PDF Preview (PaperDetailPage — already complete from Phase 3.6)
-   View Paper → opens PDF in new tab
-   Download PDF → HTML download attribute + records download count
-   Share → Web Share API / clipboard fallback
 
 ====================================================
 

@@ -1,0 +1,382 @@
+TN STATE BOARD LEARNING PLATFORM
+
+PROJECT HANDOFF FOR NEW REPLIT AGENT
+
+====================================================
+PROJECT OVERVIEW
+================
+
+Project Name:
+TN State Board Learning Platform
+
+Purpose:
+
+A full-stack educational platform for Tamil Nadu State Board students.
+
+Main workflow:
+
+Question Paper
+↓
+Admin Upload
+↓
+Public Website
+↓
+Student Views Paper
+↓
+Student Downloads PDF
+↓
+Student Watches YouTube Explanation
+
+This is NOT a Learning Management System (LMS).
+
+It is a Question Paper + Answer Key + YouTube Resource Platform.
+
+====================================================
+CURRENT TECH STACK
+==================
+
+Frontend:
+
+* React
+* Vite
+* Tailwind CSS
+* React Router
+* Axios
+
+Backend:
+
+* FastAPI
+* SQLAlchemy
+* Pydantic
+* PyJWT
+
+Database:
+
+* PostgreSQL
+
+Current Storage:
+
+* Local uploads folder
+
+Future:
+
+* Supabase Storage
+
+Deployment (future):
+
+* Vercel
+* Railway
+
+====================================================
+CURRENT STATUS
+==============
+
+Completed:
+
+✓ Phase 1 Backend
+✓ Phase 2 Public Frontend
+✓ Phase 3 Admin Panel
+✓ Phase 3.5 Content Validation
+✓ Phase 3.6 Student Experience Improvements
+✓ Phase 3.7 Search Improvements
+✓ Phase 3.8 Production Readiness
+
+Current Version:
+v1.0 MVP
+
+Current Status:
+Stable and working.
+
+DO NOT rebuild existing functionality.
+
+====================================================
+WORKING FEATURES
+================
+
+Public:
+
+✓ Homepage
+✓ Class Pages
+✓ Subject Pages
+✓ Search
+✓ Paper Details
+✓ View PDF
+✓ Download PDF
+✓ Share Paper
+✓ Related Papers
+✓ YouTube Embed
+✓ SEO Slug URLs
+
+Admin:
+
+✓ Login
+✓ JWT Authentication
+✓ Dashboard
+✓ Upload Paper
+✓ Edit Paper
+✓ Delete Paper
+✓ Search Analytics
+✓ Stats Dashboard
+
+====================================================
+DATABASE TABLES
+===============
+
+classes
+
+subjects
+
+papers
+
+admins
+
+DO NOT CREATE NEW TABLES UNLESS ABSOLUTELY NECESSARY.
+
+====================================================
+PHASE 3.9 GOAL
+==============
+
+The platform works.
+
+The next problem is scalability.
+
+Currently uploading hundreds of papers would be slow.
+
+Phase 3.9 should focus entirely on:
+
+ADMIN PRODUCTIVITY
+CONTENT MANAGEMENT
+LARGE-SCALE PAPER ORGANIZATION
+
+Do NOT work on deployment.
+
+Do NOT work on Supabase.
+
+Do NOT work on authentication.
+
+Do NOT work on AI features.
+
+====================================================
+TASK 1
+BULK PDF UPLOAD
+===============
+
+Add:
+
+Admin Papers Page
+→ New Tab
+
+"Bulk Upload"
+
+Requirements:
+
+* Select multiple PDF files
+* Show selected file list
+* Remove file before upload
+* Upload files sequentially
+* Progress indicator per file
+* Success count
+* Failure count
+* Final upload summary
+
+====================================================
+TASK 2
+AUTO METADATA EXTRACTION
+========================
+
+When filenames follow patterns like:
+
+Class10_Maths_Quarterly_2024.pdf
+
+Class12_Chemistry_Annual_2023.pdf
+
+Attempt to extract:
+
+* Class
+* Subject
+* Exam Type
+* Year
+* Title
+
+Auto-fill fields before upload.
+
+Admin can modify values before saving.
+
+Support common aliases:
+
+maths → Mathematics
+phy → Physics
+chem → Chemistry
+bio → Biology
+eng → English
+
+====================================================
+TASK 3
+CONTENT STATUS DASHBOARD
+========================
+
+Create:
+
+/admin/content-status
+
+Purpose:
+
+Identify missing content.
+
+Display:
+
+Class 9
+Class 10
+Class 11
+Class 12
+
+Rows:
+Subjects
+
+Columns:
+Annual
+Half Yearly
+Quarterly
+Unit Test
+
+Legend:
+
+Green = Content Exists
+
+Red = Missing
+
+This helps identify gaps.
+
+====================================================
+TASK 4
+RECENT UPLOAD ACTIVITY
+======================
+
+Admin Dashboard
+
+Add card:
+
+Recent Upload Activity
+
+Display:
+
+Paper Title
+
+Upload Date
+
+Admin Username
+
+Show latest 20 uploads.
+
+====================================================
+TASK 5
+CSV EXPORT
+==========
+
+Add button:
+
+Export Papers CSV
+
+Columns:
+
+id
+title
+class
+subject
+exam_type
+year
+download_count
+
+Export all papers.
+
+====================================================
+TASK 6
+CONTENT QUALITY VALIDATION
+==========================
+
+Before upload:
+
+Warn admin if:
+
+* Year missing
+* Title too short
+* Duplicate filename
+* Suspiciously small PDF
+
+Warnings should not crash uploads.
+
+Provide clear messages.
+
+====================================================
+TASK 7
+DOCUMENTATION
+=============
+
+Update:
+
+PROJECT_STATUS.txt
+
+Create:
+
+PHASE39_REPORT.txt
+
+Include:
+
+Features Added
+
+Files Created
+
+Files Modified
+
+Problems Encountered
+
+Solutions Implemented
+
+Tests Performed
+
+Remaining Work
+
+====================================================
+VERIFICATION
+============
+
+Confirm:
+
+✓ Bulk Upload Works
+
+✓ Metadata Extraction Works
+
+✓ Content Status Dashboard Works
+
+✓ CSV Export Works
+
+✓ Upload Validation Works
+
+✓ Existing Features Still Work
+
+====================================================
+IMPORTANT
+=========
+
+DO NOT START DEPLOYMENT.
+
+DO NOT CONNECT SUPABASE.
+
+DO NOT CHANGE AUTHENTICATION.
+
+DO NOT MODIFY THE CURRENT ARCHITECTURE.
+
+Focus only on making it easy to manage hundreds of question papers efficiently.
+
+After completion:
+
+1. Update PROJECT_STATUS.txt
+
+2. Create PHASE39_REPORT.txt
+
+3. Explain:
+
+* What was built
+* Why it was built
+* How it works
+* What should be done next

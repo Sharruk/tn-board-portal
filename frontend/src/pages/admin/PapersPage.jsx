@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getAdminPapers, uploadPaper, deletePaper, updatePaper } from '../../services/admin'
 import { getClasses, getSubjectsForClass } from '../../services/classes'
+import BulkUploadTab from './BulkUploadTab'
 
 const EXAM_TYPES = [
   'Unit Test 1', 'Unit Test 2', 'Unit Test 3',
@@ -27,6 +28,31 @@ function extractYouTubeId(url) {
     return m ? m[1] : null
   }
   return null
+}
+
+function exportCSV(papers, subjectMap) {
+  const rows = [['id', 'title', 'class', 'subject', 'exam_type', 'year', 'paper_type', 'download_count']]
+  papers.forEach(p => {
+    const sub = subjectMap[p.subject_id]
+    rows.push([
+      p.id,
+      `"${(p.title || '').replace(/"/g, '""')}"`,
+      sub?.class_name || '',
+      `"${(sub?.name || '').replace(/"/g, '""')}"`,
+      p.exam_type,
+      p.year,
+      p.paper_type,
+      p.download_count ?? 0,
+    ])
+  })
+  const csv = rows.map(r => r.join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'papers.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function Toast({ message, type, onDismiss }) {
@@ -91,6 +117,8 @@ export default function PapersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  const [activeTab, setActiveTab] = useState('papers')
+
   const [showUpload, setShowUpload] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
   const [editPaper, setEditPaper] = useState(null)
@@ -153,6 +181,13 @@ export default function PapersPage() {
     const res = await getSubjectsForClass(classId)
     setSubjectsCache(c => ({ ...c, [classId]: res.data }))
     setFormSubjects(res.data)
+  }
+
+  const handleBulkSubjectLoad = async (classId) => {
+    if (subjectsCache[classId]) return subjectsCache[classId]
+    const res = await getSubjectsForClass(classId)
+    setSubjectsCache(c => ({ ...c, [classId]: res.data }))
+    return res.data
   }
 
   const handleFormChange = e => {
@@ -258,117 +293,171 @@ export default function PapersPage() {
   const ytIdUpload = extractYouTubeId(form.youtubeUrl)
   const ytIdEdit = extractYouTubeId(editForm.youtubeUrl)
 
+  const TABS = [
+    { id: 'papers', label: '📄 Papers' },
+    { id: 'bulk', label: '📦 Bulk Upload' },
+  ]
+
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
       {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-gray-900">Papers</h1>
           <p className="text-gray-500 text-sm mt-1">{papers.length} paper{papers.length !== 1 ? 's' : ''} total</p>
         </div>
-        <button
-          onClick={() => { setShowUpload(true); setFormErrors({}); setForm(EMPTY_FORM); setFormSubjects([]) }}
-          className="btn-primary"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Upload Paper
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {activeTab === 'papers' && papers.length > 0 && (
+            <button
+              onClick={() => exportCSV(papers, subjectMap)}
+              className="btn-secondary text-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export CSV
+            </button>
+          )}
+          {activeTab === 'papers' && (
+            <button
+              onClick={() => { setShowUpload(true); setFormErrors({}); setForm(EMPTY_FORM); setFormSubjects([]) }}
+              className="btn-primary"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Upload Paper
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <select value={filterClass} onChange={e => setFilterClass(e.target.value)} className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-100">
-          <option value="">All Classes</option>
-          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-100">
-          <option value="">All Types</option>
-          <option value="question">Question Papers</option>
-          <option value="answer_key">Answer Keys</option>
-        </select>
-        {(filterClass || filterType) && (
-          <button onClick={() => { setFilterClass(''); setFilterType('') }} className="text-sm text-red-500 hover:text-red-700 font-medium px-2">Clear</button>
-        )}
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6 w-fit">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <span className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-          </div>
-        ) : error ? (
-          <p className="text-center py-16 text-red-500">{error}</p>
-        ) : filteredPapers.length === 0 ? (
-          <div className="text-center py-20 px-6">
-            <div className="text-5xl mb-4">📭</div>
-            <p className="text-gray-500 font-medium">
-              {papers.length === 0 ? 'No papers uploaded yet.' : 'No papers match the current filters.'}
-            </p>
-            {papers.length === 0 && (
-              <button onClick={() => setShowUpload(true)} className="mt-4 btn-primary">Upload First Paper</button>
+      {/* ── Papers Tab ── */}
+      {activeTab === 'papers' && (
+        <>
+          {/* Filters */}
+          <div className="flex flex-wrap gap-3 mb-6">
+            <select value={filterClass} onChange={e => setFilterClass(e.target.value)} className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-100">
+              <option value="">All Classes</option>
+              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-100">
+              <option value="">All Types</option>
+              <option value="question">Question Papers</option>
+              <option value="answer_key">Answer Keys</option>
+            </select>
+            {(filterClass || filterType) && (
+              <button onClick={() => { setFilterClass(''); setFilterType('') }} className="text-sm text-red-500 hover:text-red-700 font-medium px-2">Clear</button>
             )}
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  {['#', 'Title', 'Class / Subject', 'Exam Type', 'Year', 'PDF', 'YouTube', 'Downloads', 'Visible', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filteredPapers.map(p => {
-                  const sub = subjectMap[p.subject_id]
-                  return (
-                    <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-gray-400 font-mono text-xs">{p.id}</td>
-                      <td className="px-4 py-3 max-w-xs">
-                        <div className="font-medium text-gray-800 truncate">{p.title}</div>
-                        <Badge type={p.paper_type} />
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-gray-800 font-medium">{sub?.class_name || 'Class ?'}</div>
-                        <div className="text-gray-400 text-xs">{sub?.name || `Subject #${p.subject_id}`}</div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.exam_type}</td>
-                      <td className="px-4 py-3 text-gray-600">{p.year}</td>
-                      <td className="px-4 py-3">
-                        {p.public_url
-                          ? <a href={p.public_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">✓ YES</a>
-                          : <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        {p.youtube_url
-                          ? <a href={p.youtube_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">✓ YES</a>
-                          : <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">{p.download_count ?? 0}</td>
-                      <td className="px-4 py-3">
-                        <span className={`badge text-xs ${p.is_visible ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                          {p.is_visible ? 'Yes' : 'No'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => openEdit(p)} className="text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">Edit</button>
-                          <button onClick={() => setDeleteId(p.id)} className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
-                        </div>
-                      </td>
+
+          {/* Table */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <span className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+              </div>
+            ) : error ? (
+              <p className="text-center py-16 text-red-500">{error}</p>
+            ) : filteredPapers.length === 0 ? (
+              <div className="text-center py-20 px-6">
+                <div className="text-5xl mb-4">📭</div>
+                <p className="text-gray-500 font-medium">
+                  {papers.length === 0 ? 'No papers uploaded yet.' : 'No papers match the current filters.'}
+                </p>
+                {papers.length === 0 && (
+                  <button onClick={() => setShowUpload(true)} className="mt-4 btn-primary">Upload First Paper</button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      {['#', 'Title', 'Class / Subject', 'Exam Type', 'Year', 'PDF', 'YouTube', 'Downloads', 'Visible', 'Actions'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      ))}
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredPapers.map(p => {
+                      const sub = subjectMap[p.subject_id]
+                      return (
+                        <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 text-gray-400 font-mono text-xs">{p.id}</td>
+                          <td className="px-4 py-3 max-w-xs">
+                            <div className="font-medium text-gray-800 truncate">{p.title}</div>
+                            <Badge type={p.paper_type} />
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="text-gray-800 font-medium">{sub?.class_name || 'Class ?'}</div>
+                            <div className="text-gray-400 text-xs">{sub?.name || `Subject #${p.subject_id}`}</div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.exam_type}</td>
+                          <td className="px-4 py-3 text-gray-600">{p.year}</td>
+                          <td className="px-4 py-3">
+                            {p.public_url
+                              ? <a href={p.public_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">✓ YES</a>
+                              : <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {p.youtube_url
+                              ? <a href={p.youtube_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">✓ YES</a>
+                              : <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 font-mono text-xs">{p.download_count ?? 0}</td>
+                          <td className="px-4 py-3">
+                            <span className={`badge text-xs ${p.is_visible ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {p.is_visible ? 'Yes' : 'No'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => openEdit(p)} className="text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">Edit</button>
+                              <button onClick={() => setDeleteId(p.id)} className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* ── Bulk Upload Tab ── */}
+      {activeTab === 'bulk' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="mb-5">
+            <h2 className="text-base font-bold text-gray-900">Bulk Upload</h2>
+            <p className="text-sm text-gray-500 mt-1">Upload multiple PDF files at once. Metadata is auto-extracted from filenames like <code className="bg-gray-100 px-1 rounded text-xs">Class10_Maths_Quarterly_2024.pdf</code></p>
+          </div>
+          <BulkUploadTab
+            classes={classes}
+            subjectsCache={subjectsCache}
+            onSubjectLoad={handleBulkSubjectLoad}
+            onDone={() => { load(); showToast('Bulk upload complete!') }}
+          />
+        </div>
+      )}
 
       {/* ── Upload Modal ── */}
       {showUpload && (
@@ -485,7 +574,7 @@ export default function PapersPage() {
                 <div onClick={() => setEditForm(f => ({ ...f, isVisible: !f.isVisible }))} className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${editForm.isVisible ? 'bg-blue-600' : 'bg-gray-300'}`}>
                   <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${editForm.isVisible ? 'translate-x-5' : ''}`} />
                 </div>
-                <span className="text-sm font-medium text-gray-700">{editForm.isVisible ? 'Visible to students' : 'Hidden from students'}</span>
+                <span className="text-sm text-gray-600">{editForm.isVisible ? 'Visible to students' : 'Hidden from students'}</span>
               </label>
             </FormField>
             {editError && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{editError}</div>}
@@ -503,12 +592,12 @@ export default function PapersPage() {
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
-            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">🗑️</div>
+            <div className="text-5xl mb-4">🗑️</div>
             <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Paper?</h3>
-            <p className="text-gray-500 text-sm mb-6">This will permanently delete the paper and its PDF. This action cannot be undone.</p>
+            <p className="text-sm text-gray-500 mb-6">This will permanently remove the paper and its PDF file. This cannot be undone.</p>
             <div className="flex gap-3">
               <button onClick={() => setDeleteId(null)} className="btn-secondary flex-1 justify-center">Cancel</button>
-              <button onClick={handleDelete} className="flex-1 justify-center inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors">Yes, Delete</button>
+              <button onClick={handleDelete} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">Delete</button>
             </div>
           </div>
         </div>

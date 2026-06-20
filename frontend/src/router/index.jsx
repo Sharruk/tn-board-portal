@@ -14,6 +14,7 @@ import NotFoundPage from '../pages/NotFoundPage'
 import LoginPage from '../pages/admin/LoginPage'
 import DashboardPage from '../pages/admin/DashboardPage'
 import PapersPage from '../pages/admin/PapersPage'
+import ContentStatusPage from '../pages/admin/ContentStatusPage'
 
 const router = createBrowserRouter([
   // ── Public routes ──────────────────────────────────────
@@ -46,6 +47,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'papers', element: <PapersPage /> },
+      { path: 'content-status', element: <ContentStatusPage /> },
     ],
   },
 ])

@@ -45,4 +45,8 @@ export const deletePaper = (id) => adminApi.delete(`/admin/papers/${id}`)
 
 export const getSearchAnalytics = () => adminApi.get('/admin/search-analytics')
 
+export const getRecentUploads = (limit = 20) => adminApi.get(`/admin/recent-uploads?limit=${limit}`)
+
+export const getContentStatus = () => adminApi.get('/admin/content-status')
+
 export default adminApi

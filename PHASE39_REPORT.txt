@@ -1,0 +1,220 @@
+====================================================
+PHASE 3.9 REPORT
+TN State Board Learning Platform
+====================================================
+
+Date Completed: 2026-06-20
+Goal: Admin Productivity & Content Management at Scale
+
+====================================================
+FEATURES ADDED
+====================================================
+
+1. BULK PDF UPLOAD
+-----------------
+What: A new "Bulk Upload" tab on the Admin Papers page that lets
+      admins select and upload many PDF files in one session.
+
+How it works:
+  - Admin clicks the drop zone to select multiple PDF files.
+  - For each file, the system attempts to extract metadata from
+    the filename (class, subject, exam type, year).
+  - Metadata is pre-filled in editable form fields per file.
+  - Admin reviews, adjusts, and clicks "Upload All".
+  - Files are uploaded sequentially, each with its own progress bar.
+  - Final summary shows how many succeeded and how many failed.
+  - Failed files stay in the list so admin can fix and retry.
+
+2. AUTO METADATA EXTRACTION
+---------------------------
+What: Filenames are parsed to auto-populate class, subject, exam type,
+      year, and title fields in Bulk Upload.
+
+Supported filename patterns:
+  Class10_Maths_Quarterly_2024.pdf
+  Class12_Chemistry_Annual_2023.pdf
+  Class9_Bio_HalfYearly_2025.pdf
+
+Subject aliases supported:
+  maths / math       → Mathematics
+  phy                → Physics
+  chem               → Chemistry
+  bio                → Biology
+  eng                → English
+  cs / computer      → Computer Science
+  tamil, history, geography, civics, economics, commerce,
+  accountancy, social, science — all recognized
+
+Exam type aliases supported:
+  annual             → Annual Exam
+  halfyearly         → Half Yearly Exam
+  quarterly          → Quarterly Exam
+  unittest1 / unit1  → Unit Test 1
+  unittest2 / unit2  → Unit Test 2
+  unittest3 / unit3  → Unit Test 3
+  public             → Public Exam
+  model              → Model Exam
+  practical          → Practical Exam
+
+3. CONTENT QUALITY VALIDATION
+------------------------------
+What: Per-file warnings shown inline during Bulk Upload.
+
+Warnings (non-blocking — upload still proceeds):
+  ⚠ Title is too short (fewer than 10 characters)
+  ⚠ Year is missing
+  ⚠ Duplicate filename in this batch
+  ⚠ PDF is suspiciously small (under 10 KB — may be empty or corrupt)
+
+Warnings are recalculated live as the admin edits any field.
+Actual required-field validation (class, subject, exam type, title)
+still blocks upload and shows inline errors.
+
+4. CONTENT STATUS DASHBOARD
+----------------------------
+What: A new admin page at /admin/content-status that shows a
+      coverage grid so admins can see what is missing at a glance.
+
+Layout:
+  Rows    = Subjects (grouped by class)
+  Columns = Annual Exam, Half Yearly Exam, Quarterly Exam,
+            Unit Test 1, Unit Test 2, Unit Test 3
+
+  Green ✓ = At least one paper uploaded for that combination
+  Red   ✗ = No paper uploaded yet (content gap)
+
+Extras:
+  - Per-class completion percentage badge
+  - Overall coverage progress bar at the top
+  - Direct link to upload a paper
+
+5. RECENT UPLOAD ACTIVITY
+--------------------------
+What: A new card on the Admin Dashboard showing the 20 most recent
+      paper uploads.
+
+Columns: Paper Title, Class / Subject, Exam Type, Upload Date, Uploaded By
+Backend: GET /api/v1/admin/recent-uploads?limit=20 (JWT-protected)
+         Returns papers ordered by created_at DESC with subject and class info.
+
+6. CSV EXPORT
+-------------
+What: An "Export CSV" button on the Admin Papers page header.
+
+Columns exported: id, title, class, subject, exam_type, year, paper_type, download_count
+Implementation: Client-side — generates a CSV Blob from the loaded papers
+                data and triggers a browser download as papers.csv.
+                No additional API call required.
+
+====================================================
+FILES CREATED
+====================================================
+
+frontend/src/pages/admin/BulkUploadTab.jsx
+  — Bulk upload UI: file picker, metadata extraction, per-file forms,
+    quality warnings, sequential upload with progress, summary.
+
+frontend/src/pages/admin/ContentStatusPage.jsx
+  — Content status grid page at /admin/content-status.
+
+PHASE39_REPORT.txt (this file)
+
+====================================================
+FILES MODIFIED
+====================================================
+
+backend/app/api/admin.py
+  — Added GET /admin/recent-uploads endpoint (returns last N papers
+    with subject and class info via eager loading).
+  — Added GET /admin/content-status endpoint (returns coverage matrix
+    for all classes × subjects × tracked exam types).
+
+frontend/src/services/admin.js
+  — Added getRecentUploads(limit) function.
+  — Added getContentStatus() function.
+
+frontend/src/pages/admin/PapersPage.jsx
+  — Added tab switcher (Papers | Bulk Upload).
+  — Added "Export CSV" button (client-side CSV generation).
+  — Integrated BulkUploadTab component.
+  — Added handleBulkSubjectLoad helper for lazy subject loading.
+
+frontend/src/pages/admin/DashboardPage.jsx
+  — Added "Recent Upload Activity" card (bottom of page).
+  — Added quick-link buttons to Bulk Upload and Content Status.
+  — Imports and calls getRecentUploads.
+
+frontend/src/components/admin/AdminLayout.jsx
+  — Added "Content Status" nav item with chart icon.
+
+frontend/src/router/index.jsx
+  — Added /admin/content-status route → ContentStatusPage.
+  — Added ContentStatusPage import.
+
+PROJECT_STATUS.txt
+  — Updated phase to 3.9 COMPLETE.
+  — Added new endpoints and pages.
+  — Added Phase 3.9 feature summary.
+
+====================================================
+PROBLEMS ENCOUNTERED AND SOLUTIONS
+====================================================
+
+1. python-jose package blocked by Replit package firewall
+   Problem: python-jose==3.3.0 (used for JWT) returned HTTP 403 when installing.
+   Solution: Replaced with PyJWT==2.9.0, which is already imported as `jwt`
+             in auth.py and uses identical jwt.encode / jwt.decode API.
+             Error classes (jwt.ExpiredSignatureError, jwt.PyJWTError) are
+             identical between the two libraries.
+
+2. Subject loading in Bulk Upload
+   Problem: Subjects are loaded lazily (per class) via API. When the
+            admin selects a class for a bulk file, subjects need to be
+            fetched and cached without re-fetching existing ones.
+   Solution: BulkUploadTab receives an onSubjectLoad callback from PapersPage
+             which checks subjectsCache first and only calls the API if needed.
+
+3. CSV export with auth header
+   Problem: A direct browser href to a backend CSV endpoint would not include
+            the JWT Authorization header, causing 401 errors.
+   Solution: CSV generation done client-side using the papers data already
+             loaded in the Papers tab. Creates a Blob and triggers download
+             with a temporary object URL.
+
+====================================================
+TESTS PERFORMED
+====================================================
+
+✓ FastAPI Backend starts and serves API correctly
+✓ Frontend (Vite) starts and proxies /api to :8000
+✓ /admin/content-status endpoint returns correct class/subject/coverage data
+✓ /admin/recent-uploads endpoint returns papers ordered by created_at
+✓ Admin Dashboard loads with new Recent Upload Activity card
+✓ Admin Papers page shows Papers / Bulk Upload tabs
+✓ Bulk Upload tab renders file picker and handles file selection
+✓ Metadata extraction parses Class10_Maths_Quarterly_2024.pdf correctly
+✓ Quality warnings appear for short titles, small PDFs, and duplicate filenames
+✓ Export CSV button generates and downloads papers.csv
+✓ Content Status page shows coverage grid for all classes
+✓ Content Status sidebar nav item is clickable and routes correctly
+✓ All existing features (single upload, edit, delete, search, public pages) unaffected
+
+====================================================
+REMAINING WORK
+====================================================
+
+Phase 4 — Deployment (when ready):
+  1. Connect cloud storage (Supabase / S3) for PDF files
+  2. Build frontend: npm run build
+  3. Deploy backend + frontend to production
+  4. Lock CORS_ORIGINS to production domain
+  5. Change admin password
+  6. Replace sample papers with real TN Board exam papers
+
+Possible future enhancements:
+  - Drag-and-drop file support for Bulk Upload
+  - Batch edit (visibility toggle for multiple papers at once)
+  - Upload history log with timestamps per paper
+  - Admin user management (multiple admin accounts)
+
+====================================================

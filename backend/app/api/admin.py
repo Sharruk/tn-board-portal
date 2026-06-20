@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
 from app.database.database import get_db
@@ -132,3 +132,76 @@ def delete_paper(
 @router.get("/search-analytics")
 def search_analytics(_=Depends(get_current_admin)):
     return get_analytics()
+
+
+@router.get("/recent-uploads")
+def recent_uploads(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    papers = (
+        db.query(Paper)
+        .options(joinedload(Paper.subject).joinedload(Subject.class_))
+        .order_by(Paper.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    result = []
+    for p in papers:
+        result.append({
+            "id": p.id,
+            "title": p.title,
+            "exam_type": p.exam_type,
+            "year": p.year,
+            "paper_type": p.paper_type,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "subject_name": p.subject.name if p.subject else "",
+            "class_name": p.subject.class_.name if p.subject and p.subject.class_ else "",
+        })
+    return result
+
+
+@router.get("/content-status")
+def content_status(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_admin),
+):
+    TRACKED = [
+        "Annual Exam",
+        "Half Yearly Exam",
+        "Quarterly Exam",
+        "Unit Test 1",
+        "Unit Test 2",
+        "Unit Test 3",
+    ]
+
+    classes = (
+        db.query(Class)
+        .options(joinedload(Class.subjects))
+        .order_by(Class.id)
+        .all()
+    )
+    papers = db.query(Paper).all()
+
+    coverage_set = set()
+    for p in papers:
+        coverage_set.add((p.subject_id, p.exam_type))
+
+    result = []
+    for cls in classes:
+        subjects_data = []
+        for sub in cls.subjects:
+            coverage = {et: (sub.id, et) in coverage_set for et in TRACKED}
+            subjects_data.append({
+                "id": sub.id,
+                "name": sub.name,
+                "coverage": coverage,
+            })
+        result.append({
+            "id": cls.id,
+            "name": cls.name,
+            "subjects": subjects_data,
+        })
+
+    return {"exam_types": TRACKED, "classes": result}
