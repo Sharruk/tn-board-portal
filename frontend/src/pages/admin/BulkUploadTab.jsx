@@ -204,7 +204,7 @@ export default function BulkUploadTab({ classes, subjectsCache, onSubjectLoad, o
         updateItem(item.id, { status: 'done', progress: 100 })
         succeeded++
       } catch (err) {
-        const msg = err.response?.data?.detail || 'Upload failed'
+        const msg = err.message || 'Upload failed'
         updateItem(item.id, { status: 'failed', errorMsg: msg })
         failed++
       }

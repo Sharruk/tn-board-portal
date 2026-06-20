@@ -29,7 +29,7 @@ export default function PaperListPage() {
         setSubject(subRes.data)
         setPapers(papersRes.data)
       })
-      .catch(err => setError(err.response?.data?.detail || 'Failed to load papers'))
+      .catch(err => setError(err.message || 'Failed to load papers'))
       .finally(() => setLoading(false))
   }, [subjectId, examType])
 

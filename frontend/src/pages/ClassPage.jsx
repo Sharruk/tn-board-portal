@@ -22,7 +22,7 @@ export default function ClassPage() {
     setError(null)
     getSubjectsForClass(id)
       .then(res => setSubjects(res.data))
-      .catch(err => setError(err.response?.data?.detail || 'Failed to load subjects'))
+      .catch(err => setError(err.message || 'Failed to load subjects'))
       .finally(() => setLoading(false))
   }, [id])
 

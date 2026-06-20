@@ -236,7 +236,7 @@ export default function PapersPage() {
           setSubjectsCache(cache)
         })
       })
-      .catch(err => setError(err.response?.data?.detail || 'Failed to load data'))
+      .catch(err => setError(err.message || 'Failed to load data'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -322,7 +322,7 @@ export default function PapersPage() {
       load()
       showToast('Paper uploaded successfully!')
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Upload failed. Please try again.'
+      const msg = err.message || 'Upload failed. Please try again.'
       setFormErrors({ _general: msg })
       setUploadProgress(null)
     } finally {
@@ -338,7 +338,7 @@ export default function PapersPage() {
       load()
       showToast('Paper deleted.')
     } catch (err) {
-      showToast(err.response?.data?.detail || 'Delete failed', 'error')
+      showToast(err.message || 'Delete failed', 'error')
     }
   }
 
@@ -361,7 +361,7 @@ export default function PapersPage() {
       load()
       showToast('Paper updated successfully!')
     } catch (err) {
-      setEditError(err.response?.data?.detail || 'Update failed')
+      setEditError(err.message || 'Update failed')
     } finally {
       setEditLoading(false)
     }

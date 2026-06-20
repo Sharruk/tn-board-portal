@@ -29,7 +29,7 @@ export default function SubjectPage() {
         setSubject(subRes.data)
         setPapers(papersRes.data)
       })
-      .catch(err => setError(err.response?.data?.detail || 'Failed to load subject'))
+      .catch(err => setError(err.message || 'Failed to load subject'))
       .finally(() => setLoading(false))
   }, [id])
 

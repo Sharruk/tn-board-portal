@@ -19,7 +19,7 @@ export function useFetch(fetchFn, deps = []) {
       })
       .catch(err => {
         if (!cancelled) {
-          setError(err.response?.data?.detail || err.message || 'Something went wrong')
+          setError(err.message || 'Something went wrong')
           setLoading(false)
         }
       })

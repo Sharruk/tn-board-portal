@@ -1,24 +1,34 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
-const TOKEN_KEY = 'adminToken'
-
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
+  const [session, setSession] = useState(undefined)
 
-  const login = useCallback((newToken) => {
-    localStorage.setItem(TOKEN_KEY, newToken)
-    setToken(newToken)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY)
-    setToken(null)
-  }, [])
+  const logout = async () => {
+    await supabase.auth.signOut()
+  }
 
   return (
-    <AuthContext.Provider value={{ token, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{
+      session,
+      isAuthenticated: !!session,
+      isLoading: session === undefined,
+      logout,
+    }}>
       {children}
     </AuthContext.Provider>
   )

@@ -1,20 +1,23 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { adminLogin } from '../../services/admin'
+import { supabase } from '../../lib/supabase'
 
 export default function LoginPage() {
-  const { login, isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
   const navigate = useNavigate()
 
-  const [form, setForm] = useState({ username: '', password: '' })
+  const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  if (isAuthenticated) {
-    navigate('/admin/dashboard', { replace: true })
-    return null
-  }
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate('/admin/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, isLoading, navigate])
+
+  if (isLoading) return null
 
   const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }))
 
@@ -23,11 +26,14 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await adminLogin(form.username, form.password)
-      login(res.data.access_token)
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.password,
+      })
+      if (authError) throw authError
       navigate('/admin/dashboard', { replace: true })
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid username or password')
+      setError(err.message || 'Invalid email or password')
     } finally {
       setLoading(false)
     }
@@ -36,7 +42,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -47,20 +52,19 @@ export default function LoginPage() {
           <p className="text-gray-400 text-sm mt-1">TN Board Learning Platform</p>
         </div>
 
-        {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Username</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
               <input
-                name="username"
-                type="text"
-                value={form.username}
+                name="email"
+                type="email"
+                value={form.email}
                 onChange={handleChange}
                 required
                 autoFocus
-                autoComplete="username"
-                placeholder="admin"
+                autoComplete="email"
+                placeholder="admin@example.com"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
               />
             </div>

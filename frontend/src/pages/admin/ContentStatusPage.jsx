@@ -10,7 +10,7 @@ export default function ContentStatusPage() {
   useEffect(() => {
     getContentStatus()
       .then(res => setData(res.data))
-      .catch(err => setError(err.response?.data?.detail || 'Failed to load content status'))
+      .catch(err => setError(err.message || 'Failed to load content status'))
       .finally(() => setLoading(false))
   }, [])
 

@@ -82,7 +82,7 @@ export default function PaperDetailPage() {
             .catch(() => {})
         }
       })
-      .catch(err => setError(err.response?.data?.detail || 'Paper not found'))
+      .catch(err => setError(err.message || 'Paper not found'))
       .finally(() => setLoading(false))
   }, [id])
 

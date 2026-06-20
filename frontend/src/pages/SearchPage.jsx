@@ -40,7 +40,7 @@ export default function SearchPage() {
     if (filterType) params.paper_type = filterType
     searchPapers(params)
       .then(res => setResults(res.data))
-      .catch(err => setError(err.response?.data?.detail || 'Search failed'))
+      .catch(err => setError(err.message || 'Search failed'))
       .finally(() => setLoading(false))
   }, [query, filterClass, filterType])
 

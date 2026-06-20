@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAdminPapers, getSearchAnalytics, getRecentUploads, getAdminMe, getAuditLogs } from '../../services/admin'
-import adminApi from '../../services/admin'
+import { getAdminPapers, getAdminStats, getSearchAnalytics, getRecentUploads, getAdminMe, getAuditLogs } from '../../services/admin'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -77,7 +76,7 @@ export default function DashboardPage() {
   useEffect(() => {
     Promise.allSettled([
       getAdminPapers(),
-      adminApi.get('/admin/stats'),
+      getAdminStats(),
       getSearchAnalytics(),
       getRecentUploads(20),
       getAdminMe(),
@@ -89,7 +88,7 @@ export default function DashboardPage() {
       if (recentR.status === 'fulfilled')  setRecentUploads(recentR.value.data)
       if (meR.status === 'fulfilled')      setAdminMe(meR.value.data)
       if (logsR.status === 'fulfilled')    setAuditLogs(logsR.value.data)
-      if (papersR.status === 'rejected')   setError(papersR.reason?.response?.data?.detail || 'Failed to load')
+      if (papersR.status === 'rejected')   setError(papersR.reason?.message || 'Failed to load')
     }).finally(() => setLoading(false))
   }, [])
 
@@ -329,10 +328,8 @@ export default function DashboardPage() {
                 {auditLogs.map(log => {
                   let detail = ''
                   if (log.target_details) {
-                    try {
-                      const d = JSON.parse(log.target_details)
-                      detail = d.title || d.identifier || ''
-                    } catch {}
+                    const d = log.target_details
+                    detail = d.title || d.identifier || ''
                   }
                   return (
                     <tr key={log.id} className="hover:bg-gray-50 transition-colors">
@@ -347,7 +344,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">{maskIp(log.ip_address)}</td>
                       <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
-                        <span title={new Date(log.timestamp).toLocaleString('en-IN')}>{timeAgo(log.timestamp)}</span>
+                        <span title={new Date(log.created_at).toLocaleString('en-IN')}>{timeAgo(log.created_at)}</span>
                       </td>
                     </tr>
                   )
