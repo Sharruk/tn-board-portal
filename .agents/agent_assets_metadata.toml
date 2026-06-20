@@ -18,3 +18,9 @@ id = "5D3_yK2zzVzM8qqNbQ4rg"
 uri = "file://JWT_USAGE_AUDIT.md"
 type = "text"
 title = "JWT_USAGE_AUDIT.md"
+
+[[outputs]]
+id = "s8reqrlCK5k2LMIZuqgVW"
+uri = "file://BACKEND_REMOVAL_VERIFICATION.md"
+type = "text"
+title = "BACKEND_REMOVAL_VERIFICATION.md"
