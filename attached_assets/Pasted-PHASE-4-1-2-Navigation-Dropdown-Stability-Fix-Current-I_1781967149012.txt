@@ -1,0 +1,153 @@
+PHASE 4.1.2 — Navigation & Dropdown Stability Fix
+
+Current Issues:
+
+ISSUE 1:
+Homepage class navigation dropdown is not displaying correctly.
+
+Expected:
+Classes menu should show:
+
+Class 9
+Class 10
+Class 11
+Class 12
+
+Current:
+Dropdown opens inconsistently or items are missing.
+
+------------------------------------------------
+
+ISSUE 2:
+Admin Upload Paper modal dropdowns still render incorrectly.
+
+Affected:
+
+- Class selector
+- Subject selector
+- Exam Type selector
+- Year selector
+
+Symptoms:
+
+- Dropdown clipped
+- Dropdown hidden behind modal
+- Dropdown not visible
+- Visual artifacts occasionally appear
+
+------------------------------------------------
+
+Task 1 — Root Cause Analysis
+
+First identify:
+
+1. Which component library is being used?
+
+Possible:
+
+- Native HTML select
+- Radix UI Select
+- Shadcn Select
+- React Select
+- Headless UI
+- Custom Select
+
+Document findings.
+
+------------------------------------------------
+
+Task 2 — Fix Dropdown Rendering
+
+Investigate:
+
+- z-index hierarchy
+- stacking contexts
+- overflow clipping
+- modal scroll containers
+- portal rendering
+
+If using React Select:
+
+Use:
+
+menuPortalTarget={document.body}
+menuPosition="fixed"
+
+with high z-index.
+
+If using Radix/Shadcn:
+
+Render content in portal.
+
+------------------------------------------------
+
+Task 3 — Homepage Classes Menu
+
+Verify:
+
+Classes dropdown contains:
+
+Class 9
+Class 10
+Class 11
+Class 12
+
+All links must navigate correctly.
+
+Add graceful loading state if classes are still loading.
+
+Add fallback if API returns empty.
+
+------------------------------------------------
+
+Task 4 — Footer Enhancement
+
+Create new footer section:
+
+Learn With Us
+
+YouTube Channel
+Video Solutions
+Coding Tutorials
+
+YouTube Link:
+
+https://www.youtube.com/@Hungry_Learner_Forever
+
+Requirements:
+
+- Small YouTube icon
+- Opens in new tab
+- rel="noopener noreferrer"
+
+Do NOT add popups.
+Do NOT add advertisements.
+Keep footer clean and professional.
+
+------------------------------------------------
+
+Task 5 — Validation
+
+Verify:
+
+✓ Homepage classes menu works
+✓ Footer YouTube link works
+✓ Upload Paper modal dropdowns work
+✓ Mobile responsive
+✓ Desktop responsive
+✓ No visual artifacts
+✓ No console errors
+
+------------------------------------------------
+
+Update:
+
+PROJECT_STATUS.txt
+
+Add:
+
+Phase 4.1.2 — Navigation & UI Stability Fixes
+
+Do not change backend APIs.
+Do not change authentication.
+Focus only on frontend navigation, footer improvements, and dropdown reliability.

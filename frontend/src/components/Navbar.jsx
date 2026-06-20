@@ -48,14 +48,16 @@ export default function Navbar() {
                 </svg>
               </button>
               {classesOpen && (
-                <div className="absolute top-full left-0 mt-1 w-40 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
-                  {CLASSES.map(c => (
-                    <Link key={c} to={`/class/${c}`}
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                      onClick={() => setClassesOpen(false)}>
-                      Class {c}
-                    </Link>
-                  ))}
+                <div className="absolute top-full left-0 w-40 pt-1 z-50">
+                  <div className="bg-white rounded-xl shadow-lg border border-gray-100 py-1">
+                    {CLASSES.map(c => (
+                      <Link key={c} to={`/class/${c}`}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                        onClick={() => setClassesOpen(false)}>
+                        Class {c}
+                      </Link>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
