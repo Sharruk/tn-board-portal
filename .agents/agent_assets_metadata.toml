@@ -12,3 +12,9 @@ id = "UcZBWPvMujEAaLg55fBao"
 uri = "file://ARCHITECTURE_BLUEPRINT.txt"
 type = "text"
 title = "TN State Board Portal v2.0 — Complete Architecture Blueprint"
+
+[[outputs]]
+id = "5D3_yK2zzVzM8qqNbQ4rg"
+uri = "file://JWT_USAGE_AUDIT.md"
+type = "text"
+title = "JWT_USAGE_AUDIT.md"
