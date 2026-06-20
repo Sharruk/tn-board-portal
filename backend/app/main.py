@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config import CORS_ORIGINS, UPLOAD_DIR
+from app.config import CORS_ORIGINS, UPLOAD_DIR, IS_PRODUCTION, ENVIRONMENT
 from app.database.database import Base, engine
 from app.models import models  # noqa: F401 — registers all models with Base
 from app.api import classes, subjects, papers, auth, admin
@@ -12,15 +12,19 @@ from app.api import classes, subjects, papers, auth, admin
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+logger.info(f"Starting TN Board API — environment: {ENVIRONMENT}")
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+# Disable interactive API docs in production
 app = FastAPI(
     title="TN State Board Learning Platform API",
     description="Backend API for Tamil Nadu State Board question papers and answer keys",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
 )
 
 # CORS

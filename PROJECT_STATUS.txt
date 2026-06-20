@@ -6,7 +6,7 @@ Version:
 v1.0 MVP
 
 Current Phase:
-PHASE 3.9 COMPLETE — Admin Productivity & Content Management
+PHASE 4 IN PROGRESS — Production Deployment Preparation
 
 Last Updated:
 2026-06-20
@@ -22,23 +22,24 @@ Phase 3.6 — Student Experience:        [x] COMPLETE
 Phase 3.7 — Search & Content Mgmt:    [x] COMPLETE
 Phase 3.8 — Production Readiness:      [x] COMPLETE
 Phase 3.9 — Admin Productivity:        [x] COMPLETE
-Phase 4 — Deployment:                  [ ] PENDING (awaiting approval)
+Phase 4 — Deployment Prep:             [~] IN PROGRESS
+Phase 4 — Deploy:                      [ ] PENDING (awaiting approval)
 
 ====================================================
 
-WORKFLOW CONFIGURATION
+WORKFLOW CONFIGURATION (Development)
 
 Name: "FastAPI Backend"
 Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000
-Port: 8000 (console)
+Port: 8000
 Status: Running
 
 Name: "Start application"
 Command: cd frontend && npm run dev
-Port: 5000 (webview — Replit preview)
+Port: 5000 (Replit preview)
 Status: Running
 
-Vite proxy:
+Vite dev proxy:
   /api      → localhost:8000
   /uploads  → localhost:8000
 
@@ -50,9 +51,10 @@ Tables:
 * classes       — 4 rows   (Class 9, 10, 11, 12)
 * subjects      — 32 rows  (5 per Class 9/10, 11 per Class 11/12)
 * papers        — 6 rows   (sample content)
-* admins        — 1 row    (admin / admin123)
+* admins        — 1 row    (admin / admin123)  ← CHANGE BEFORE GO-LIVE
 
-No new schema changes in Phase 3.9.
+Schema changes applied through Phase 3.9:
+* papers.download_count  INTEGER DEFAULT 0 NOT NULL
 
 ====================================================
 
@@ -73,12 +75,12 @@ GET    /api/v1/search                        working
 POST   /api/v1/auth/login                    working
 GET    /api/v1/admin/stats                   working (JWT)
 GET    /api/v1/admin/papers                  working (JWT)
-POST   /api/v1/admin/papers                  working (JWT + multipart, PDF required)
+POST   /api/v1/admin/papers                  working (JWT + multipart)
 PUT    /api/v1/admin/papers/{id}             working (JWT)
 DELETE /api/v1/admin/papers/{id}             working (JWT, removes file)
 GET    /api/v1/admin/search-analytics        working (JWT)
-GET    /api/v1/admin/recent-uploads?limit=N  working (JWT)  ← NEW Phase 3.9
-GET    /api/v1/admin/content-status          working (JWT)  ← NEW Phase 3.9
+GET    /api/v1/admin/recent-uploads?limit=N  working (JWT)
+GET    /api/v1/admin/content-status          working (JWT)
 
 ====================================================
 
@@ -98,73 +100,101 @@ Admin:
   /admin/login                 Login form (JWT)
   /admin/dashboard             Stats + recent papers + popular searches + upload activity
   /admin/papers                Papers tab + Bulk Upload tab + CSV export
-  /admin/content-status        Coverage grid showing missing content  ← NEW Phase 3.9
+  /admin/content-status        Coverage grid showing missing content
   /admin                       Redirects to /admin/dashboard
 
 ====================================================
 
-PHASE 3.9 FEATURES
+PHASE 4 — DEPLOYMENT PREPARATION (completed tasks)
 
-1. Bulk Upload (Admin Papers → Bulk Upload tab)
-   - Select multiple PDF files at once
-   - Metadata auto-extracted from filename patterns:
-     Class10_Maths_Quarterly_2024.pdf → Class 10 / Mathematics / Quarterly Exam / 2024
-   - Subject aliases: maths→Mathematics, phy→Physics, chem→Chemistry, bio→Biology, eng→English
-   - Exam aliases: quarterly→Quarterly Exam, annual→Annual Exam, halfyearly→Half Yearly Exam, etc.
-   - Per-file editable form fields (class, subject, exam type, year, title, paper type)
-   - Quality warnings (non-blocking):
-     * Title too short (< 10 chars)
-     * Year missing
-     * Duplicate filename in batch
-     * Suspiciously small PDF (< 10 KB)
-   - Sequential upload with per-file progress bar
-   - Upload summary (succeeded / failed counts)
+1. .env.example (project root)
+   Documents all required environment variables with examples.
+   Variables: DATABASE_URL, JWT_SECRET_KEY, CORS_ORIGINS, ENVIRONMENT,
+              STORAGE_BACKEND, and cloud storage stubs (S3, Supabase).
 
-2. Content Status Dashboard (/admin/content-status)
-   - Grid view: rows = subjects, columns = exam types
-   - Exam types tracked: Annual Exam, Half Yearly Exam, Quarterly Exam, Unit Test 1/2/3
-   - Green ✓ = at least one paper exists for that combination
-   - Red ✗ = no paper uploaded yet
-   - Per-class completion percentage
-   - Overall coverage progress bar
+2. Storage Abstraction (backend/app/services/storage.py)
+   Refactored to a clean provider pattern:
+     StorageProvider (ABC interface)
+     LocalStorageProvider   — current implementation
+     S3StorageProvider      — stub with full implementation guide
+     SupabaseStorageProvider — stub with full implementation guide
+   public API (save_file_locally / delete_file_locally) unchanged.
+   admin.py requires NO changes when swapping providers.
+   Swap by setting STORAGE_BACKEND=s3 or STORAGE_BACKEND=supabase.
 
-3. Recent Upload Activity (Admin Dashboard)
-   - Card showing the latest 20 uploads
-   - Columns: Paper Title, Class/Subject, Exam Type, Upload Date, Uploaded By
-   - Backend endpoint: GET /admin/recent-uploads?limit=20
+3. Production Security (backend/app/config.py, backend/app/main.py)
+   * ENVIRONMENT variable controls production vs development mode.
+   * API docs (/docs, /redoc, /openapi.json) disabled in production.
+   * Server raises RuntimeError at startup if:
+       - DATABASE_URL is not set
+       - JWT_SECRET_KEY is still the default value (in production)
+       - JWT_SECRET_KEY is shorter than 32 chars (in production)
+       - CORS_ORIGINS is "*" (in production)
+   * Warning (non-fatal) in development for insecure JWT default.
+   * Warning if STORAGE_BACKEND=local in production.
+   * STORAGE_BACKEND config added to config.py.
 
-4. CSV Export (Admin Papers page header)
-   - "Export CSV" button visible when papers exist
-   - Client-side CSV generation (no extra API call)
-   - Columns: id, title, class, subject, exam_type, year, paper_type, download_count
-   - Downloads as papers.csv
+4. DEPLOYMENT_GUIDE.md (project root)
+   Step-by-step guide covering:
+     Step 1 — Set environment variables
+     Step 2 — Configure cloud storage (Supabase or S3)
+     Step 3 — Change admin password
+     Step 4 — Build and mount React frontend
+     Step 5 — Deploy on Replit Deployments
+     Step 6 — Post-deployment verification checklist
+   Also covers: database migrations, rollback instructions,
+   security checklist, environment variable reference.
 
-5. Content Quality Validation (Bulk Upload)
-   - Warns (does not block) on: short title, missing year, duplicate filename, tiny PDF
-   - Warnings shown inline per file, recalculated live as admin edits fields
-
-====================================================
-
-SLUG URL FORMAT
-
-Pattern: /paper/{slugify(title)}-{id}
-
-Examples:
-  /paper/class-10-mathematics-annual-exam-2024-1
-  /paper/class-10-science-quarterly-exam-2024-2
-  /paper/class-11-physics-half-yearly-exam-2024-4
-
-Backend lookup: rsplit('-', 1) extracts ID from end of slug.
-Old numeric routes still work: /paper/1, /paper/2, etc.
-All paper API responses include a computed `slug` field.
+5. PRODUCTION_READINESS_REPORT.txt (project root)
+   Audit of 6 categories with star ratings:
+     Security            ★★★☆☆
+     Storage             ★★☆☆☆  ← BLOCKER
+     Database            ★★★★☆
+     Backend (API)       ★★★★☆
+     Frontend            ★★★★☆
+     Performance         ★★★☆☆
+     Deployment Config   ★★★☆☆
+   4 launch blockers documented (see report).
+   Recommended pre-launch checklist included.
+   Post-launch deferred items listed.
 
 ====================================================
 
-ADMIN CREDENTIALS
+LAUNCH BLOCKERS (must resolve before deploying)
+
+  BLOCKER 1 — Admin default password not changed
+             admin / admin123 is in the production database
+             Fix: run password-change script in DEPLOYMENT_GUIDE.md Step 3
+
+  BLOCKER 2 — Local filesystem storage
+             Uploaded PDFs will be lost on each Replit redeploy
+             Fix: implement S3 or Supabase provider, set STORAGE_BACKEND
+
+  BLOCKER 3 — JWT_SECRET_KEY not set to production value
+             Fix: generate random 32+ char secret, add to Replit Secrets
+
+  BLOCKER 4 — CORS_ORIGINS not set to production domain
+             Fix: set after first deployment assigns the .replit.app URL
+
+====================================================
+
+NEXT STEPS (Phase 4 — Deploy)
+
+  1. Resolve all 4 blockers above
+  2. Run: cd frontend && npm run build
+  3. Mount frontend/dist in FastAPI (see DEPLOYMENT_GUIDE.md Step 4)
+  4. Click Deploy in Replit
+  5. Update CORS_ORIGINS with the live .replit.app domain
+  6. Run post-deployment verification checklist
+
+====================================================
+
+ADMIN CREDENTIALS (development only)
 
 Username: admin
 Password: admin123
 URL:      [preview-url]/admin/login
+⚠️  CHANGE BEFORE PRODUCTION — see DEPLOYMENT_GUIDE.md Step 3
 
 ====================================================
 
@@ -176,17 +206,5 @@ SAMPLE CONTENT
 4. Class 11 Physics Half Yearly Exam 2024       — Q Paper + YouTube
 5. Class 12 Chemistry Annual Exam 2024          — Answer Key (PDF only)
 6. Maths Unit Test 1                            — Q Paper (Phase 3.7)
-
-====================================================
-
-NEXT TASKS (Phase 4 — Deployment)
-
-1. Connect Supabase / cloud storage for PDF uploads (update storage.py)
-2. Build frontend: npm run build
-3. Deploy to production (Replit Deployments)
-4. Lock CORS to production domain
-5. Change admin password before going live
-6. Replace placeholder PDFs with real exam papers
-7. Replace test YouTube URLs with real channel links
 
 ====================================================

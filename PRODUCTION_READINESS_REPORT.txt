@@ -1,0 +1,231 @@
+====================================================
+PRODUCTION READINESS REPORT
+TN State Board Learning Platform — v1.0
+====================================================
+
+Date:       2026-06-20
+Auditor:    Pre-deployment review
+Status:     NOT READY — action items must be resolved first
+            (see BLOCKERS section)
+
+====================================================
+RATING SCALE
+====================================================
+
+  ★★★★★  Excellent — production-grade, no action needed
+  ★★★★☆  Good      — minor improvements recommended
+  ★★★☆☆  Fair      — should be improved before launch
+  ★★☆☆☆  Poor      — must be fixed before launch
+  ★☆☆☆☆  Critical  — launch BLOCKED until resolved
+
+====================================================
+CATEGORY RATINGS
+====================================================
+
+SECURITY                                        ★★★☆☆
+────────────────────────────────────────────────────
+Rating justification:
+  + JWT authentication on all admin routes
+  + Bcrypt password hashing (werkzeug)
+  + PDF-only file upload (extension + mimetype check)
+  + File size limit enforced (50 MB)
+  + No SQL injection risk (SQLAlchemy ORM)
+  + CORS middleware correctly configured
+  ✗ Default admin password (admin/admin123) still in DB — BLOCKER
+  ✗ JWT_SECRET_KEY falls back to hardcoded default if not set
+    (server now raises RuntimeError in production — good)
+  ✗ /docs and /redoc were open in previous builds
+    (now disabled automatically in production — resolved)
+  ✗ No rate limiting on login endpoint — brute force is possible
+  ✗ No account lockout after N failed attempts
+  ✗ JWT tokens cannot be revoked (no token blacklist)
+
+Action items (before launch):
+  1. Change admin password — see DEPLOYMENT_GUIDE.md Step 3
+  2. Set JWT_SECRET_KEY to a random 32+ char value in Secrets
+  3. Consider adding slowapi rate limiter on POST /auth/login
+
+────────────────────────────────────────────────────
+STORAGE                                         ★★☆☆☆
+────────────────────────────────────────────────────
+Rating justification:
+  + File validation (PDF only, size cap)
+  + Unique UUID filenames prevent collisions
+  + Clean provider abstraction ready for swap
+  ✗ BLOCKER: STORAGE_BACKEND=local — all uploaded PDFs are lost
+    when Replit's VM restarts or redeploys
+  ✗ No CDN for PDF serving (direct FastAPI static mount)
+  ✗ No virus scanning on uploads
+
+Action items (before launch):
+  1. Set up Supabase Storage or S3
+  2. Implement the stub provider in storage.py
+  3. Test upload → download → delete cycle in production
+  4. Migrate any existing /uploads/ PDFs to cloud storage
+
+────────────────────────────────────────────────────
+DATABASE                                        ★★★★☆
+────────────────────────────────────────────────────
+Rating justification:
+  + PostgreSQL with SQLAlchemy ORM
+  + Connection pool with pool_recycle=300 and pool_pre_ping=True
+    (handles Replit's 5-minute idle connection drops correctly)
+  + Proper foreign key relationships with cascades
+  + No raw SQL — injection-safe by construction
+  + create_all() handles table creation on first boot
+  ✗ No explicit index on papers.subject_id or papers.exam_type
+    (matters once content grows to thousands of papers)
+  ✗ No backup schedule configured
+
+Action items:
+  1. Add indexes when paper count exceeds ~500
+     ALTER TABLE papers ADD INDEX idx_subject_id (subject_id);
+     ALTER TABLE papers ADD INDEX idx_exam_type (exam_type);
+  2. Enable Replit's built-in database backups or export to pg_dump
+
+────────────────────────────────────────────────────
+BACKEND (API)                                   ★★★★☆
+────────────────────────────────────────────────────
+Rating justification:
+  + FastAPI with Pydantic v2 schema validation
+  + Consistent error responses (HTTPException)
+  + JWT protected admin endpoints
+  + Duplicate paper detection (409 Conflict)
+  + Proper HTTP status codes
+  + /health endpoint for deployment health checks
+  + API docs disabled in production
+  ✗ No request size limit at the server level (only at file read)
+  ✗ No API versioning beyond /api/v1 prefix
+  ✗ No rate limiting on public endpoints
+  ✗ Logging is INFO level — consider structured JSON logging in prod
+
+Action items (nice to have):
+  1. Add structured logging (e.g. python-json-logger)
+  2. Add slowapi rate limiting on public search endpoint
+
+────────────────────────────────────────────────────
+FRONTEND                                        ★★★★☆
+────────────────────────────────────────────────────
+Rating justification:
+  + React + Vite (fast build, tree-shaking, code splitting)
+  + Tailwind CSS (utility-first, no runtime overhead)
+  + Responsive design (mobile and desktop)
+  + Client-side routing with React Router v6
+  + Protected admin routes (ProtectedRoute component)
+  + JWT stored in localStorage (simple; see note)
+  + SEO slug URLs for paper detail pages
+  ✗ JWT in localStorage is accessible to any JS on the page
+    (acceptable for an admin-only tool; httpOnly cookies are safer
+     for multi-user auth but require more backend work)
+  ✗ No Content Security Policy headers
+  ✗ No error boundary components in React tree
+  ✗ No service worker / offline support (not needed for MVP)
+
+Action items:
+  1. Add a top-level React ErrorBoundary component
+  2. Set CSP headers in production server config
+
+────────────────────────────────────────────────────
+PERFORMANCE                                     ★★★☆☆
+────────────────────────────────────────────────────
+Rating justification:
+  + Vite build produces minified, hashed bundles
+  + PostgreSQL query uses joinedload (avoids N+1 on content status)
+  + Popular papers / recent papers endpoints paginated
+  ✗ No HTTP caching headers on static assets
+  ✗ No CDN (all traffic hits the single Replit VM)
+  ✗ PDF files served through FastAPI (no range request support)
+  ✗ No pagination on the admin papers list (will slow with 1000+ papers)
+  ✗ No server-side caching (Redis, etc.)
+
+Action items (post-launch, when needed):
+  1. Add cache-control headers for /uploads/ and /assets/
+  2. Add pagination to GET /admin/papers
+  3. Move PDF serving to CDN (via cloud storage public URLs)
+
+────────────────────────────────────────────────────
+DEPLOYMENT CONFIGURATION                        ★★★☆☆
+────────────────────────────────────────────────────
+Rating justification:
+  + Dockerfile present in backend/
+  + Uvicorn as ASGI server
+  + Health check endpoint at /health
+  + Environment-driven configuration
+  + Production guards (JWT secret check, CORS check) at startup
+  ✗ Frontend not yet built and bundled for production
+  ✗ No process supervisor (Gunicorn multi-worker) for production load
+  ✗ No static file cache headers
+  ✗ CORS_ORIGINS not yet set to production domain
+
+Action items (before launch):
+  1. npm run build in frontend/
+  2. Mount frontend/dist in FastAPI (see DEPLOYMENT_GUIDE.md Step 4)
+  3. Switch uvicorn to gunicorn with 2–4 workers:
+     gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+  4. Set all required environment variables (see .env.example)
+
+====================================================
+BLOCKER SUMMARY
+====================================================
+
+The following must be resolved BEFORE the app goes live:
+
+  BLOCKER 1 — Admin default password not changed
+  ─────────────────────────────────────────────
+  Risk: Anyone who reads this repository can log in as admin.
+  Fix:  Run the password-change script in DEPLOYMENT_GUIDE.md Step 3.
+
+  BLOCKER 2 — Local filesystem storage in production
+  ──────────────────────────────────────────────────
+  Risk: Every uploaded PDF is permanently lost on each Replit
+        redeploy or VM restart. This affects ALL existing content.
+  Fix:  Configure Supabase Storage or S3 (DEPLOYMENT_GUIDE.md Step 2)
+        and implement the provider stub in storage.py.
+
+  BLOCKER 3 — JWT_SECRET_KEY not set
+  ────────────────────────────────────
+  Risk: If ENVIRONMENT=production and the secret is the default,
+        the server refuses to start. But in development it silently
+        uses the insecure default — tokens could be forged.
+  Fix:  Set JWT_SECRET_KEY in Replit Secrets before deploying.
+
+  BLOCKER 4 — CORS_ORIGINS not set to production domain
+  ───────────────────────────────────────────────────────
+  Risk: Server refuses to start in production if CORS_ORIGINS=*.
+  Fix:  Set CORS_ORIGINS to the exact Replit deployment URL.
+
+====================================================
+RECOMMENDED PRE-LAUNCH CHECKLIST
+====================================================
+
+  [ ] Change admin password (see DEPLOYMENT_GUIDE.md Step 3)
+  [ ] Generate and set JWT_SECRET_KEY (≥32 chars) in Replit Secrets
+  [ ] Set ENVIRONMENT=production in Replit Secrets
+  [ ] Set CORS_ORIGINS=https://your-app.replit.app in Replit Secrets
+  [ ] Choose and implement a cloud storage provider (S3 or Supabase)
+  [ ] Set STORAGE_BACKEND=supabase or STORAGE_BACKEND=s3
+  [ ] Run npm run build in frontend/
+  [ ] Mount frontend/dist in FastAPI (DEPLOYMENT_GUIDE.md Step 4)
+  [ ] Verify /health returns 200 on the live URL
+  [ ] Verify /docs returns 404 on the live URL
+  [ ] Verify admin login works with the NEW password
+  [ ] Test full PDF upload → download → delete cycle
+  [ ] Replace sample content with real TN Board exam papers
+  [ ] Replace test YouTube URLs with real channel links
+
+====================================================
+ITEMS SAFE TO DEFER (post-launch)
+====================================================
+
+  - Rate limiting on login / search endpoints
+  - JWT token revocation / session management
+  - CDN for PDF and static asset delivery
+  - Pagination on admin papers list
+  - Server-side caching (Redis)
+  - Virus scanning on uploads
+  - Database index optimization (needed at ~500+ papers)
+  - Structured JSON logging
+  - React ErrorBoundary components
+  - Multiple admin accounts
+
+====================================================
