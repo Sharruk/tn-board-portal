@@ -1,30 +1,29 @@
-# TN State Board Portal
+# TN State Board Learning Platform
 
 ## Overview
-A Tamil Nadu State Board Question Papers & Answer Keys Portal built with Flask. Students can browse question papers by class (9-12), subject, and exam type. Admins can upload/manage files and moderate comments.
-
-## Recent Changes
-- 2026-02-07: Completed project import to Replit environment. Installed dependencies, set up PostgreSQL database, configured workflow.
+A Tamil Nadu State Board Question Papers & Answer Keys Portal. Students can browse question papers and answer keys for Classes 9–12 by class, subject, and exam type. Admins can upload, manage, and moderate content through a protected dashboard.
 
 ## Architecture
-- **Backend**: Flask (Python 3.11) with SQLAlchemy ORM
-- **Database**: PostgreSQL (Replit built-in)
-- **Frontend**: Server-rendered templates (Jinja2) with Bootstrap
-- **Server**: Gunicorn on port 5000
+- **Frontend**: React 18 + Vite 5 + Tailwind CSS (SPA on port 5000)
+- **Backend / DB / Auth / Storage**: Supabase (PostgreSQL, Supabase Auth, Supabase Storage)
+- **No server-side backend required**: All data access goes directly from the React frontend to Supabase via RLS-protected APIs
 
 ## Key Files
-- `app.py` - Main Flask application with all routes
-- `models.py` - SQLAlchemy models (Subject, File, Comment, User)
-- `main.py` - Entry point for gunicorn
-- `templates/` - Jinja2 HTML templates
-- `static/` - CSS and JS assets
-- `uploads/` - Uploaded files directory
+- `frontend/src/` — React application source
+- `frontend/src/lib/supabase.js` — Supabase client (reads VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY)
+- `frontend/src/services/` — Data-access layer (papers, classes, subjects, search, admin)
+- `frontend/src/contexts/AuthContext.jsx` — Auth state via Supabase Auth
+- `frontend/src/pages/` — Public and admin pages
+- `frontend/src/router/index.jsx` — Route definitions
+- `supabase/migrations/` — SQL migrations for schema, seed data, RLS, and functions
 
-## Features
-- Browse classes 9-12 with subjects
-- View exam categories (Unit Tests, Midterms, Quarterly, Half Yearly, Annual)
-- File upload/download system
-- Admin dashboard with file management
-- Comment system on files
-- Like/dislike voting
-- Search functionality
+## Required Secrets
+Set these in Replit Secrets:
+- `VITE_SUPABASE_URL` — your Supabase project URL (e.g. `https://xxxx.supabase.co`)
+- `VITE_SUPABASE_ANON_KEY` — your Supabase anon/public key
+
+## Running
+The "Start application" workflow runs `cd frontend && npm run dev` on port 5000.
+
+## User Preferences
+- Keep the React + Supabase architecture; do not introduce a Python/Flask backend
