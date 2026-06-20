@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database.database import get_db
 from app.models.models import Paper, Subject, Class
-from app.schemas.schemas import PaperOut, PaperDetail, SearchResult, SearchResponse
+from app.schemas.schemas import PaperOut, PaperDetail, SubjectOut, SearchResult, SearchResponse
 
 router = APIRouter(tags=["Papers"])
 
@@ -59,6 +59,33 @@ def get_paper(paper_id: int, db: Session = Depends(get_db)):
     paper = db.query(Paper).filter(Paper.id == paper_id, Paper.is_visible == True).first()
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
+    subject_out = None
+    if paper.subject:
+        s = paper.subject
+        subject_out = SubjectOut(
+            id=s.id, name=s.name, slug=s.slug,
+            is_practical=s.is_practical,
+            class_id=s.class_.id,
+            class_name=s.class_.name,
+        )
+    return PaperDetail(
+        id=paper.id, title=paper.title, exam_type=paper.exam_type,
+        year=paper.year, paper_type=paper.paper_type,
+        public_url=paper.public_url, youtube_url=paper.youtube_url,
+        is_visible=paper.is_visible, download_count=paper.download_count,
+        created_at=paper.created_at, subject_id=paper.subject_id,
+        subject=subject_out,
+    )
+
+
+@router.post("/papers/{paper_id}/download", response_model=PaperOut)
+def record_download(paper_id: int, db: Session = Depends(get_db)):
+    paper = db.query(Paper).filter(Paper.id == paper_id, Paper.is_visible == True).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    paper.download_count = (paper.download_count or 0) + 1
+    db.commit()
+    db.refresh(paper)
     return paper
 
 

@@ -47,6 +47,7 @@ class Paper(Base):
     public_url = Column(Text, nullable=True)         # URL for downloading
     youtube_url = Column(Text, nullable=True)        # YouTube embed URL
     is_visible = Column(Boolean, default=True)
+    download_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     subject = relationship("Subject", back_populates="papers")

@@ -6,14 +6,7 @@ Version:
 v1.0 MVP
 
 Current Phase:
-PHASE 3.5 COMPLETE — Content Validation Done
-
-Current Progress:
-All three phases complete plus content validation. Preview working.
-  Phase 1 — FastAPI backend (15 endpoints, JWT, file upload)
-  Phase 2 — React public frontend (7 pages, Axios service layer)
-  Phase 3 — React admin panel (login, dashboard, papers management)
-  Phase 3.5 — Content validation + sample data + UI improvements
+PHASE 3.6 COMPLETE — Student Experience Improvements
 
 Last Updated:
 2026-06-20
@@ -21,11 +14,12 @@ Last Updated:
 
 PROGRESS SUMMARY
 
-Phase 1 — FastAPI Backend:       [x] COMPLETE
-Phase 2 — React Public Frontend: [x] COMPLETE
-Phase 3 — Admin Panel:           [x] COMPLETE
-Phase 3.5 — Content Validation:  [x] COMPLETE
-Phase 4 — Deployment:            [ ] PENDING (awaiting approval)
+Phase 1 — FastAPI Backend:             [x] COMPLETE
+Phase 2 — React Public Frontend:       [x] COMPLETE
+Phase 3 — Admin Panel:                 [x] COMPLETE
+Phase 3.5 — Content Validation:        [x] COMPLETE
+Phase 3.6 — Student Experience:        [x] COMPLETE
+Phase 4 — Deployment:                  [ ] PENDING (awaiting approval)
 
 ====================================================
 
@@ -41,61 +35,103 @@ Command: cd frontend && npm run dev
 Port: 5000 (webview — Replit preview)
 Status: Running
 
-Vite config:
-  host: '0.0.0.0'
-  port: 5000
-  allowedHosts: true
-  strictPort: true
-  proxy /api  → localhost:8000
-  proxy /uploads → localhost:8000
+Vite proxy:
+  /api      → localhost:8000
+  /uploads  → localhost:8000
 
 ====================================================
 
 DATABASE STATUS
 
 Tables:
-* classes  — 4 rows  (Class 9, 10, 11, 12)
-* subjects — 32 rows (5 per Class 9/10, 11 per Class 11/12)
-* papers   — 5 rows  (sample content added in Phase 3.5)
-* admins   — 1 row   (admin / admin123)
+* classes       — 4 rows   (Class 9, 10, 11, 12)
+* subjects      — 32 rows  (5 per Class 9/10, 11 per Class 11/12)
+* papers        — 5 rows   (sample content from Phase 3.5)
+* admins        — 1 row    (admin / admin123)
+
+Schema change (Phase 3.6):
+* papers.download_count  INTEGER DEFAULT 0 NOT NULL  ← ADDED
 
 ====================================================
 
 BACKEND ENDPOINTS (all working)
 
-GET  /api/v1/classes                  working
-GET  /api/v1/classes/{id}             working
-GET  /api/v1/classes/{id}/subjects    working
-GET  /api/v1/subjects/{id}            working
-GET  /api/v1/subjects/{id}/papers     working
-GET  /api/v1/papers/recent            working
-GET  /api/v1/papers/{id}              working
-GET  /api/v1/exam-types               working
-GET  /api/v1/search                   working
-POST /api/v1/auth/login               working
-GET  /api/v1/admin/papers             working (JWT)
-POST /api/v1/admin/papers             working (JWT + multipart)
-PUT  /api/v1/admin/papers/{id}        working (JWT)
-DELETE /api/v1/admin/papers/{id}      working (JWT, removes file)
+GET    /api/v1/classes                  working
+GET    /api/v1/classes/{id}             working
+GET    /api/v1/classes/{id}/subjects    working
+GET    /api/v1/subjects/{id}            working
+GET    /api/v1/subjects/{id}/papers     working
+GET    /api/v1/papers/recent            working
+GET    /api/v1/papers/{id}             working
+POST   /api/v1/papers/{id}/download    working  ← NEW Phase 3.6
+GET    /api/v1/exam-types               working
+GET    /api/v1/search                   working
+POST   /api/v1/auth/login               working
+GET    /api/v1/admin/papers             working (JWT)
+POST   /api/v1/admin/papers             working (JWT + multipart)
+PUT    /api/v1/admin/papers/{id}        working (JWT)
+DELETE /api/v1/admin/papers/{id}        working (JWT, removes file)
 
 ====================================================
 
-FRONTEND PAGES (all working in preview)
+FRONTEND PAGES (all working)
 
 Public:
   /                 Homepage — class cards + recent papers
   /class/:id        Class page — subject list
   /subject/:id      Subject page — exam type cards
   /papers           Paper list with filtering
-  /paper/:id        Paper detail + download + YouTube embed
+  /paper/:id        Paper detail (Phase 3.6 improved — see below)
   /search           Search with filters
   /*                404 page
 
 Admin:
   /admin/login      Login form (JWT)
   /admin/dashboard  Stats + recent papers (protected)
-  /admin/papers     Full management — upload / edit / delete (protected)
+  /admin/papers     Upload / edit / delete (protected) — YES/NO badges
   /admin            Redirects to /admin/dashboard
+
+====================================================
+
+PHASE 3.6 CHANGES — Student Experience
+
+1. View Paper button
+   When public_url exists, prominent blue "View Paper" button opens
+   PDF in a new browser tab (target="_blank" rel="noopener noreferrer").
+   Separate from Download button so students can preview before saving.
+
+2. Download button (improved)
+   Now uses HTML download attribute for direct save.
+   On click: fires POST /api/v1/papers/{id}/download to increment counter.
+   Shows "Download Question Paper" or "Download Answer Key" by type.
+
+3. Share button
+   Uses Web Share API when browser supports it (mobile-native share sheet).
+   Fallback: copies current page URL to clipboard.
+   Success toast appears at bottom of screen for 2.8 seconds.
+
+4. Download counter
+   Backend: papers.download_count column added (migration applied).
+   Endpoint: POST /api/v1/papers/{id}/download increments and returns paper.
+   Frontend: count displayed below action buttons as "N downloads".
+   Counter updates optimistically in UI without page reload.
+
+5. Related papers section
+   Now shows up to 4 papers from the same subject (was 3, same exam type).
+   Header reads "More from [Subject Name]" with "View all →" link.
+   Responsive grid: 1 col mobile → 2 col tablet → 4 col desktop.
+   Reuses existing PaperCard component.
+
+6. Toast notification
+   Animated pill toast at bottom-center of screen.
+   Auto-dismisses after 2.8 seconds.
+   Used for Share success and clipboard copy feedback.
+
+7. Layout improvements
+   Action buttons: full-width on mobile, inline row on desktop.
+   Consistent spacing (p-6 mobile, p-8 desktop).
+   Share icon-only on mobile (saves space), icon + label on desktop.
+   Download count shown as subtle line below buttons.
 
 ====================================================
 
@@ -103,29 +139,17 @@ ADMIN CREDENTIALS
 
 Username: admin
 Password: admin123
-URL: [preview-url]/admin/login
+URL:      [preview-url]/admin/login
 
 ====================================================
 
-SAMPLE CONTENT (added Phase 3.5)
+SAMPLE CONTENT (Phase 3.5)
 
 1. Class 10 Mathematics Annual Exam 2024        — Question Paper + YouTube
 2. Class 10 Science Quarterly Exam 2024         — Question Paper (PDF only)
 3. Class 10 English Unit Test 1 2024            — Answer Key (PDF only)
 4. Class 11 Physics Half Yearly Exam 2024       — Question Paper + YouTube
 5. Class 12 Chemistry Annual Exam 2024          — Answer Key (PDF only)
-
-All 5 use placeholder PDFs stored in /uploads/.
-YouTube links use a test URL — replace with real channel links.
-
-====================================================
-
-PHASE 3.5 CHANGES
-
-1. Database seeded — classes, subjects, admin account populated
-2. 5 sample papers inserted with placeholder PDFs
-3. Admin papers table — PDF and YouTube columns upgraded to YES / NO badges
-4. Paper detail page — friendly empty-state added when both PDF and YouTube missing
 
 ====================================================
 
@@ -134,7 +158,7 @@ NEXT TASKS (Phase 4 — Deployment)
 1. Connect Supabase PostgreSQL (swap DATABASE_URL)
 2. Connect Supabase Storage for PDF uploads (update storage.py)
 3. Build frontend: npm run build
-4. Deploy backend to Railway (or serve static build from FastAPI)
+4. Deploy backend to Railway
 5. Deploy frontend to Vercel OR serve from FastAPI StaticFiles
 6. Lock CORS to production domain
 7. Change admin password before going live

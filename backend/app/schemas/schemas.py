@@ -39,6 +39,7 @@ class PaperOut(BaseModel):
     public_url: Optional[str]
     youtube_url: Optional[str]
     is_visible: bool
+    download_count: int = 0
     created_at: datetime
     subject_id: int
 
