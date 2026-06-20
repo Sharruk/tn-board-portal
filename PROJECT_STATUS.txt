@@ -6,7 +6,7 @@ Version:
 v1.0 MVP
 
 Current Phase:
-PHASE 3.6 COMPLETE — Student Experience Improvements
+PHASE 3.7 COMPLETE — Search & Content Management Improvements
 
 Last Updated:
 2026-06-20
@@ -19,6 +19,7 @@ Phase 2 — React Public Frontend:       [x] COMPLETE
 Phase 3 — Admin Panel:                 [x] COMPLETE
 Phase 3.5 — Content Validation:        [x] COMPLETE
 Phase 3.6 — Student Experience:        [x] COMPLETE
+Phase 3.7 — Search & Content Mgmt:    [x] COMPLETE
 Phase 4 — Deployment:                  [ ] PENDING (awaiting approval)
 
 ====================================================
@@ -26,9 +27,10 @@ Phase 4 — Deployment:                  [ ] PENDING (awaiting approval)
 WORKFLOW CONFIGURATION
 
 Name: "FastAPI Backend"
-Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000
 Port: 8000 (console)
 Status: Running
+Note: No --reload flag (reloader subprocess caused health-check timeout)
 
 Name: "Start application"
 Command: cd frontend && npm run dev
@@ -49,8 +51,8 @@ Tables:
 * papers        — 5 rows   (sample content from Phase 3.5)
 * admins        — 1 row    (admin / admin123)
 
-Schema change (Phase 3.6):
-* papers.download_count  INTEGER DEFAULT 0 NOT NULL  ← ADDED
+Schema changes applied:
+* papers.download_count  INTEGER DEFAULT 0 NOT NULL  ← Phase 3.6
 
 ====================================================
 
@@ -62,15 +64,16 @@ GET    /api/v1/classes/{id}/subjects    working
 GET    /api/v1/subjects/{id}            working
 GET    /api/v1/subjects/{id}/papers     working
 GET    /api/v1/papers/recent            working
-GET    /api/v1/papers/{id}             working
-POST   /api/v1/papers/{id}/download    working  ← NEW Phase 3.6
+GET    /api/v1/papers/{id}              working
+POST   /api/v1/papers/{id}/download     working  ← Phase 3.6
 GET    /api/v1/exam-types               working
-GET    /api/v1/search                   working
+GET    /api/v1/search                   working  ← Phase 3.7 (aliases + class name)
 POST   /api/v1/auth/login               working
 GET    /api/v1/admin/papers             working (JWT)
 POST   /api/v1/admin/papers             working (JWT + multipart)
 PUT    /api/v1/admin/papers/{id}        working (JWT)
 DELETE /api/v1/admin/papers/{id}        working (JWT, removes file)
+GET    /api/v1/admin/search-analytics   working (JWT)  ← Phase 3.7
 
 ====================================================
 
@@ -81,57 +84,83 @@ Public:
   /class/:id        Class page — subject list
   /subject/:id      Subject page — exam type cards
   /papers           Paper list with filtering
-  /paper/:id        Paper detail (Phase 3.6 improved — see below)
-  /search           Search with filters
+  /paper/:id        Paper detail — view/download/share/related papers
+  /search           Search with filters + suggestion chips  ← Phase 3.7
   /*                404 page
 
 Admin:
   /admin/login      Login form (JWT)
-  /admin/dashboard  Stats + recent papers (protected)
-  /admin/papers     Upload / edit / delete (protected) — YES/NO badges
+  /admin/dashboard  Stats + recent papers + Popular Searches  ← Phase 3.7
+  /admin/papers     Upload / edit / delete — per-field validation + toasts  ← Phase 3.7
   /admin            Redirects to /admin/dashboard
 
 ====================================================
 
-PHASE 3.6 CHANGES — Student Experience
+PHASE 3.7 CHANGES — Search & Content Management
 
-1. View Paper button
-   When public_url exists, prominent blue "View Paper" button opens
-   PDF in a new browser tab (target="_blank" rel="noopener noreferrer").
-   Separate from Download button so students can preview before saving.
+1. Search Aliases (backend: app/api/papers.py)
+   Added subject alias expansion before database query:
+     maths / math     → mathematics
+     phy              → physics
+     chem             → chemistry
+     bio              → biology
+     sci              → science
+     eng              → english
+     eco              → economics
+     acc              → accountancy
+     hist             → history
+     geo              → geography
+     cs / comp        → computer science
+     comm             → commerce
+     qly / qtly       → quarterly
+     half / hy        → half yearly
+   Multi-word queries also expand each word individually.
 
-2. Download button (improved)
-   Now uses HTML download attribute for direct save.
-   On click: fires POST /api/v1/papers/{id}/download to increment counter.
-   Shows "Download Question Paper" or "Download Answer Key" by type.
+2. Class Name Matching (backend: app/api/papers.py)
+   Search now OR-filters on Class.name in addition to
+   Paper.title, Paper.exam_type, Subject.name.
+   Enables queries like "class 10" to work naturally.
 
-3. Share button
-   Uses Web Share API when browser supports it (mobile-native share sheet).
-   Fallback: copies current page URL to clipboard.
-   Success toast appears at bottom of screen for 2.8 seconds.
+3. Search Analytics (backend: app/services/analytics.py)
+   In-memory tracking using collections.deque + defaultdict.
+   Stores: last 20 search events (term, result_count, timestamp)
+   Aggregates: per-term search count (resets on backend restart by design).
+   New endpoint: GET /api/v1/admin/search-analytics (JWT-protected).
 
-4. Download counter
-   Backend: papers.download_count column added (migration applied).
-   Endpoint: POST /api/v1/papers/{id}/download increments and returns paper.
-   Frontend: count displayed below action buttons as "N downloads".
-   Counter updates optimistically in UI without page reload.
+4. Dashboard: Popular Searches card (frontend: DashboardPage.jsx)
+   Two-column layout: Recent Papers (2/3 width) + Popular Searches (1/3).
+   Shows top 10 search terms with counts (e.g. "mathematics  3×").
+   Empty state when no searches recorded yet.
 
-5. Related papers section
-   Now shows up to 4 papers from the same subject (was 3, same exam type).
-   Header reads "More from [Subject Name]" with "View all →" link.
-   Responsive grid: 1 col mobile → 2 col tablet → 4 col desktop.
-   Reuses existing PaperCard component.
+5. Admin Upload: Per-field validation (frontend: PapersPage.jsx)
+   Replaced single formError with formErrors object (per field).
+   Inline error messages below each required field with red border highlight.
+   Validates: classId, subjectId, examType, title before submit.
 
-6. Toast notification
-   Animated pill toast at bottom-center of screen.
-   Auto-dismisses after 2.8 seconds.
-   Used for Share success and clipboard copy feedback.
+6. Admin Upload: Progress bar (frontend: PapersPage.jsx + services/admin.js)
+   uploadPaper() now accepts onProgress callback.
+   Uses axios onUploadProgress to track percent uploaded.
+   Blue progress bar shown inside upload modal during upload.
 
-7. Layout improvements
-   Action buttons: full-width on mobile, inline row on desktop.
-   Consistent spacing (p-6 mobile, p-8 desktop).
-   Share icon-only on mobile (saves space), icon + label on desktop.
-   Download count shown as subtle line below buttons.
+7. Admin Toasts (frontend: PapersPage.jsx)
+   Toast component (auto-dismiss 4s) shown on:
+     Upload success — "Paper uploaded successfully!"
+     Edit success  — "Paper updated successfully!"
+     Delete success — "Paper deleted."
+     Delete error  — error message from API
+
+8. YouTube Thumbnail Preview (frontend: PapersPage.jsx)
+   Both Upload and Edit modals show a live YouTube thumbnail
+   after a valid YouTube URL is entered.
+   Uses: https://img.youtube.com/vi/{VIDEO_ID}/mqdefault.jpg
+   Graceful fallback: hides image if thumbnail fails to load.
+
+9. Empty Search Suggestions (frontend: SearchPage.jsx)
+   Clickable suggestion chips shown in two states:
+     a) Initial state (no query typed yet)
+     b) No-results state (query returned 0 papers)
+   Chips: Mathematics, Physics, Chemistry, Biology, Science,
+          Annual Exam, Quarterly Exam, Half Yearly Exam, Answer Key
 
 ====================================================
 
@@ -155,14 +184,12 @@ SAMPLE CONTENT (Phase 3.5)
 
 NEXT TASKS (Phase 4 — Deployment)
 
-1. Connect Supabase PostgreSQL (swap DATABASE_URL)
-2. Connect Supabase Storage for PDF uploads (update storage.py)
-3. Build frontend: npm run build
-4. Deploy backend to Railway
-5. Deploy frontend to Vercel OR serve from FastAPI StaticFiles
-6. Lock CORS to production domain
-7. Change admin password before going live
-8. Replace placeholder PDFs with real exam papers
-9. Replace test YouTube URLs with real channel links
+1. Connect Supabase Storage for PDF uploads (update storage.py)
+2. Build frontend: npm run build
+3. Deploy to production (Replit Deployments)
+4. Lock CORS to production domain
+5. Change admin password before going live
+6. Replace placeholder PDFs with real exam papers
+7. Replace test YouTube URLs with real channel links
 
 ====================================================

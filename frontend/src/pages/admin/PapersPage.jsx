@@ -16,6 +16,38 @@ const EMPTY_FORM = {
   title: '', paperType: 'question', youtubeUrl: '', file: null,
 }
 
+function extractYouTubeId(url) {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v')
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('?')[0]
+  } catch {
+    const m = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+    return m ? m[1] : null
+  }
+  return null
+}
+
+function Toast({ message, type, onDismiss }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4000)
+    return () => clearTimeout(t)
+  }, [onDismiss])
+
+  const colors = type === 'success'
+    ? 'bg-emerald-600 text-white'
+    : 'bg-red-600 text-white'
+
+  return (
+    <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl ${colors} max-w-sm`}>
+      <span className="text-lg">{type === 'success' ? '✅' : '❌'}</span>
+      <p className="text-sm font-medium flex-1">{message}</p>
+      <button onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100 text-lg leading-none">×</button>
+    </div>
+  )
+}
+
 function Badge({ type }) {
   return type === 'question'
     ? <span className="badge bg-blue-100 text-blue-700">Q Paper</span>
@@ -43,19 +75,21 @@ function Modal({ title, onClose, children }) {
   )
 }
 
-function FormField({ label, required, children, hint }) {
+function FormField({ label, required, children, hint, error }) {
   return (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-1.5">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       {children}
-      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+      {hint && !error && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+      {error && <p className="mt-1 text-xs text-red-500 font-medium">{error}</p>}
     </div>
   )
 }
 
 const inputCls = "w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition bg-white"
+const inputErrCls = "w-full px-3 py-2.5 border border-red-300 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 transition bg-white"
 
 export default function PapersPage() {
   const [papers, setPapers] = useState([])
@@ -71,7 +105,8 @@ export default function PapersPage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [formSubjects, setFormSubjects] = useState([])
   const [formLoading, setFormLoading] = useState(false)
-  const [formError, setFormError] = useState(null)
+  const [formErrors, setFormErrors] = useState({})
+  const [uploadProgress, setUploadProgress] = useState(null)
 
   const [editForm, setEditForm] = useState({ youtubeUrl: '', isVisible: true })
   const [editLoading, setEditLoading] = useState(false)
@@ -79,6 +114,10 @@ export default function PapersPage() {
 
   const [filterClass, setFilterClass] = useState('')
   const [filterType, setFilterType] = useState('')
+
+  const [toast, setToast] = useState(null)
+
+  const showToast = (message, type = 'success') => setToast({ message, type })
 
   const buildSubjectMap = useCallback((cache) => {
     const map = {}
@@ -130,16 +169,28 @@ export default function PapersPage() {
     const { name, value, files } = e.target
     if (name === 'file') setForm(f => ({ ...f, file: files[0] || null }))
     else setForm(f => ({ ...f, [name]: value }))
+    if (formErrors[name]) setFormErrors(fe => ({ ...fe, [name]: null }))
+  }
+
+  const validateForm = () => {
+    const errors = {}
+    if (!form.classId) errors.classId = 'Please select a class'
+    if (!form.subjectId) errors.subjectId = 'Please select a subject'
+    if (!form.examType) errors.examType = 'Please select an exam type'
+    if (!form.title.trim()) errors.title = 'Title is required'
+    return errors
   }
 
   const handleUpload = async (e) => {
     e.preventDefault()
-    if (!form.subjectId || !form.examType || !form.title || !form.year || !form.paperType) {
-      setFormError('Please fill in all required fields.')
+    const errors = validateForm()
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors)
       return
     }
     setFormLoading(true)
-    setFormError(null)
+    setFormErrors({})
+    setUploadProgress(0)
     try {
       const fd = new FormData()
       fd.append('subject_id', form.subjectId)
@@ -149,13 +200,17 @@ export default function PapersPage() {
       fd.append('paper_type', form.paperType)
       if (form.youtubeUrl) fd.append('youtube_url', form.youtubeUrl)
       if (form.file) fd.append('file', form.file)
-      await uploadPaper(fd)
+      await uploadPaper(fd, (pct) => setUploadProgress(pct))
       setShowUpload(false)
       setForm(EMPTY_FORM)
       setFormSubjects([])
+      setUploadProgress(null)
       load()
+      showToast('Paper uploaded successfully!')
     } catch (err) {
-      setFormError(err.response?.data?.detail || 'Upload failed. Please try again.')
+      const msg = err.response?.data?.detail || 'Upload failed. Please try again.'
+      setFormErrors({ _general: msg })
+      setUploadProgress(null)
     } finally {
       setFormLoading(false)
     }
@@ -167,8 +222,9 @@ export default function PapersPage() {
       await deletePaper(deleteId)
       setDeleteId(null)
       load()
+      showToast('Paper deleted.')
     } catch (err) {
-      alert(err.response?.data?.detail || 'Delete failed')
+      showToast(err.response?.data?.detail || 'Delete failed', 'error')
     }
   }
 
@@ -189,6 +245,7 @@ export default function PapersPage() {
       })
       setEditPaper(null)
       load()
+      showToast('Paper updated successfully!')
     } catch (err) {
       setEditError(err.response?.data?.detail || 'Update failed')
     } finally {
@@ -196,8 +253,14 @@ export default function PapersPage() {
     }
   }
 
+  const ytIdUpload = extractYouTubeId(form.youtubeUrl)
+  const ytIdEdit = extractYouTubeId(editForm.youtubeUrl)
+
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
+      {/* Toast */}
+      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
@@ -207,7 +270,7 @@ export default function PapersPage() {
           </p>
         </div>
         <button
-          onClick={() => { setShowUpload(true); setFormError(null); setForm(EMPTY_FORM); setFormSubjects([]) }}
+          onClick={() => { setShowUpload(true); setFormErrors({}); setForm(EMPTY_FORM); setFormSubjects([]) }}
           className="btn-primary"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -329,18 +392,26 @@ export default function PapersPage() {
 
       {/* ── Upload Modal ── */}
       {showUpload && (
-        <Modal title="Upload Paper" onClose={() => setShowUpload(false)}>
+        <Modal title="Upload Paper" onClose={() => !formLoading && setShowUpload(false)}>
           <form onSubmit={handleUpload} className="space-y-4">
 
             <div className="grid grid-cols-2 gap-4">
-              <FormField label="Class" required>
-                <select name="classId" value={form.classId} onChange={e => handleFormClassChange(e.target.value)} className={inputCls} required>
+              <FormField label="Class" required error={formErrors.classId}>
+                <select
+                  name="classId" value={form.classId}
+                  onChange={e => handleFormClassChange(e.target.value)}
+                  className={formErrors.classId ? inputErrCls : inputCls}
+                >
                   <option value="">Select class…</option>
                   {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </FormField>
-              <FormField label="Subject" required>
-                <select name="subjectId" value={form.subjectId} onChange={handleFormChange} className={inputCls} required disabled={!form.classId}>
+              <FormField label="Subject" required error={formErrors.subjectId}>
+                <select
+                  name="subjectId" value={form.subjectId} onChange={handleFormChange}
+                  className={formErrors.subjectId ? inputErrCls : inputCls}
+                  disabled={!form.classId}
+                >
                   <option value="">Select subject…</option>
                   {formSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
@@ -348,21 +419,28 @@ export default function PapersPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <FormField label="Exam Type" required>
-                <select name="examType" value={form.examType} onChange={handleFormChange} className={inputCls} required>
+              <FormField label="Exam Type" required error={formErrors.examType}>
+                <select
+                  name="examType" value={form.examType} onChange={handleFormChange}
+                  className={formErrors.examType ? inputErrCls : inputCls}
+                >
                   <option value="">Select type…</option>
                   {EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </FormField>
               <FormField label="Year" required>
-                <select name="year" value={form.year} onChange={handleFormChange} className={inputCls} required>
+                <select name="year" value={form.year} onChange={handleFormChange} className={inputCls}>
                   {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </FormField>
             </div>
 
-            <FormField label="Title" required hint="e.g. Class 10 Maths Annual Exam 2024">
-              <input name="title" value={form.title} onChange={handleFormChange} className={inputCls} placeholder="Paper title…" required />
+            <FormField label="Title" required hint="e.g. Class 10 Maths Annual Exam 2024" error={formErrors.title}>
+              <input
+                name="title" value={form.title} onChange={handleFormChange}
+                className={formErrors.title ? inputErrCls : inputCls}
+                placeholder="Paper title…"
+              />
             </FormField>
 
             <FormField label="Paper Type" required>
@@ -380,23 +458,50 @@ export default function PapersPage() {
 
             <FormField label="YouTube URL" hint="Optional — paste a YouTube link for the explanation video">
               <input name="youtubeUrl" value={form.youtubeUrl} onChange={handleFormChange} className={inputCls} placeholder="https://youtube.com/watch?v=…" />
+              {ytIdUpload && (
+                <div className="mt-2 rounded-xl overflow-hidden border border-gray-200">
+                  <img
+                    src={`https://img.youtube.com/vi/${ytIdUpload}/mqdefault.jpg`}
+                    alt="YouTube thumbnail"
+                    className="w-full h-32 object-cover"
+                    onError={e => { e.currentTarget.style.display = 'none' }}
+                  />
+                  <p className="px-3 py-1.5 text-xs text-gray-500 bg-gray-50">▶ Video preview</p>
+                </div>
+              )}
             </FormField>
 
-            <FormField label="PDF File" hint="Optional — upload a PDF file. Students can download it.">
+            <FormField label="PDF File" hint="Optional — upload a PDF. Students can download it.">
               <label className={`block cursor-pointer ${inputCls} py-3 text-center ${form.file ? 'border-blue-400 bg-blue-50' : 'border-dashed'}`}>
                 <input name="file" type="file" accept=".pdf,.doc,.docx" onChange={handleFormChange} className="sr-only" />
                 {form.file
-                  ? <span className="text-blue-700 font-medium">📄 {form.file.name}</span>
+                  ? <span className="text-blue-700 font-medium">📄 {form.file.name} <span className="text-blue-400 text-xs">({(form.file.size / 1024).toFixed(0)} KB)</span></span>
                   : <span className="text-gray-400">Click to choose file (PDF, DOC)</span>}
               </label>
             </FormField>
 
-            {formError && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{formError}</div>
+            {/* Upload Progress */}
+            {uploadProgress !== null && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-blue-600">Uploading…</span>
+                  <span className="text-xs text-blue-600">{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-200"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {formErrors._general && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{formErrors._general}</div>
             )}
 
             <div className="flex gap-3 pt-2">
-              <button type="button" onClick={() => setShowUpload(false)} className="btn-secondary flex-1 justify-center">Cancel</button>
+              <button type="button" onClick={() => setShowUpload(false)} disabled={formLoading} className="btn-secondary flex-1 justify-center">Cancel</button>
               <button type="submit" disabled={formLoading} className="btn-primary flex-1 justify-center">
                 {formLoading ? (
                   <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Uploading…</>
@@ -422,12 +527,23 @@ export default function PapersPage() {
                 className={inputCls}
                 placeholder="https://youtube.com/watch?v=…"
               />
+              {ytIdEdit && (
+                <div className="mt-2 rounded-xl overflow-hidden border border-gray-200">
+                  <img
+                    src={`https://img.youtube.com/vi/${ytIdEdit}/mqdefault.jpg`}
+                    alt="YouTube thumbnail"
+                    className="w-full h-32 object-cover"
+                    onError={e => { e.currentTarget.style.display = 'none' }}
+                  />
+                  <p className="px-3 py-1.5 text-xs text-gray-500 bg-gray-50">▶ Video preview</p>
+                </div>
+              )}
             </FormField>
             <FormField label="Visibility">
               <label className="flex items-center gap-3 cursor-pointer">
                 <div
                   onClick={() => setEditForm(f => ({ ...f, isVisible: !f.isVisible }))}
-                  className={`w-11 h-6 rounded-full transition-colors relative ${editForm.isVisible ? 'bg-blue-600' : 'bg-gray-300'}`}
+                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${editForm.isVisible ? 'bg-blue-600' : 'bg-gray-300'}`}
                 >
                   <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${editForm.isVisible ? 'translate-x-5' : ''}`} />
                 </div>

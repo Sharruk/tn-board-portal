@@ -29,13 +29,20 @@ export const adminLogin = (username, password) =>
 
 export const getAdminPapers = () => adminApi.get('/admin/papers')
 
-export const uploadPaper = (formData) =>
+export const uploadPaper = (formData, onProgress) =>
   adminApi.post('/admin/papers', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (evt) => {
+      if (onProgress && evt.total) {
+        onProgress(Math.round((evt.loaded / evt.total) * 100))
+      }
+    },
   })
 
 export const updatePaper = (id, data) => adminApi.put(`/admin/papers/${id}`, data)
 
 export const deletePaper = (id) => adminApi.delete(`/admin/papers/${id}`)
+
+export const getSearchAnalytics = () => adminApi.get('/admin/search-analytics')
 
 export default adminApi

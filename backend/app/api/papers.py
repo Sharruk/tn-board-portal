@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, func
 from typing import List, Optional
 from app.database.database import get_db
 from app.models.models import Paper, Subject, Class
 from app.schemas.schemas import PaperOut, PaperDetail, SubjectOut, SearchResult, SearchResponse
+from app.services.analytics import track_search
 
 router = APIRouter(tags=["Papers"])
 
@@ -13,6 +15,43 @@ EXAM_TYPES = [
     "Annual Exam", "Public Exam",
     "Practical Exam", "Model Exam",
 ]
+
+SUBJECT_ALIASES = {
+    "maths": "mathematics",
+    "math": "mathematics",
+    "phy": "physics",
+    "chem": "chemistry",
+    "bio": "biology",
+    "sci": "science",
+    "eng": "english",
+    "eco": "economics",
+    "acc": "accountancy",
+    "hist": "history",
+    "geo": "geography",
+    "cs": "computer science",
+    "comp": "computer science",
+    "comm": "commerce",
+    "qly": "quarterly",
+    "qtly": "quarterly",
+    "half": "half yearly",
+    "hy": "half yearly",
+    "annual": "annual exam",
+    "pub": "public exam",
+}
+
+
+def _expand_query(q: str) -> List[str]:
+    """Return a list of terms to OR-match (original + alias expansion)."""
+    normalized = q.strip().lower()
+    terms = [normalized]
+    if normalized in SUBJECT_ALIASES:
+        terms.append(SUBJECT_ALIASES[normalized])
+    # Also try each word individually for multi-word queries
+    words = normalized.split()
+    for word in words:
+        if word in SUBJECT_ALIASES and SUBJECT_ALIASES[word] not in terms:
+            terms.append(SUBJECT_ALIASES[word])
+    return list(dict.fromkeys(terms))  # deduplicate, preserve order
 
 
 @router.get("/exam-types")
@@ -105,15 +144,19 @@ def search_papers(
         .filter(Paper.is_visible == True)
     )
 
-    term = f"%{q.lower()}%"
-    from sqlalchemy import or_, func
-    query = query.filter(
-        or_(
-            func.lower(Paper.title).like(term),
-            func.lower(Paper.exam_type).like(term),
-            func.lower(Subject.name).like(term),
-        )
-    )
+    # Expand query through aliases and build OR conditions
+    terms = _expand_query(q)
+    conditions = []
+    for t in terms:
+        like = f"%{t}%"
+        conditions.extend([
+            func.lower(Paper.title).like(like),
+            func.lower(Paper.exam_type).like(like),
+            func.lower(Subject.name).like(like),
+            func.lower(Class.name).like(like),
+        ])
+    query = query.filter(or_(*conditions))
+
     if class_id:
         query = query.filter(Subject.class_id == class_id)
     if exam_type:
@@ -134,4 +177,11 @@ def search_papers(
         )
         for p in papers
     ]
+
+    # Track analytics (non-blocking)
+    try:
+        track_search(q, len(results))
+    except Exception:
+        pass
+
     return SearchResponse(query=q, total=len(results), results=results)

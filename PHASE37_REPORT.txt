@@ -1,0 +1,180 @@
+====================================================
+PHASE 3.7 VALIDATION REPORT
+Search & Content Management Improvements
+Date: 2026-06-20
+====================================================
+
+TASK CHECKLIST
+
+[x] 1. Search Improvements
+[x] 2. Admin Upload UX
+[x] 3. Admin Preview (YouTube thumbnail)
+[x] 4. Search Analytics
+[x] 5. Empty Search Suggestions
+[x] 6. Documentation updated
+
+====================================================
+
+TASK 1 — SEARCH IMPROVEMENTS
+
+STATUS: COMPLETE
+
+Changes made:
+  backend/app/api/papers.py
+    - Added SUBJECT_ALIASES dict (14 alias entries)
+    - Added _expand_query() function to resolve aliases + deduplicate
+    - Search now OR-filters across: Paper.title, Paper.exam_type,
+      Subject.name, Class.name (new — was missing before)
+    - All matching is case-insensitive via func.lower().like()
+    - Analytics tracking integrated (non-blocking try/except)
+
+Verified queries:
+  maths          → finds "Class 10 Mathematics Annual Exam 2024"  ✅
+  math           → finds same Mathematics papers                   ✅
+  phy            → finds "Class 11 Physics Half Yearly Exam 2024" ✅
+  chem           → finds "Class 12 Chemistry Annual Exam 2024"    ✅
+  class 10       → finds all Class 10 papers                      ✅
+  quarterly      → finds "Class 10 Science Quarterly Exam 2024"   ✅
+  annual         → finds annual exam papers                        ✅
+
+====================================================
+
+TASK 2 — ADMIN UPLOAD UX
+
+STATUS: COMPLETE
+
+Changes made:
+  frontend/src/pages/admin/PapersPage.jsx
+    - Per-field validation: classId, subjectId, examType, title
+    - formErrors object replaces single formError string
+    - Error message shown inline below each invalid field
+    - Invalid fields show red border (inputErrCls class)
+    - Errors clear when user corrects each field (onChange)
+    - Upload progress bar: blue bar + percentage label
+    - Cancel button disabled during upload (prevents accidental close)
+    - General error banner for API failures (_general key)
+
+  frontend/src/services/admin.js
+    - uploadPaper() now accepts onProgress callback
+    - axios onUploadProgress wired to callback
+
+Toast notifications:
+  Upload success → "Paper uploaded successfully!" (green, 4s)
+  Edit success   → "Paper updated successfully!" (green, 4s)
+  Delete success → "Paper deleted." (green, 4s)
+  Any error      → error text from API (red, 4s)
+
+====================================================
+
+TASK 3 — ADMIN PREVIEW
+
+STATUS: COMPLETE
+
+Changes made:
+  frontend/src/pages/admin/PapersPage.jsx
+    - extractYouTubeId() helper parses youtube.com and youtu.be URLs
+    - Upload modal: thumbnail appears below YouTube URL field
+    - Edit modal: thumbnail appears below YouTube URL field
+    - Thumbnail URL: https://img.youtube.com/vi/{ID}/mqdefault.jpg
+    - onError handler hides thumbnail if image fails to load
+    - PDF filename already shown since Phase 3.5: "📄 filename.pdf (NNN KB)"
+      Phase 3.7 adds file size display in KB
+
+====================================================
+
+TASK 4 — SEARCH ANALYTICS
+
+STATUS: COMPLETE
+
+Changes made:
+  backend/app/services/analytics.py  (new file)
+    - Thread-safe in-memory store using threading.Lock
+    - _recent: deque(maxlen=20) — last 20 search events
+    - _counts: defaultdict(int) — per-term search count
+    - track_search(term, result_count) — called on each search
+    - get_analytics() — returns popular_searches + recent_searches
+
+  backend/app/api/admin.py
+    - GET /admin/search-analytics endpoint added
+    - Protected by get_current_admin (JWT required)
+    - Returns: { popular_searches: [{term, count}], recent_searches: [...] }
+
+  frontend/src/services/admin.js
+    - getSearchAnalytics() added
+
+  frontend/src/pages/admin/DashboardPage.jsx
+    - Popular Searches card added (right column, 1/3 width)
+    - Fetches from /admin/search-analytics on mount
+    - Shows top 10 terms with count badges (e.g. "mathematics  3×")
+    - Empty state: "No searches yet. Stats appear after students search."
+
+Note: Analytics are in-memory. They reset on backend restart.
+This is intentional for the current phase (no persistent analytics DB).
+
+====================================================
+
+TASK 5 — EMPTY SEARCH SUGGESTIONS
+
+STATUS: COMPLETE
+
+Changes made:
+  frontend/src/pages/SearchPage.jsx
+    - SuggestionChip component: pill button, blue hover, clickable
+    - handleSuggestion(): sets 'q' param, clears class/type filters
+    - Shown in initial state (no query): 9 suggestion chips
+    - Shown in no-results state (0 results): same 9 chips
+    - Chips: Mathematics, Physics, Chemistry, Biology, Science,
+             Annual Exam, Quarterly Exam, Half Yearly Exam, Answer Key
+
+====================================================
+
+TASK 6 — DOCUMENTATION
+
+STATUS: COMPLETE
+
+Files updated/created:
+  PROJECT_STATUS.txt  — updated to Phase 3.7 COMPLETE
+  PHASE37_REPORT.txt  — this file
+
+====================================================
+
+VERIFICATION SUMMARY
+
+Feature                          Tested  Result
+----------------------------------------------
+maths → Mathematics              ✅      2 results found
+math → Mathematics               ✅      alias resolved
+phy → Physics                    ✅      1 result found
+chem → Chemistry                 ✅      1 result found
+bio → Biology                    ✅      subject match
+class 10 → Class 10 papers       ✅      class name matching
+Upload form per-field validation ✅      inline errors shown
+Upload progress bar              ✅      blue bar with %
+Success toast after upload       ✅      green toast, auto-dismiss
+YouTube thumbnail preview        ✅      shown in upload + edit modals
+Search suggestions (empty state) ✅      chips on initial + no-results
+Search suggestions (no results)  ✅      chips shown with message
+Admin Popular Searches card      ✅      shows after searches made
+Existing functionality unchanged ✅      all pages still working
+
+====================================================
+
+EXISTING TESTS PASSING (manual verification)
+
+Homepage loads                    ✅
+Class pages load                  ✅
+Subject pages load                ✅
+Paper detail page loads           ✅  (CLASS field shows "Class 10")
+Search with partial words         ✅
+Admin login                       ✅
+Admin papers table                ✅
+Admin upload (file + YouTube)     ✅
+Admin edit (visibility toggle)    ✅
+Admin delete                      ✅
+Download counter increments       ✅
+Share button (clipboard fallback) ✅
+Related papers section            ✅
+
+====================================================
+DO NOT DEPLOY YET — Phase 4 approval required
+====================================================

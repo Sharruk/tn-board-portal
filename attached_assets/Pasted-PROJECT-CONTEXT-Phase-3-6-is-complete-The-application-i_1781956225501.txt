@@ -1,0 +1,137 @@
+PROJECT CONTEXT
+
+Phase 3.6 is complete.
+
+The application is functional, but search quality and admin usability need improvement before deployment.
+
+Create Phase 3.7 — Search & Content Management Improvements.
+
+TASKS
+
+1. Improve Search
+
+Current problem:
+Searching for "maths" does not find "Mathematics".
+
+Implement:
+
+- Case-insensitive search
+- Partial matching
+- Subject alias support
+
+Examples:
+
+maths -> Mathematics
+math -> Mathematics
+phy -> Physics
+chem -> Chemistry
+bio -> Biology
+
+Search should match:
+
+title
+subject name
+class name
+exam type
+
+Examples:
+
+"maths"
+"class 10 maths"
+"quarterly maths"
+"physics"
+
+should all return relevant papers.
+
+------------------------------------------------
+
+2. Admin Upload UX
+
+Improve admin upload form.
+
+Add:
+
+- Required field indicators
+- Better validation messages
+- Upload progress indicator
+- Success notification
+- Error notification
+
+------------------------------------------------
+
+3. Admin Preview
+
+Before saving:
+
+Show uploaded PDF filename.
+
+Show YouTube thumbnail preview if YouTube URL exists.
+
+------------------------------------------------
+
+4. Search Analytics
+
+Track:
+
+- search term
+- result count
+
+Store last 20 searches in memory.
+
+Admin dashboard:
+
+Add simple card:
+
+Popular Searches
+
+Show:
+term | count
+
+------------------------------------------------
+
+5. Empty Search Suggestions
+
+When no papers found:
+
+Show suggestions:
+
+Try:
+- Mathematics
+- Science
+- Physics
+- Annual Exam
+- Quarterly Exam
+
+instead of a blank state.
+
+------------------------------------------------
+
+6. Update Documentation
+
+Update:
+
+PROJECT_STATUS.txt
+
+Create:
+
+PHASE37_REPORT.txt
+
+Document:
+- Search improvements
+- Admin upload improvements
+- Testing results
+
+------------------------------------------------
+
+VERIFICATION
+
+Confirm:
+
+- maths finds Mathematics
+- partial words work
+- upload form validation works
+- YouTube preview works
+- search analytics works
+- all existing functionality remains unchanged
+
+Do NOT start deployment yet.

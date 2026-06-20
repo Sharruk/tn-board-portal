@@ -6,6 +6,7 @@ from app.models.models import Paper, Subject
 from app.schemas.schemas import PaperOut, PaperUpdate
 from app.services.auth import get_current_admin
 from app.services.storage import save_file_locally, delete_file_locally
+from app.services.analytics import get_analytics
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -93,3 +94,8 @@ def delete_paper(
 
     db.delete(paper)
     db.commit()
+
+
+@router.get("/search-analytics")
+def search_analytics(_=Depends(get_current_admin)):
+    return get_analytics()
