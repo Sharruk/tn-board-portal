@@ -14,7 +14,7 @@ JWT_EXPIRE_MINUTES = 60
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-ALLOWED_EXTENSIONS = {"pdf", "doc", "docx"}
+ALLOWED_EXTENSIONS = {"pdf"}
 MAX_FILE_SIZE_MB = 50
 
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*").split(",")

@@ -4,7 +4,7 @@ import Breadcrumb from '../components/Breadcrumb'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ErrorMessage from '../components/ErrorMessage'
 import PaperCard from '../components/PaperCard'
-import { getPaper, recordDownload } from '../services/papers'
+import { getPaper, getPaperBySlug, recordDownload } from '../services/papers'
 import { getPapersForSubject } from '../services/subjects'
 
 function YoutubeEmbed({ url }) {
@@ -67,7 +67,11 @@ export default function PaperDetailPage() {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    getPaper(id)
+    // Support both numeric IDs ("/paper/5") and slug URLs ("/paper/class-10-maths-2024-5")
+    const isNumeric = /^\d+$/.test(id)
+    const fetchFn = isNumeric ? getPaper(id) : getPaperBySlug(id)
+
+    fetchFn
       .then(res => {
         const p = res.data
         setPaper(p)
@@ -101,7 +105,7 @@ export default function PaperDetailPage() {
         await navigator.share(shareData)
         showToast('Shared successfully!')
       } catch {
-        // user cancelled — no toast needed
+        // user cancelled
       }
     } else {
       try {
@@ -208,7 +212,6 @@ export default function PaperDetailPage() {
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
-            {/* Share (no PDF) */}
             <button
               onClick={handleShare}
               className="inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-600 font-semibold px-5 py-3 rounded-xl border border-gray-200 transition-colors text-base"
@@ -239,7 +242,7 @@ export default function PaperDetailPage() {
           </div>
         )}
 
-        {/* Full empty state — no PDF and no YouTube */}
+        {/* Full empty state */}
         {!paper.public_url && !paper.youtube_url && (
           <div className="bg-gray-50 border border-gray-200 rounded-2xl px-6 py-10 mb-6 flex flex-col items-center text-center">
             <span className="text-5xl mb-4">📭</span>

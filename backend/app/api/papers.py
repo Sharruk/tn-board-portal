@@ -46,12 +46,31 @@ def _expand_query(q: str) -> List[str]:
     terms = [normalized]
     if normalized in SUBJECT_ALIASES:
         terms.append(SUBJECT_ALIASES[normalized])
-    # Also try each word individually for multi-word queries
-    words = normalized.split()
-    for word in words:
+    for word in normalized.split():
         if word in SUBJECT_ALIASES and SUBJECT_ALIASES[word] not in terms:
             terms.append(SUBJECT_ALIASES[word])
-    return list(dict.fromkeys(terms))  # deduplicate, preserve order
+    return list(dict.fromkeys(terms))
+
+
+def _build_subject_out(s: Subject) -> SubjectOut:
+    return SubjectOut(
+        id=s.id, name=s.name, slug=s.slug,
+        is_practical=s.is_practical,
+        class_id=s.class_.id,
+        class_name=s.class_.name,
+    )
+
+
+def _build_paper_detail(paper: Paper) -> PaperDetail:
+    subject_out = _build_subject_out(paper.subject) if paper.subject else None
+    return PaperDetail(
+        id=paper.id, title=paper.title, exam_type=paper.exam_type,
+        year=paper.year, paper_type=paper.paper_type,
+        public_url=paper.public_url, youtube_url=paper.youtube_url,
+        is_visible=paper.is_visible, download_count=paper.download_count,
+        created_at=paper.created_at, subject_id=paper.subject_id,
+        subject=subject_out,
+    )
 
 
 @router.get("/exam-types")
@@ -60,7 +79,7 @@ def get_exam_types():
 
 
 @router.get("/papers/recent", response_model=List[PaperOut])
-def get_recent_papers(limit: int = 6, db: Session = Depends(get_db)):
+def get_recent_papers(limit: int = 10, db: Session = Depends(get_db)):
     return (
         db.query(Paper)
         .filter(Paper.is_visible == True)
@@ -68,6 +87,30 @@ def get_recent_papers(limit: int = 6, db: Session = Depends(get_db)):
         .limit(limit)
         .all()
     )
+
+
+@router.get("/papers/popular", response_model=List[PaperOut])
+def get_popular_papers(limit: int = 10, db: Session = Depends(get_db)):
+    return (
+        db.query(Paper)
+        .filter(Paper.is_visible == True)
+        .order_by(Paper.download_count.desc(), Paper.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+@router.get("/papers/by-slug/{slug}", response_model=PaperDetail)
+def get_paper_by_slug(slug: str, db: Session = Depends(get_db)):
+    """Look up a paper by its SEO slug (e.g. class-10-maths-annual-2024-5)."""
+    parts = slug.rsplit('-', 1)
+    if len(parts) != 2 or not parts[1].isdigit():
+        raise HTTPException(status_code=404, detail="Paper not found")
+    paper_id = int(parts[1])
+    paper = db.query(Paper).filter(Paper.id == paper_id, Paper.is_visible == True).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return _build_paper_detail(paper)
 
 
 @router.get("/subjects/{subject_id}/papers", response_model=List[PaperOut])
@@ -98,23 +141,7 @@ def get_paper(paper_id: int, db: Session = Depends(get_db)):
     paper = db.query(Paper).filter(Paper.id == paper_id, Paper.is_visible == True).first()
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-    subject_out = None
-    if paper.subject:
-        s = paper.subject
-        subject_out = SubjectOut(
-            id=s.id, name=s.name, slug=s.slug,
-            is_practical=s.is_practical,
-            class_id=s.class_.id,
-            class_name=s.class_.name,
-        )
-    return PaperDetail(
-        id=paper.id, title=paper.title, exam_type=paper.exam_type,
-        year=paper.year, paper_type=paper.paper_type,
-        public_url=paper.public_url, youtube_url=paper.youtube_url,
-        is_visible=paper.is_visible, download_count=paper.download_count,
-        created_at=paper.created_at, subject_id=paper.subject_id,
-        subject=subject_out,
-    )
+    return _build_paper_detail(paper)
 
 
 @router.post("/papers/{paper_id}/download", response_model=PaperOut)
@@ -144,7 +171,6 @@ def search_papers(
         .filter(Paper.is_visible == True)
     )
 
-    # Expand query through aliases and build OR conditions
     terms = _expand_query(q)
     conditions = []
     for t in terms:
@@ -178,7 +204,6 @@ def search_papers(
         for p in papers
     ]
 
-    # Track analytics (non-blocking)
     try:
         track_search(q, len(results))
     except Exception:

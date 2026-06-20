@@ -6,7 +6,7 @@ Version:
 v1.0 MVP
 
 Current Phase:
-PHASE 3.7 COMPLETE — Search & Content Management Improvements
+PHASE 3.8 COMPLETE — Production Readiness & Content Workflow
 
 Last Updated:
 2026-06-20
@@ -20,6 +20,7 @@ Phase 3 — Admin Panel:                 [x] COMPLETE
 Phase 3.5 — Content Validation:        [x] COMPLETE
 Phase 3.6 — Student Experience:        [x] COMPLETE
 Phase 3.7 — Search & Content Mgmt:    [x] COMPLETE
+Phase 3.8 — Production Readiness:      [x] COMPLETE
 Phase 4 — Deployment:                  [ ] PENDING (awaiting approval)
 
 ====================================================
@@ -30,7 +31,7 @@ Name: "FastAPI Backend"
 Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000
 Port: 8000 (console)
 Status: Running
-Note: No --reload flag (reloader subprocess caused health-check timeout)
+Note: No --reload flag
 
 Name: "Start application"
 Command: cd frontend && npm run dev
@@ -48,119 +49,121 @@ DATABASE STATUS
 Tables:
 * classes       — 4 rows   (Class 9, 10, 11, 12)
 * subjects      — 32 rows  (5 per Class 9/10, 11 per Class 11/12)
-* papers        — 5 rows   (sample content from Phase 3.5)
+* papers        — 6 rows   (sample content)
 * admins        — 1 row    (admin / admin123)
 
 Schema changes applied:
 * papers.download_count  INTEGER DEFAULT 0 NOT NULL  ← Phase 3.6
 
+No new schema changes in Phase 3.8 (slugs computed dynamically).
+
 ====================================================
 
 BACKEND ENDPOINTS (all working)
 
-GET    /api/v1/classes                  working
-GET    /api/v1/classes/{id}             working
-GET    /api/v1/classes/{id}/subjects    working
-GET    /api/v1/subjects/{id}            working
-GET    /api/v1/subjects/{id}/papers     working
-GET    /api/v1/papers/recent            working
-GET    /api/v1/papers/{id}              working
-POST   /api/v1/papers/{id}/download     working  ← Phase 3.6
-GET    /api/v1/exam-types               working
-GET    /api/v1/search                   working  ← Phase 3.7 (aliases + class name)
-POST   /api/v1/auth/login               working
-GET    /api/v1/admin/papers             working (JWT)
-POST   /api/v1/admin/papers             working (JWT + multipart)
-PUT    /api/v1/admin/papers/{id}        working (JWT)
-DELETE /api/v1/admin/papers/{id}        working (JWT, removes file)
-GET    /api/v1/admin/search-analytics   working (JWT)  ← Phase 3.7
+GET    /api/v1/classes                       working
+GET    /api/v1/classes/{id}                  working
+GET    /api/v1/classes/{id}/subjects         working
+GET    /api/v1/subjects/{id}                 working
+GET    /api/v1/subjects/{id}/papers          working
+GET    /api/v1/papers/recent?limit=N         working  (default 10)
+GET    /api/v1/papers/popular?limit=N        working  ← NEW Phase 3.8
+GET    /api/v1/papers/by-slug/{slug}         working  ← NEW Phase 3.8
+GET    /api/v1/papers/{id}                   working
+POST   /api/v1/papers/{id}/download          working
+GET    /api/v1/exam-types                    working
+GET    /api/v1/search                        working
+POST   /api/v1/auth/login                    working
+GET    /api/v1/admin/stats                   working (JWT)  ← NEW Phase 3.8
+GET    /api/v1/admin/papers                  working (JWT)
+POST   /api/v1/admin/papers                  working (JWT + multipart, PDF required)
+PUT    /api/v1/admin/papers/{id}             working (JWT)
+DELETE /api/v1/admin/papers/{id}             working (JWT, removes file)
+GET    /api/v1/admin/search-analytics        working (JWT)
 
 ====================================================
 
 FRONTEND PAGES (all working)
 
 Public:
-  /                 Homepage — class cards + recent papers
-  /class/:id        Class page — subject list
-  /subject/:id      Subject page — exam type cards
-  /papers           Paper list with filtering
-  /paper/:id        Paper detail — view/download/share/related papers
-  /search           Search with filters + suggestion chips  ← Phase 3.7
-  /*                404 page
+  /                            Homepage — classes + recently added + most downloaded
+  /class/:id                   Class page — subject list
+  /subject/:id                 Subject page — exam type cards
+  /papers                      Paper list with filtering
+  /paper/:id                   Paper detail — numeric ID (backward compat)
+  /paper/:slug                 Paper detail — SEO slug URL  ← NEW Phase 3.8
+  /search                      Search with filters + suggestion chips
+  /*                           404 page
 
 Admin:
-  /admin/login      Login form (JWT)
-  /admin/dashboard  Stats + recent papers + Popular Searches  ← Phase 3.7
-  /admin/papers     Upload / edit / delete — per-field validation + toasts  ← Phase 3.7
-  /admin            Redirects to /admin/dashboard
+  /admin/login                 Login form (JWT)
+  /admin/dashboard             7-stat cards + recent papers + popular searches
+  /admin/papers                Upload / edit / delete (PDF required)
+  /admin                       Redirects to /admin/dashboard
 
 ====================================================
 
-PHASE 3.7 CHANGES — Search & Content Management
+SLUG URL FORMAT
 
-1. Search Aliases (backend: app/api/papers.py)
-   Added subject alias expansion before database query:
-     maths / math     → mathematics
-     phy              → physics
-     chem             → chemistry
-     bio              → biology
-     sci              → science
-     eng              → english
-     eco              → economics
-     acc              → accountancy
-     hist             → history
-     geo              → geography
-     cs / comp        → computer science
-     comm             → commerce
-     qly / qtly       → quarterly
-     half / hy        → half yearly
-   Multi-word queries also expand each word individually.
+Pattern: /paper/{slugify(title)}-{id}
 
-2. Class Name Matching (backend: app/api/papers.py)
-   Search now OR-filters on Class.name in addition to
-   Paper.title, Paper.exam_type, Subject.name.
-   Enables queries like "class 10" to work naturally.
+Examples:
+  /paper/class-10-mathematics-annual-exam-2024-1
+  /paper/class-10-science-quarterly-exam-2024-2
+  /paper/class-11-physics-half-yearly-exam-2024-4
 
-3. Search Analytics (backend: app/services/analytics.py)
-   In-memory tracking using collections.deque + defaultdict.
-   Stores: last 20 search events (term, result_count, timestamp)
-   Aggregates: per-term search count (resets on backend restart by design).
-   New endpoint: GET /api/v1/admin/search-analytics (JWT-protected).
+Backend lookup: rsplit('-', 1) extracts ID from end of slug.
+Old numeric routes still work: /paper/1, /paper/2, etc.
+All paper API responses include a computed `slug` field.
 
-4. Dashboard: Popular Searches card (frontend: DashboardPage.jsx)
-   Two-column layout: Recent Papers (2/3 width) + Popular Searches (1/3).
-   Shows top 10 search terms with counts (e.g. "mathematics  3×").
-   Empty state when no searches recorded yet.
+====================================================
 
-5. Admin Upload: Per-field validation (frontend: PapersPage.jsx)
-   Replaced single formError with formErrors object (per field).
-   Inline error messages below each required field with red border highlight.
-   Validates: classId, subjectId, examType, title before submit.
+PHASE 3.8 CHANGES — Production Readiness
 
-6. Admin Upload: Progress bar (frontend: PapersPage.jsx + services/admin.js)
-   uploadPaper() now accepts onProgress callback.
-   Uses axios onUploadProgress to track percent uploaded.
-   Blue progress bar shown inside upload modal during upload.
+1. PDF-Only Platform
+   config.py: ALLOWED_EXTENSIONS = {"pdf"}  (was {"pdf","doc","docx"})
+   storage.py: Error message: "Only PDF files are supported."
+   Frontend: file input uses accept=".pdf"
+   Frontend: client-side check before submit (shows inline error)
+   Backend: PDF required for new uploads (400 if missing)
 
-7. Admin Toasts (frontend: PapersPage.jsx)
-   Toast component (auto-dismiss 4s) shown on:
-     Upload success — "Paper uploaded successfully!"
-     Edit success  — "Paper updated successfully!"
-     Delete success — "Paper deleted."
-     Delete error  — error message from API
+2. Content Quality — Duplicate Detection
+   Before inserting a new paper, admin.py checks for:
+     same title + subject_id + year + exam_type
+   Returns 409 Conflict if duplicate found.
+   Message: "A paper with the same title, subject, year, and exam type already exists."
 
-8. YouTube Thumbnail Preview (frontend: PapersPage.jsx)
-   Both Upload and Edit modals show a live YouTube thumbnail
-   after a valid YouTube URL is entered.
-   Uses: https://img.youtube.com/vi/{VIDEO_ID}/mqdefault.jpg
-   Graceful fallback: hides image if thumbnail fails to load.
+3. Recently Added Papers
+   Homepage: "Recently Added" section shows latest 10 uploads (was 6).
+   Endpoint already existed; limit increased to 10.
 
-9. Empty Search Suggestions (frontend: SearchPage.jsx)
-   Clickable suggestion chips shown in two states:
-     a) Initial state (no query typed yet)
-     b) No-results state (query returned 0 papers)
-   Chips: Mathematics, Physics, Chemistry, Biology, Science,
-          Annual Exam, Quarterly Exam, Half Yearly Exam, Answer Key
+4. Popular Papers
+   NEW endpoint: GET /api/v1/papers/popular?limit=10
+   Sorts by download_count DESC, then created_at DESC.
+   Homepage: "Most Downloaded" section (conditionally shown when papers exist).
+   PaperCard: new `showDownloads` prop shows download count badge.
+
+5. Admin Dashboard — Stats Cards
+   NEW endpoint: GET /api/v1/admin/stats (JWT-protected)
+   Returns: total_papers, total_downloads, total_subjects, total_classes,
+            visible_papers, question_papers, answer_keys
+   Dashboard: 4 primary cards (Papers, Downloads, Subjects, Classes)
+              3 secondary cards (Q Papers, Answer Keys, Visible)
+
+6. SEO Slug URLs
+   slugify() in backend/app/schemas/schemas.py:
+     - lowercases, strips non-alphanumeric, collapses hyphens
+   slug is a @computed_field @property on PaperOut and SearchResult.
+   All paper API responses automatically include slug.
+   NEW endpoint: GET /api/v1/papers/by-slug/{slug}
+     Extracts ID from slug suffix, looks up paper by ID.
+   Frontend: PaperCard links use slug URL if available.
+   Frontend: PaperDetailPage detects numeric vs. slug param (regex check).
+
+7. PDF Preview (PaperDetailPage — already complete from Phase 3.6)
+   View Paper → opens PDF in new tab
+   Download PDF → HTML download attribute + records download count
+   Share → Web Share API / clipboard fallback
 
 ====================================================
 
@@ -172,19 +175,20 @@ URL:      [preview-url]/admin/login
 
 ====================================================
 
-SAMPLE CONTENT (Phase 3.5)
+SAMPLE CONTENT
 
-1. Class 10 Mathematics Annual Exam 2024        — Question Paper + YouTube
-2. Class 10 Science Quarterly Exam 2024         — Question Paper (PDF only)
+1. Class 10 Mathematics Annual Exam 2024        — Q Paper + YouTube
+2. Class 10 Science Quarterly Exam 2024         — Q Paper (PDF only)
 3. Class 10 English Unit Test 1 2024            — Answer Key (PDF only)
-4. Class 11 Physics Half Yearly Exam 2024       — Question Paper + YouTube
+4. Class 11 Physics Half Yearly Exam 2024       — Q Paper + YouTube
 5. Class 12 Chemistry Annual Exam 2024          — Answer Key (PDF only)
+6. Maths Unit Test 1                            — Q Paper (Phase 3.7)
 
 ====================================================
 
 NEXT TASKS (Phase 4 — Deployment)
 
-1. Connect Supabase Storage for PDF uploads (update storage.py)
+1. Connect Supabase / cloud storage for PDF uploads (update storage.py)
 2. Build frontend: npm run build
 3. Deploy to production (Replit Deployments)
 4. Lock CORS to production domain

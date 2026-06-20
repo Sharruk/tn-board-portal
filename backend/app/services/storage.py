@@ -7,7 +7,7 @@ from app.config import UPLOAD_DIR, ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB
 def validate_file(file: UploadFile) -> None:
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"File type not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
 
 async def save_file_locally(file: UploadFile) -> tuple[str, str]:

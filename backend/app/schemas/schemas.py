@@ -1,6 +1,14 @@
+import re
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
+
+
+def _slugify(text: str) -> str:
+    t = text.lower().strip()
+    t = re.sub(r'[^\w\s-]', '', t)
+    t = re.sub(r'[\s_]+', '-', t)
+    return re.sub(r'-+', '-', t).strip('-')
 
 
 # ── Class ─────────────────────────────────────────────────────────────────────
@@ -44,6 +52,11 @@ class PaperOut(BaseModel):
     subject_id: int
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def slug(self) -> str:
+        return f"{_slugify(self.title)}-{self.id}"
 
 
 class PaperDetail(PaperOut):
@@ -93,8 +106,25 @@ class SearchResult(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @computed_field
+    @property
+    def slug(self) -> str:
+        return f"{_slugify(self.title)}-{self.id}"
+
 
 class SearchResponse(BaseModel):
     query: str
     total: int
     results: List[SearchResult]
+
+
+# ── Admin Stats ────────────────────────────────────────────────────────────────
+
+class AdminStats(BaseModel):
+    total_papers: int
+    total_downloads: int
+    total_subjects: int
+    total_classes: int
+    visible_papers: int
+    question_papers: int
+    answer_keys: int

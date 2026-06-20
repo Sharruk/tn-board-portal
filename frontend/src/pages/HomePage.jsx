@@ -5,18 +5,20 @@ import ClassCard from '../components/ClassCard'
 import PaperCard from '../components/PaperCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { getClasses } from '../services/classes'
-import { getRecentPapers } from '../services/papers'
+import { getRecentPapers, getPopularPapers } from '../services/papers'
 
 export default function HomePage() {
   const [classes, setClasses] = useState([])
   const [recentPapers, setRecentPapers] = useState([])
+  const [popularPapers, setPopularPapers] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([getClasses(), getRecentPapers(6)])
-      .then(([clsRes, papersRes]) => {
+    Promise.all([getClasses(), getRecentPapers(10), getPopularPapers(10)])
+      .then(([clsRes, recentRes, popularRes]) => {
         setClasses(clsRes.data)
-        setRecentPapers(papersRes.data)
+        setRecentPapers(recentRes.data)
+        setPopularPapers(popularRes.data)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -75,7 +77,7 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* Recent Papers */}
+      {/* Recently Added Papers */}
       <section className="bg-white border-t border-gray-100">
         <div className="max-w-6xl mx-auto px-4 py-14">
           <div className="flex items-end justify-between mb-8">
@@ -98,11 +100,31 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recentPapers.map(p => <PaperCard key={p.id} paper={p} showSubject />)}
+              {recentPapers.slice(0, 10).map(p => <PaperCard key={p.id} paper={p} showSubject />)}
             </div>
           )}
         </div>
       </section>
+
+      {/* Most Downloaded Papers */}
+      {!loading && popularPapers.length > 0 && (
+        <section className="bg-gray-50 border-t border-gray-100">
+          <div className="max-w-6xl mx-auto px-4 py-14">
+            <div className="flex items-end justify-between mb-8">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Most Downloaded</h2>
+                <p className="text-gray-500 text-sm mt-1">Top papers by number of downloads</p>
+              </div>
+              <Link to="/search" className="text-sm text-blue-600 hover:text-blue-800 font-medium hidden sm:block">
+                Browse all →
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {popularPapers.slice(0, 10).map(p => <PaperCard key={p.id} paper={p} showSubject showDownloads />)}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* How it works */}
       <section className="max-w-5xl mx-auto px-4 py-14">

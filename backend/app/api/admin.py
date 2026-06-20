@@ -1,14 +1,35 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from app.database.database import get_db
-from app.models.models import Paper, Subject
-from app.schemas.schemas import PaperOut, PaperUpdate
+from app.models.models import Paper, Subject, Class
+from app.schemas.schemas import PaperOut, PaperUpdate, AdminStats
 from app.services.auth import get_current_admin
 from app.services.storage import save_file_locally, delete_file_locally
 from app.services.analytics import get_analytics
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+@router.get("/stats", response_model=AdminStats)
+def admin_stats(db: Session = Depends(get_db), _=Depends(get_current_admin)):
+    total_papers = db.query(Paper).count()
+    total_downloads = db.query(func.sum(Paper.download_count)).scalar() or 0
+    total_subjects = db.query(Subject).count()
+    total_classes = db.query(Class).count()
+    visible_papers = db.query(Paper).filter(Paper.is_visible == True).count()
+    question_papers = db.query(Paper).filter(Paper.paper_type == 'question').count()
+    answer_keys = db.query(Paper).filter(Paper.paper_type == 'answer_key').count()
+    return AdminStats(
+        total_papers=total_papers,
+        total_downloads=total_downloads,
+        total_subjects=total_subjects,
+        total_classes=total_classes,
+        visible_papers=visible_papers,
+        question_papers=question_papers,
+        answer_keys=answer_keys,
+    )
 
 
 @router.get("/papers", response_model=List[PaperOut])
@@ -38,11 +59,23 @@ async def upload_paper(
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
 
-    file_path = None
-    public_url = None
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="A PDF file is required.")
 
-    if file and file.filename:
-        file_path, public_url = await save_file_locally(file)
+    # Duplicate detection
+    duplicate = db.query(Paper).filter(
+        Paper.subject_id == subject_id,
+        Paper.title == title,
+        Paper.year == year,
+        Paper.exam_type == exam_type,
+    ).first()
+    if duplicate:
+        raise HTTPException(
+            status_code=409,
+            detail="A paper with the same title, subject, year, and exam type already exists."
+        )
+
+    file_path, public_url = await save_file_locally(file)
 
     paper = Paper(
         subject_id=subject_id,

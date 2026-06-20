@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getAdminPapers, getSearchAnalytics } from '../../services/admin'
+import adminApi from '../../services/admin'
 
 function StatCard({ label, value, color, icon }) {
   return (
@@ -18,29 +19,35 @@ function StatCard({ label, value, color, icon }) {
 
 export default function DashboardPage() {
   const [papers, setPapers] = useState([])
+  const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [statsLoading, setStatsLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const [analytics, setAnalytics] = useState(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
 
   useEffect(() => {
-    getAdminPapers()
-      .then(res => setPapers(res.data))
-      .catch(err => setError(err.response?.data?.detail || 'Failed to load papers'))
-      .finally(() => setLoading(false))
-
-    getSearchAnalytics()
-      .then(res => setAnalytics(res.data))
-      .catch(() => setAnalytics({ popular_searches: [], recent_searches: [] }))
-      .finally(() => setAnalyticsLoading(false))
+    Promise.all([
+      getAdminPapers(),
+      adminApi.get('/admin/stats'),
+      getSearchAnalytics(),
+    ]).then(([papersRes, statsRes, analyticsRes]) => {
+      setPapers(papersRes.data)
+      setStats(statsRes.data)
+      setAnalytics(analyticsRes.data)
+    }).catch(err => {
+      setError(err.response?.data?.detail || 'Failed to load dashboard data')
+    }).finally(() => {
+      setLoading(false)
+      setStatsLoading(false)
+      setAnalyticsLoading(false)
+    })
   }, [])
 
-  const total = papers.length
-  const questionCount = papers.filter(p => p.paper_type === 'question').length
-  const answerKeyCount = papers.filter(p => p.paper_type === 'answer_key').length
-  const visibleCount = papers.filter(p => p.is_visible).length
   const recent = [...papers].slice(0, 5)
+
+  const fmt = (n) => n == null ? '—' : Number(n).toLocaleString()
 
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto">
@@ -49,27 +56,31 @@ export default function DashboardPage() {
         <p className="text-gray-500 text-sm mt-1">Overview of the TN Board Learning Platform</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-        <StatCard label="Total Papers" value={loading ? '—' : total} color="bg-blue-50" icon="📄" />
-        <StatCard label="Question Papers" value={loading ? '—' : questionCount} color="bg-violet-50" icon="📝" />
-        <StatCard label="Answer Keys" value={loading ? '—' : answerKeyCount} color="bg-emerald-50" icon="✅" />
-        <StatCard label="Visible" value={loading ? '—' : visibleCount} color="bg-orange-50" icon="👁️" />
+      {/* Primary Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Total Papers" value={statsLoading ? '—' : fmt(stats?.total_papers)} color="bg-blue-50" icon="📄" />
+        <StatCard label="Total Downloads" value={statsLoading ? '—' : fmt(stats?.total_downloads)} color="bg-violet-50" icon="⬇️" />
+        <StatCard label="Total Subjects" value={statsLoading ? '—' : fmt(stats?.total_subjects)} color="bg-emerald-50" icon="📚" />
+        <StatCard label="Total Classes" value={statsLoading ? '—' : fmt(stats?.total_classes)} color="bg-orange-50" icon="🎓" />
       </div>
 
-      {/* Fixed info cards */}
+      {/* Secondary Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-        {[
-          { label: 'Classes', value: '4', sub: 'Class 9, 10, 11, 12' },
-          { label: 'Subjects', value: '32', sub: '5 per Class 9/10 · 11 per Class 11/12' },
-          { label: 'Admin Account', value: '1', sub: 'Single admin — no multi-user' },
-        ].map(c => (
-          <div key={c.label} className="bg-gray-900 text-white rounded-2xl p-5">
-            <p className="text-3xl font-extrabold text-blue-400">{c.value}</p>
-            <p className="font-semibold mt-1">{c.label}</p>
-            <p className="text-gray-400 text-xs mt-0.5">{c.sub}</p>
-          </div>
-        ))}
+        <div className="bg-gray-900 text-white rounded-2xl p-5">
+          <p className="text-3xl font-extrabold text-blue-400">{statsLoading ? '—' : fmt(stats?.question_papers)}</p>
+          <p className="font-semibold mt-1">Question Papers</p>
+          <p className="text-gray-400 text-xs mt-0.5">Uploaded question papers</p>
+        </div>
+        <div className="bg-gray-900 text-white rounded-2xl p-5">
+          <p className="text-3xl font-extrabold text-emerald-400">{statsLoading ? '—' : fmt(stats?.answer_keys)}</p>
+          <p className="font-semibold mt-1">Answer Keys</p>
+          <p className="text-gray-400 text-xs mt-0.5">Uploaded answer keys</p>
+        </div>
+        <div className="bg-gray-900 text-white rounded-2xl p-5">
+          <p className="text-3xl font-extrabold text-amber-400">{statsLoading ? '—' : fmt(stats?.visible_papers)}</p>
+          <p className="font-semibold mt-1">Visible Papers</p>
+          <p className="text-gray-400 text-xs mt-0.5">Published to students</p>
+        </div>
       </div>
 
       {/* Two-column row: Recent Papers + Popular Searches */}
@@ -107,7 +118,7 @@ export default function DashboardPage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Exam</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Year</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">DLs</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -121,11 +132,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-500">{p.exam_type}</td>
                       <td className="px-4 py-3 text-gray-500">{p.year}</td>
-                      <td className="px-4 py-3">
-                        <span className={`badge ${p.is_visible ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                          {p.is_visible ? 'Visible' : 'Hidden'}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">{p.download_count ?? 0}</td>
                     </tr>
                   ))}
                 </tbody>
