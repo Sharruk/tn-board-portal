@@ -8,23 +8,26 @@ SWAPPING PROVIDERS
 ------------------
 1. Implement the StorageProvider interface below.
 2. Register the new class in _PROVIDERS.
-3. Set STORAGE_BACKEND=<name> in your .env.
+3. Set STORAGE_BACKEND=<name> in your .env / Replit Secrets.
 
 Current providers
 -----------------
   local     — saves to /uploads/ on the local filesystem (default, dev only)
   s3        — stub for AWS S3 (fill in S3StorageProvider)
-  supabase  — stub for Supabase Storage (fill in SupabaseStorageProvider)
+  supabase  — Supabase Storage (fully implemented, production-ready)
 
 WARNING: "local" storage is ephemeral on Replit managed VMs.
-         Switch to s3 or supabase before going live.
+         Switch to supabase (or s3) before going live.
 """
 
 import os
 import uuid
+import logging
 from abc import ABC, abstractmethod
 from fastapi import UploadFile, HTTPException
 from app.config import UPLOAD_DIR, ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB, STORAGE_BACKEND
+
+logger = logging.getLogger(__name__)
 
 
 # ── Interface ─────────────────────────────────────────────────────────────────
@@ -79,39 +82,13 @@ class S3StorageProvider(StorageProvider):
     """
     Stub for AWS S3 storage.
 
-    Required env vars (set in .env):
+    Required env vars:
       AWS_ACCESS_KEY_ID
       AWS_SECRET_ACCESS_KEY
       AWS_S3_BUCKET
       AWS_S3_REGION
 
     Install:  pip install boto3
-
-    Implementation guide — replace the NotImplementedError bodies:
-
-        import boto3, os
-
-        _s3 = boto3.client(
-            "s3",
-            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-            region_name=os.environ["AWS_S3_REGION"],
-        )
-        _bucket = os.environ["AWS_S3_BUCKET"]
-        _region = os.environ["AWS_S3_REGION"]
-
-        # In save():
-        _s3.put_object(
-            Bucket=_bucket,
-            Key=stored_filename,
-            Body=content,
-            ContentType="application/pdf",
-        )
-        public_url = f"https://{_bucket}.s3.{_region}.amazonaws.com/{stored_filename}"
-        return stored_filename, public_url
-
-        # In delete():
-        _s3.delete_object(Bucket=_bucket, Key=stored_filename)
     """
 
     async def save(self, file: UploadFile) -> tuple[str, str]:
@@ -127,56 +104,102 @@ class S3StorageProvider(StorageProvider):
         )
 
 
-# ── Supabase Storage stub ─────────────────────────────────────────────────────
+# ── Supabase Storage ──────────────────────────────────────────────────────────
 
 class SupabaseStorageProvider(StorageProvider):
     """
-    Stub for Supabase Storage.
+    Production-ready Supabase Storage provider.
 
-    Required env vars (set in .env):
-      SUPABASE_URL
-      SUPABASE_SERVICE_KEY
-      SUPABASE_STORAGE_BUCKET
+    Required env vars (set in Replit Secrets):
+      SUPABASE_URL             — https://<project-id>.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY — service_role key (NOT the anon key)
+      SUPABASE_BUCKET          — storage bucket name (default: papers)
 
-    Install:  pip install supabase
+    The bucket must exist in Supabase Storage and be configured as PUBLIC
+    so that public_url links work for students to view/download PDFs.
 
-    Implementation guide — replace the NotImplementedError bodies:
-
-        import os
-        from supabase import create_client
-
-        _supabase = create_client(
-            os.environ["SUPABASE_URL"],
-            os.environ["SUPABASE_SERVICE_KEY"],
-        )
-        _bucket = os.environ["SUPABASE_STORAGE_BUCKET"]
-
-        # In save():
-        _supabase.storage.from_(_bucket).upload(
-            path=stored_filename,
-            file=content,
-            file_options={"content-type": "application/pdf"},
-        )
-        public_url = (
-            _supabase.storage.from_(_bucket).get_public_url(stored_filename)
-        )
-        return stored_filename, public_url
-
-        # In delete():
-        _supabase.storage.from_(_bucket).remove([stored_filename])
+    stored_filename — the UUID-based path stored in papers.file_path
+    public_url      — the Supabase public CDN URL stored in papers.public_url
     """
 
-    async def save(self, file: UploadFile) -> tuple[str, str]:
-        raise NotImplementedError(
-            "SupabaseStorageProvider is not yet implemented. "
-            "See storage.py for instructions."
+    def __init__(self):
+        supabase_url = os.environ.get("SUPABASE_URL", "")
+        service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+        self._bucket = os.environ.get("SUPABASE_BUCKET", "papers")
+
+        if not supabase_url or not service_key:
+            raise RuntimeError(
+                "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set "
+                "when STORAGE_BACKEND=supabase. Add them to Replit Secrets."
+            )
+
+        try:
+            from supabase import create_client
+            self._client = create_client(supabase_url, service_key)
+        except ImportError:
+            raise RuntimeError(
+                "supabase package is not installed. "
+                "Run: pip install supabase"
+            )
+
+        logger.info(
+            "SupabaseStorageProvider initialised — bucket: %s", self._bucket
         )
 
+    async def save(self, file: UploadFile) -> tuple[str, str]:
+        content = await file.read()
+
+        if len(content) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+        if len(content) > MAX_FILE_SIZE_MB * 1024 * 1024:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE_MB} MB.",
+            )
+
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+        stored_filename = f"{uuid.uuid4().hex}.{ext}"
+
+        try:
+            self._client.storage.from_(self._bucket).upload(
+                path=stored_filename,
+                file=content,
+                file_options={"content-type": "application/pdf", "upsert": "false"},
+            )
+        except Exception as exc:
+            logger.error("Supabase upload failed: %s", exc)
+            raise HTTPException(
+                status_code=502,
+                detail=f"File upload to Supabase failed: {exc}",
+            )
+
+        try:
+            public_url = (
+                self._client.storage
+                .from_(self._bucket)
+                .get_public_url(stored_filename)
+            )
+        except Exception as exc:
+            logger.error("Supabase get_public_url failed: %s", exc)
+            public_url = (
+                f"{os.environ.get('SUPABASE_URL', '')}/storage/v1/object/public"
+                f"/{self._bucket}/{stored_filename}"
+            )
+
+        logger.info("Uploaded %s → %s", stored_filename, public_url)
+        return stored_filename, public_url
+
     def delete(self, stored_filename: str) -> None:
-        raise NotImplementedError(
-            "SupabaseStorageProvider is not yet implemented. "
-            "See storage.py for instructions."
-        )
+        if not stored_filename:
+            return
+        try:
+            self._client.storage.from_(self._bucket).remove([stored_filename])
+            logger.info("Deleted %s from Supabase bucket %s", stored_filename, self._bucket)
+        except Exception as exc:
+            logger.warning(
+                "Supabase delete failed for %s: %s (continuing)", stored_filename, exc
+            )
 
 
 # ── Registry & factory ────────────────────────────────────────────────────────

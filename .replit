@@ -64,3 +64,4 @@ run = ["sh", "-c", "cd frontend && npm run build && cd ../backend && ENVIRONMENT
 [userenv.shared]
 JWT_SECRET_KEY = "tn-board-replit-secret-2024-secure-key-xyz789"
 CORS_ORIGINS = "*"
+STORAGE_BACKEND = "supabase"
