@@ -1,0 +1,294 @@
+====================================================
+PHASE 3 REPORT — ADMIN PANEL
+TN State Board Learning Platform
+Date: 2026-06-20
+====================================================
+
+WHAT WAS BUILT
+==============
+
+A minimum, production-quality admin panel integrated into the existing
+React frontend. The panel lives at /admin/* routes and is completely
+separate from the public-facing UI — different layout, different styling,
+different Axios instance.
+
+====================================================
+
+FILES CREATED
+=============
+
+Contexts (1 file):
+  frontend/src/contexts/AuthContext.jsx
+    — React Context for JWT state (token, login, logout, isAuthenticated)
+    — Token persisted to localStorage under key "adminToken"
+    — Provided at application root via AuthProvider in main.jsx
+
+Services (1 file):
+  frontend/src/services/admin.js
+    — Separate Axios instance (60s timeout for file uploads)
+    — Request interceptor: attaches Authorization: Bearer {token} to every call
+    — Response interceptor: on 401, clears localStorage + redirects to /admin/login
+    — Exports: adminLogin, getAdminPapers, uploadPaper, updatePaper, deletePaper
+
+Admin Components (2 files):
+  frontend/src/components/admin/ProtectedRoute.jsx
+    — Reads isAuthenticated from AuthContext
+    — If false: renders <Navigate to="/admin/login" replace />
+    — If true: renders children (the protected page)
+
+  frontend/src/components/admin/AdminLayout.jsx
+    — Dark sidebar (gray-900): logo, nav links, logout button
+    — Sidebar links: Dashboard → /admin/dashboard, Papers → /admin/papers
+    — NavLink active state: blue-600 highlight on current page
+    — Mobile: hamburger in top bar toggles sidebar overlay
+    — Topbar: fixed across all admin pages, shows admin avatar
+
+Admin Pages (3 files):
+  frontend/src/pages/admin/LoginPage.jsx
+    — Dark background (gray-900 gradient)
+    — Username + password fields with proper autocomplete attributes
+    — Calls POST /api/v1/auth/login via adminLogin service
+    — On success: stores JWT, navigates to /admin/dashboard
+    — On failure: shows inline error message from API
+    — Auto-redirects to /admin/dashboard if already logged in
+
+  frontend/src/pages/admin/DashboardPage.jsx
+    — 4 stat cards: Total Papers, Question Papers, Answer Keys, Visible
+    — 3 info cards: Classes (4), Subjects (32), Admin Account (1)
+    — "Recent Papers" table (last 5 papers)
+    — Empty state with "Upload First Paper" button
+    — All data from GET /api/v1/admin/papers (JWT required)
+
+  frontend/src/pages/admin/PapersPage.jsx
+    — Full paper table with all columns
+    — Filter by class + filter by paper type
+    — "Upload Paper" button → Upload Modal
+    — "Edit" button per row → Edit Modal
+    — "Delete" button per row → Delete Confirmation Dialog
+    — All data from GET /api/v1/admin/papers + GET /api/v1/classes
+
+Modified files (2 files):
+  frontend/src/router/index.jsx
+    — Added /admin/login route (standalone, no AdminLayout)
+    — Added /admin/* routes wrapped in ProtectedRoute + AdminLayout
+    — /admin (index) redirects to /admin/dashboard
+
+  frontend/src/main.jsx
+    — Wrapped RouterProvider in <AuthProvider> for global auth context
+
+====================================================
+
+APIS USED
+=========
+
+Login (public — no token needed):
+  POST /api/v1/auth/login
+    Body: { username, password }
+    Returns: { access_token, token_type }
+    Used by: LoginPage.jsx
+
+Admin APIs (all require Authorization: Bearer {token}):
+  GET    /api/v1/admin/papers
+    Returns: PaperOut[] — all papers (including hidden)
+    Used by: DashboardPage.jsx, PapersPage.jsx
+
+  POST   /api/v1/admin/papers
+    Body: multipart/form-data
+    Fields: subject_id, exam_type, year, title, paper_type, youtube_url (opt), file (opt)
+    Returns: PaperOut (created paper)
+    Used by: PapersPage.jsx (Upload Modal)
+
+  PUT    /api/v1/admin/papers/{id}
+    Body: { youtube_url, is_visible }
+    Returns: PaperOut (updated paper)
+    Used by: PapersPage.jsx (Edit Modal)
+
+  DELETE /api/v1/admin/papers/{id}
+    Returns: 204 No Content
+    Used by: PapersPage.jsx (Delete Confirmation)
+
+Supporting APIs (public — no token):
+  GET /api/v1/classes
+    Used by: PapersPage.jsx (class filter dropdown + subject cascade)
+
+  GET /api/v1/classes/{id}/subjects
+    Used by: PapersPage.jsx (dynamic subject select on upload form)
+
+====================================================
+
+AUTHENTICATION FLOW
+===================
+
+Step 1: Admin visits /admin/dashboard (or any /admin/* route)
+  → ProtectedRoute checks useAuth().isAuthenticated
+  → isAuthenticated = !!localStorage.getItem('adminToken')
+  → If no token → Navigate to /admin/login
+
+Step 2: Admin fills username + password on /admin/login
+  → LoginPage calls adminLogin(username, password)
+  → This calls axios.post('/api/v1/auth/login', { username, password })
+  → FastAPI verifies credentials against admins table (werkzeug.security)
+  → If valid → returns { access_token: "eyJ...", token_type: "bearer" }
+
+Step 3: JWT stored
+  → AuthContext.login(token) called
+  → localStorage.setItem('adminToken', token)
+  → AuthContext state updated: token = "eyJ...", isAuthenticated = true
+  → Navigate to /admin/dashboard
+
+Step 4: Subsequent API calls (dashboard, papers)
+  → Axios request interceptor runs before every request
+  → Reads localStorage.getItem('adminToken')
+  → Adds header: Authorization: Bearer eyJ...
+  → FastAPI verifies JWT with PyJWT
+  → Request proceeds to handler
+
+Step 5: Token expiry (automatic)
+  → FastAPI returns 401 Unauthorized
+  → Axios response interceptor catches 401
+  → localStorage.removeItem('adminToken')
+  → window.location.href = '/admin/login' (full page reload)
+  → Admin is redirected to login page
+
+Step 6: Manual logout
+  → Admin clicks "Logout" in sidebar
+  → logout() from AuthContext called
+  → localStorage.removeItem('adminToken')
+  → navigate('/admin/login')
+
+====================================================
+
+UPLOAD FLOW
+===========
+
+Step 1: Admin clicks "Upload Paper" on /admin/papers
+  → Upload modal opens
+  → Upload form rendered with empty fields
+
+Step 2: Admin selects a Class
+  → handleFormClassChange(classId) called
+  → If subjects not cached: GET /api/v1/classes/{classId}/subjects
+  → Subjects cached in subjectsCache state keyed by classId
+  → Subject dropdown populated dynamically
+
+Step 3: Admin fills in all fields:
+  → Subject (from loaded subjects)
+  → Exam Type (dropdown of 9 types)
+  → Year (dropdown, current year pre-selected)
+  → Title (text — e.g. "Class 10 Maths Annual Exam 2024")
+  → Paper Type (radio: Question Paper / Answer Key)
+  → YouTube URL (optional text input)
+  → PDF File (optional file input — PDF/DOC)
+
+Step 4: Admin clicks "Upload Paper"
+  → handleUpload(e) validates required fields
+  → Builds FormData object:
+       fd.append('subject_id', ...)
+       fd.append('exam_type', ...)
+       fd.append('year', ...)
+       fd.append('title', ...)
+       fd.append('paper_type', ...)
+       fd.append('youtube_url', ...)   ← if provided
+       fd.append('file', file)        ← if provided
+  → uploadPaper(fd) called
+  → Axios POST /api/v1/admin/papers with Content-Type: multipart/form-data
+  → JWT automatically attached by interceptor
+
+Step 5: FastAPI processes request
+  → save_file_locally(file) saves PDF to /uploads/ directory
+  → Returns file path + public URL (/uploads/{uuid}_{filename})
+  → Paper row created in DB with all fields
+  → PaperOut returned as JSON
+
+Step 6: Modal closes, papers table refreshes
+  → setShowUpload(false)
+  → load() called → GET /admin/papers → table reloads
+  → New paper visible in table immediately
+
+====================================================
+
+EDIT FLOW (YouTube URL + Visibility)
+=====================================
+
+→ Admin clicks "Edit" on any paper row
+→ Edit modal opens pre-filled with current youtube_url and is_visible
+→ Admin can update YouTube URL and/or toggle visibility
+→ On save: PUT /api/v1/admin/papers/{id} called with updated fields
+→ Table refreshes after save
+
+====================================================
+
+DELETE FLOW
+===========
+
+→ Admin clicks "Delete" on any paper row
+→ Delete confirmation dialog shown
+→ Admin confirms → DELETE /api/v1/admin/papers/{id} called
+→ FastAPI deletes the file from disk (if exists) + deletes DB row
+→ Table refreshes after delete
+
+====================================================
+
+REMAINING WORK BEFORE DEPLOYMENT (Phase 4)
+===========================================
+
+1. Environment Variables
+   - Set SESSION_SECRET (Flask legacy) — already ignored in FastAPI
+   - Set DATABASE_URL (currently Replit default — needs Supabase URL for prod)
+   - Set UPLOAD_DIR or configure Supabase Storage bucket URL
+
+2. Database Migration (if switching to Supabase)
+   - Export current DB: pg_dump or SQLAlchemy data export
+   - Point DATABASE_URL to Supabase PostgreSQL
+   - Run db.create_all() or Alembic migrations
+   - Re-seed classes and subjects (seed.py)
+
+3. File Storage Migration (if using Supabase Storage)
+   - Update backend/app/services/storage.py:
+     - save_file_locally → upload to Supabase Storage bucket
+     - delete_file_locally → delete from Supabase Storage
+   - Update public_url to use Supabase CDN URL
+   - No frontend changes needed (public_url is already used everywhere)
+
+4. React Production Build
+   - Run: cd frontend && npm run build
+   - Output: frontend/dist/
+   - Two deployment options:
+     A. Serve from FastAPI as static files (single-server deployment)
+        → Add StaticFiles mount in main.py for frontend/dist
+        → FastAPI serves both API + React on one port
+     B. Deploy separately (Vercel/Netlify for frontend + Railway for backend)
+        → Set VITE_API_URL env var to the Railway backend URL
+        → CORS must be updated in FastAPI to allow Vercel domain
+
+5. CORS Configuration
+   - Currently: FastAPI allows all origins (development)
+   - Production: restrict to known frontend domain
+
+6. Security hardening
+   - Set a strong SECRET_KEY for JWT (env var, not hardcoded)
+   - Change admin password from admin123 to a strong password
+   - Consider JWT expiry (currently 24h — may want shorter)
+
+7. Remove test paper
+   - Delete the test paper uploaded during Phase 3 API testing
+   - (Or leave it — admin can delete it from the admin panel)
+
+====================================================
+
+WHAT WORKS RIGHT NOW
+====================
+
+  /admin/login       → Shows login form, accepts admin/admin123
+  /admin/dashboard   → Shows stats + recent papers (protected)
+  /admin/papers      → Shows papers table, upload/edit/delete (protected)
+  /admin             → Redirects to /admin/dashboard
+
+  Upload modal       → Cascading class→subject select, all fields, file input
+  Edit modal         → YouTube URL + visibility toggle
+  Delete             → Confirmation dialog → DELETE API → refresh
+
+  Auto-logout        → On 401 response → clears localStorage → /admin/login
+  Route protection   → Direct URL access to /admin/* without login → /admin/login
+
+====================================================

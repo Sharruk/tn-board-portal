@@ -6,12 +6,13 @@ Version:
 v1.0 MVP
 
 Current Phase:
-PHASE 2 COMPLETE — Awaiting approval to start Phase 3
+PHASE 3 COMPLETE — Awaiting approval to start Phase 4
 
 Current Progress:
-Phase 1 (Backend) + Phase 2 (Frontend) both complete.
-React app live at port 5000. FastAPI running on port 8000.
-All 7 public pages built and connected to live API.
+All three phases complete:
+  Phase 1 — FastAPI backend (15 endpoints, JWT, file upload)
+  Phase 2 — React public frontend (7 pages, Axios service layer)
+  Phase 3 — React admin panel (login, dashboard, papers management)
 
 Last Updated:
 2026-06-20
@@ -20,119 +21,9 @@ Last Updated:
 PROGRESS SUMMARY
 
 Phase 1 — FastAPI Backend:       [x] COMPLETE
-Phase 2 — React Frontend:        [x] COMPLETE
-Phase 3 — Admin Panel UI:        [ ] PENDING (awaiting approval)
-Phase 4 — Deployment:            [ ] PENDING
-
-====================================================
-
-DATABASE STATUS
-
-Tables:
-* classes  ✓ — 4 rows (Class 9, 10, 11, 12)
-* subjects ✓ — 32 rows
-* papers   ✓ — 0 rows (admin uploads via API in Phase 3)
-* admins   ✓ — 1 row (admin / admin123)
-
-====================================================
-
-BACKEND STATUS (Phase 1 — COMPLETE)
-
-Framework:  FastAPI 0.138.0 on port 8000 (console workflow)
-Database:   PostgreSQL (Replit built-in)
-Auth:       PyJWT + werkzeug.security
-
-Endpoints (15 total — all working):
-GET  /                              ✓ Health check
-GET  /health                        ✓ Health check
-GET  /api/v1/classes                ✓ List classes with subject counts
-GET  /api/v1/classes/{id}           ✓ Get single class
-GET  /api/v1/classes/{id}/subjects  ✓ Subjects with class_id + class_name
-GET  /api/v1/subjects/{id}          ✓ Subject with class_id + class_name
-GET  /api/v1/subjects/{id}/papers   ✓ Papers (filters: exam_type, paper_type, year)
-GET  /api/v1/papers/recent          ✓ Recent public papers (limit=6)
-GET  /api/v1/papers/{id}            ✓ Paper detail
-GET  /api/v1/exam-types             ✓ All exam type strings
-GET  /api/v1/search                 ✓ Full-text search with filters
-POST /api/v1/auth/login             ✓ JWT token
-GET  /api/v1/admin/papers           ✓ Admin paper list (JWT)
-POST /api/v1/admin/papers           ✓ Upload paper + file (JWT)
-PUT  /api/v1/admin/papers/{id}      ✓ Update paper (JWT)
-DELETE /api/v1/admin/papers/{id}    ✓ Delete paper (JWT)
-
-Swagger UI: http://localhost:8000/docs
-
-====================================================
-
-FRONTEND STATUS (Phase 2 — COMPLETE)
-
-Framework:    React 18 + Vite 5 on port 5000 (webview workflow)
-Styling:      Tailwind CSS v3
-Routing:      React Router v6
-HTTP Client:  Axios
-
-Pages Built (7/7):
-[x] Home Page           /
-    - Hero with gradient background + search bar
-    - Stats bar (4 classes, 32 subjects, 100% free)
-    - Class cards grid (dynamic from API)
-    - Recently added papers (dynamic from API)
-    - "How it works" section
-
-[x] Class Page          /class/:id
-    - Breadcrumb navigation
-    - Subject grid with icons + paper counts
-    - "Coming soon" for subjects with 0 papers
-
-[x] Subject Page        /subject/:id
-    - Breadcrumb (Home → Class → Subject)
-    - Exam type category cards (Unit Tests, Quarterly, etc.)
-    - Active cards link to Paper List
-    - "Coming soon" for empty categories
-
-[x] Paper List Page     /papers?subject_id=X&exam_type=Y
-    - Breadcrumb from query params
-    - Filter tabs: All / Question Papers / Answer Keys
-    - Live counts on filter tabs
-    - Grid of paper cards
-
-[x] Paper Detail Page   /paper/:id
-    - Full paper metadata (class, subject, exam type, year)
-    - Download Question Paper button (primary)
-    - Download Answer Key button (secondary)
-    - YouTube video embed (auto-extracted from URL)
-    - Related papers section
-    - Breadcrumb back to exam type list
-
-[x] Search Page         /search?q=...
-    - Pre-filled search bar from URL query
-    - Filter dropdowns (All Classes / All Types)
-    - Live search results list with badges
-    - Empty state with suggestions
-
-[x] 404 Page            /*
-    - Clean error page
-    - Links back to Home and Search
-
-Components Built (8/8):
-[x] Navbar    — Logo, Classes dropdown, Search link, inline search bar, mobile menu
-[x] Footer    — Links grid (classes + quick links), copyright
-[x] ClassCard — Color-coded cards per class (blue/violet/emerald/orange)
-[x] PaperCard — Paper info with badges + download + view details
-[x] SearchBar — Unified search input with icon and submit
-[x] Breadcrumb — Accessible navigation crumbs
-[x] LoadingSpinner — Animated spinner with text
-[x] ErrorMessage — User-friendly error display
-
-Service Layer (5/5):
-[x] services/api.js      — Axios instance with base URL
-[x] services/classes.js  — getClasses, getClass, getSubjectsForClass
-[x] services/subjects.js — getSubject, getPapersForSubject
-[x] services/papers.js   — getPaper, getRecentPapers, getExamTypes
-[x] services/search.js   — searchPapers
-
-Hooks:
-[x] hooks/useFetch.js — Generic data fetching hook with cancellation
+Phase 2 — React Public Frontend: [x] COMPLETE
+Phase 3 — Admin Panel:           [x] COMPLETE
+Phase 4 — Deployment:            [ ] PENDING (awaiting approval)
 
 ====================================================
 
@@ -145,85 +36,112 @@ Status: Running ✓
 
 Name: "Start application"
 Command: cd frontend && npm run dev
-Port: 5000 (webview)
+Port: 5000 (webview — what users see)
 Status: Running ✓
 
 Proxy: Vite proxies /api/* and /uploads/* → http://localhost:8000
-Result: Browser calls /api/v1/... → Vite → FastAPI → response
+Auth: JWT Bearer token stored in localStorage, attached by Axios interceptor
 
 ====================================================
 
-ADMIN STATUS (Phase 3 — PENDING)
+DATABASE STATUS
 
-Admin Login:        [x] API working — JWT auth complete
-Admin UI:           [ ] Not built yet (Phase 3)
-Upload Paper UI:    [ ] Not built yet (Phase 3)
-YouTube Link UI:    [ ] Not built yet (Phase 3)
-Dashboard:          [ ] Not built yet (Phase 3)
+Tables:
+* classes  ✓ — 4 rows (Class 9, 10, 11, 12)
+* subjects ✓ — 32 rows
+* papers   ✓ — 1 row (test paper uploaded via admin API)
+* admins   ✓ — 1 row (admin / admin123)
 
-Admin credentials: username=admin / password=admin123
-(Test at http://localhost:8000/docs for now)
+====================================================
+
+BACKEND STATUS (Phase 1 — COMPLETE)
+
+Framework: FastAPI 0.138.0 on port 8000
+Database:  PostgreSQL (Replit built-in)
+Auth:      PyJWT + werkzeug.security
+
+All 16 endpoints working:
+GET  /                              ✓ Health check
+GET  /health                        ✓ Health check
+GET  /api/v1/classes                ✓
+GET  /api/v1/classes/{id}           ✓
+GET  /api/v1/classes/{id}/subjects  ✓ (returns class_id + class_name)
+GET  /api/v1/subjects/{id}          ✓ (returns class_id + class_name)
+GET  /api/v1/subjects/{id}/papers   ✓ (filterable)
+GET  /api/v1/papers/recent          ✓ (limit=N)
+GET  /api/v1/papers/{id}            ✓
+GET  /api/v1/exam-types             ✓
+GET  /api/v1/search                 ✓
+POST /api/v1/auth/login             ✓ → JWT token
+GET  /api/v1/admin/papers           ✓ JWT required
+POST /api/v1/admin/papers           ✓ JWT + multipart
+PUT  /api/v1/admin/papers/{id}      ✓ JWT required
+DELETE /api/v1/admin/papers/{id}    ✓ JWT required
+
+====================================================
+
+FRONTEND STATUS (Phase 2 — COMPLETE)
+
+Public pages (7/7):
+[x] / — Homepage (hero, class cards, recent papers)
+[x] /class/:id — Subjects grid
+[x] /subject/:id — Exam type cards
+[x] /papers?subject_id=X&exam_type=Y — Paper list + filter tabs
+[x] /paper/:id — Paper detail + download + YouTube embed
+[x] /search — Search with class/type filters
+[x] /* — 404 page
+
+====================================================
+
+ADMIN PANEL STATUS (Phase 3 — COMPLETE)
+
+Admin routes (3/3):
+[x] /admin/login     — Login form (dark background, JWT auth)
+[x] /admin/dashboard — Stats + recent papers table (protected)
+[x] /admin/papers    — Full paper management (protected)
+
+Features (8/8):
+[x] Admin Login — POST /api/v1/auth/login → JWT stored in localStorage
+[x] JWT Authentication — Axios interceptor on every admin request
+[x] Protected Routes — ProtectedRoute redirects to /admin/login if no token
+[x] Upload Question Paper — multipart form (subject, exam type, year, title, file)
+[x] Upload Answer Key — same form, paper_type=answer_key
+[x] Add YouTube URL — optional field on upload + editable via Edit modal
+[x] Delete Paper — DELETE /admin/papers/{id} with confirmation dialog
+[x] View Existing Papers — full table with class/type filters + PDF download link
+
+NOT implemented (as instructed):
+- User Management
+- Role-Based Access
+- Multiple Admins
+- Analytics Dashboard
+- Notifications / Activity Logs / Audit Trails
+- Password Reset / Profile Management
+
+====================================================
+
+ADMIN CREDENTIALS
+
+Username: admin
+Password: admin123
+URL: http://localhost:5000/admin/login
 
 ====================================================
 
 CURRENT ISSUES
 
-None — all Phase 1 and Phase 2 features working.
-
-React Router v6 future flag warnings in console:
-- These are informational only, not errors
-- Will be resolved by adding v7_startTransition future flag in Phase 3
+None — all endpoints tested and all pages verified.
+One test paper exists in DB (can be deleted via admin panel).
 
 ====================================================
 
-NEXT TASKS (Phase 3 — Admin Panel)
+NEXT TASKS (Phase 4 — Deployment)
 
-1. Admin login page (/admin/login)
-2. Protected admin routes (redirect if not authenticated)
-3. Admin dashboard with stats
-4. Upload paper form (multipart file upload)
-5. Paper list table with edit/delete
-6. JWT stored in httpOnly-style localStorage (Phase 3 decision)
-
-====================================================
-
-FILES CREATED (Phase 2)
-
-Frontend:
-- frontend/package.json
-- frontend/index.html
-- frontend/vite.config.js
-- frontend/tailwind.config.js
-- frontend/postcss.config.js
-- frontend/src/index.css
-- frontend/src/main.jsx
-- frontend/src/router/index.jsx
-- frontend/src/layouts/MainLayout.jsx
-- frontend/src/hooks/useFetch.js
-- frontend/src/services/api.js
-- frontend/src/services/classes.js
-- frontend/src/services/subjects.js
-- frontend/src/services/papers.js
-- frontend/src/services/search.js
-- frontend/src/components/Navbar.jsx
-- frontend/src/components/Footer.jsx
-- frontend/src/components/ClassCard.jsx
-- frontend/src/components/PaperCard.jsx
-- frontend/src/components/SearchBar.jsx
-- frontend/src/components/LoadingSpinner.jsx
-- frontend/src/components/ErrorMessage.jsx
-- frontend/src/components/Breadcrumb.jsx
-- frontend/src/pages/HomePage.jsx
-- frontend/src/pages/ClassPage.jsx
-- frontend/src/pages/SubjectPage.jsx
-- frontend/src/pages/PaperListPage.jsx
-- frontend/src/pages/PaperDetailPage.jsx
-- frontend/src/pages/SearchPage.jsx
-- frontend/src/pages/NotFoundPage.jsx
-
-Backend (Phase 2 additions):
-- backend/app/api/papers.py — added GET /papers/recent endpoint
-- backend/app/api/subjects.py — added class_id + class_name to subject responses
-- backend/app/schemas/schemas.py — SubjectOut.class_id + class_name fields
+1. Set SESSION_SECRET environment variable
+2. Configure Supabase PostgreSQL (swap DATABASE_URL)
+3. Configure Supabase Storage for PDF files
+4. Build React frontend (npm run build)
+5. Serve React build from FastAPI as static files (or deploy separately)
+6. Deploy to Railway / Render / Replit Deployments
 
 ====================================================
