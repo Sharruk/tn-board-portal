@@ -280,14 +280,22 @@ export default function PapersPage() {
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.exam_type}</td>
                       <td className="px-4 py-3 text-gray-600">{p.year}</td>
                       <td className="px-4 py-3">
-                        {p.public_url
-                          ? <a href={p.public_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs font-medium">Download</a>
-                          : <span className="text-gray-300 text-xs">—</span>}
+                        {p.public_url ? (
+                          <a href={p.public_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">
+                            ✓ YES
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
-                        {p.youtube_url
-                          ? <span className="text-emerald-600 font-bold text-sm">▶</span>
-                          : <span className="text-gray-300 text-xs">—</span>}
+                        {p.youtube_url ? (
+                          <a href={p.youtube_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">
+                            ✓ YES
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`badge text-xs ${p.is_visible ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>

@@ -6,14 +6,14 @@ Version:
 v1.0 MVP
 
 Current Phase:
-PHASE 3 COMPLETE — Awaiting approval to start Phase 4
+PHASE 3.5 COMPLETE — Content Validation Done
 
 Current Progress:
-All three phases complete. Preview working.
+All three phases complete plus content validation. Preview working.
   Phase 1 — FastAPI backend (15 endpoints, JWT, file upload)
   Phase 2 — React public frontend (7 pages, Axios service layer)
   Phase 3 — React admin panel (login, dashboard, papers management)
-  Fix     — Vite preview host config (allowedHosts: true)
+  Phase 3.5 — Content validation + sample data + UI improvements
 
 Last Updated:
 2026-06-20
@@ -24,7 +24,7 @@ PROGRESS SUMMARY
 Phase 1 — FastAPI Backend:       [x] COMPLETE
 Phase 2 — React Public Frontend: [x] COMPLETE
 Phase 3 — Admin Panel:           [x] COMPLETE
-Vite Preview Fix:                [x] COMPLETE
+Phase 3.5 — Content Validation:  [x] COMPLETE
 Phase 4 — Deployment:            [ ] PENDING (awaiting approval)
 
 ====================================================
@@ -34,19 +34,19 @@ WORKFLOW CONFIGURATION
 Name: "FastAPI Backend"
 Command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 Port: 8000 (console)
-Status: Running ✓
+Status: Running
 
 Name: "Start application"
 Command: cd frontend && npm run dev
 Port: 5000 (webview — Replit preview)
-Status: Running ✓
+Status: Running
 
 Vite config:
   host: '0.0.0.0'
   port: 5000
-  allowedHosts: true        ← FIXED (was 'all' — broken in Vite 5)
+  allowedHosts: true
   strictPort: true
-  proxy /api → localhost:8000
+  proxy /api  → localhost:8000
   proxy /uploads → localhost:8000
 
 ====================================================
@@ -54,48 +54,48 @@ Vite config:
 DATABASE STATUS
 
 Tables:
-* classes  ✓ — 4 rows (Class 9, 10, 11, 12)
-* subjects ✓ — 32 rows
-* papers   ✓ — 1 row (test paper)
-* admins   ✓ — 1 row (admin / admin123)
+* classes  — 4 rows  (Class 9, 10, 11, 12)
+* subjects — 32 rows (5 per Class 9/10, 11 per Class 11/12)
+* papers   — 5 rows  (sample content added in Phase 3.5)
+* admins   — 1 row   (admin / admin123)
 
 ====================================================
 
 BACKEND ENDPOINTS (all working)
 
-GET  /api/v1/classes                ✓
-GET  /api/v1/classes/{id}           ✓
-GET  /api/v1/classes/{id}/subjects  ✓
-GET  /api/v1/subjects/{id}          ✓
-GET  /api/v1/subjects/{id}/papers   ✓
-GET  /api/v1/papers/recent          ✓
-GET  /api/v1/papers/{id}            ✓
-GET  /api/v1/exam-types             ✓
-GET  /api/v1/search                 ✓
-POST /api/v1/auth/login             ✓
-GET  /api/v1/admin/papers           ✓ (JWT)
-POST /api/v1/admin/papers           ✓ (JWT + multipart)
-PUT  /api/v1/admin/papers/{id}      ✓ (JWT)
-DELETE /api/v1/admin/papers/{id}    ✓ (JWT)
+GET  /api/v1/classes                  working
+GET  /api/v1/classes/{id}             working
+GET  /api/v1/classes/{id}/subjects    working
+GET  /api/v1/subjects/{id}            working
+GET  /api/v1/subjects/{id}/papers     working
+GET  /api/v1/papers/recent            working
+GET  /api/v1/papers/{id}              working
+GET  /api/v1/exam-types               working
+GET  /api/v1/search                   working
+POST /api/v1/auth/login               working
+GET  /api/v1/admin/papers             working (JWT)
+POST /api/v1/admin/papers             working (JWT + multipart)
+PUT  /api/v1/admin/papers/{id}        working (JWT)
+DELETE /api/v1/admin/papers/{id}      working (JWT, removes file)
 
 ====================================================
 
 FRONTEND PAGES (all working in preview)
 
 Public:
-  /                 ✓ Homepage
-  /class/:id        ✓ Class subjects
-  /subject/:id      ✓ Exam type cards
-  /papers           ✓ Paper list + filter
-  /paper/:id        ✓ Paper detail + download + YouTube
-  /search           ✓ Search with filters
-  /*                ✓ 404 page
+  /                 Homepage — class cards + recent papers
+  /class/:id        Class page — subject list
+  /subject/:id      Subject page — exam type cards
+  /papers           Paper list with filtering
+  /paper/:id        Paper detail + download + YouTube embed
+  /search           Search with filters
+  /*                404 page
 
 Admin:
-  /admin/login      ✓ Login form
-  /admin/dashboard  ✓ Stats + recent papers (protected)
-  /admin/papers     ✓ Full management: upload/edit/delete (protected)
-  /admin            ✓ Redirects to /admin/dashboard
+  /admin/login      Login form (JWT)
+  /admin/dashboard  Stats + recent papers (protected)
+  /admin/papers     Full management — upload / edit / delete (protected)
+  /admin            Redirects to /admin/dashboard
 
 ====================================================
 
@@ -107,13 +107,38 @@ URL: [preview-url]/admin/login
 
 ====================================================
 
+SAMPLE CONTENT (added Phase 3.5)
+
+1. Class 10 Mathematics Annual Exam 2024        — Question Paper + YouTube
+2. Class 10 Science Quarterly Exam 2024         — Question Paper (PDF only)
+3. Class 10 English Unit Test 1 2024            — Answer Key (PDF only)
+4. Class 11 Physics Half Yearly Exam 2024       — Question Paper + YouTube
+5. Class 12 Chemistry Annual Exam 2024          — Answer Key (PDF only)
+
+All 5 use placeholder PDFs stored in /uploads/.
+YouTube links use a test URL — replace with real channel links.
+
+====================================================
+
+PHASE 3.5 CHANGES
+
+1. Database seeded — classes, subjects, admin account populated
+2. 5 sample papers inserted with placeholder PDFs
+3. Admin papers table — PDF and YouTube columns upgraded to YES / NO badges
+4. Paper detail page — friendly empty-state added when both PDF and YouTube missing
+
+====================================================
+
 NEXT TASKS (Phase 4 — Deployment)
 
-1. Set SESSION_SECRET env var
-2. Connect Supabase PostgreSQL (swap DATABASE_URL)
-3. Connect Supabase Storage for PDF uploads
-4. npm run build → serve from FastAPI OR deploy Vercel + Railway
-5. Lock down CORS to production domain
-6. Change admin password to something strong
+1. Connect Supabase PostgreSQL (swap DATABASE_URL)
+2. Connect Supabase Storage for PDF uploads (update storage.py)
+3. Build frontend: npm run build
+4. Deploy backend to Railway (or serve static build from FastAPI)
+5. Deploy frontend to Vercel OR serve from FastAPI StaticFiles
+6. Lock CORS to production domain
+7. Change admin password before going live
+8. Replace placeholder PDFs with real exam papers
+9. Replace test YouTube URLs with real channel links
 
 ====================================================

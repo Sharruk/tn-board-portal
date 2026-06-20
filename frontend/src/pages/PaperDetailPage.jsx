@@ -141,6 +141,17 @@ export default function PaperDetailPage() {
           </div>
         )}
 
+        {/* Empty state — no PDF and no YouTube */}
+        {!paper.public_url && !paper.youtube_url && (
+          <div className="bg-gray-50 border border-gray-200 rounded-2xl px-6 py-10 mb-8 flex flex-col items-center text-center">
+            <span className="text-5xl mb-4">📭</span>
+            <h3 className="font-bold text-gray-700 text-lg mb-1">Content coming soon</h3>
+            <p className="text-sm text-gray-500 max-w-sm">
+              The PDF and explanation video for this paper haven't been added yet. Please check back later or visit our YouTube channel.
+            </p>
+          </div>
+        )}
+
         {/* YouTube embed */}
         {paper.youtube_url && (
           <div className="mb-2">
