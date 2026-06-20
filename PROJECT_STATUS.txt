@@ -6,7 +6,7 @@ Version:
 v1.0 MVP
 
 Current Phase:
-PHASE 4 IN PROGRESS — Production Deployment Preparation
+PHASE 4.1 COMPLETE — Production Security Hardening
 
 Last Updated:
 2026-06-20
@@ -22,7 +22,8 @@ Phase 3.6 — Student Experience:        [x] COMPLETE
 Phase 3.7 — Search & Content Mgmt:    [x] COMPLETE
 Phase 3.8 — Production Readiness:      [x] COMPLETE
 Phase 3.9 — Admin Productivity:        [x] COMPLETE
-Phase 4 — Deployment Prep:             [~] IN PROGRESS
+Phase 4 — Deployment Prep:             [x] COMPLETE
+Phase 4.1 — Production Security:       [x] COMPLETE
 Phase 4 — Deploy:                      [ ] PENDING (awaiting approval)
 
 ====================================================
@@ -47,19 +48,38 @@ Vite dev proxy:
 
 DATABASE STATUS
 
-Tables:
+Tables (all current):
 * classes       — 4 rows   (Class 9, 10, 11, 12)
 * subjects      — 32 rows  (5 per Class 9/10, 11 per Class 11/12)
 * papers        — 6 rows   (sample content)
-* admins        — 1 row    (admin / admin123)  ← CHANGE BEFORE GO-LIVE
+* admins        — 1 row    (hungrylearner / hungrylearner786@gmail.com)
+* audit_logs    — growing  (login/upload/edit/delete events)
 
-Schema changes applied through Phase 3.9:
-* papers.download_count  INTEGER DEFAULT 0 NOT NULL
+Admin columns added in Phase 4.1:
+* admins.email               VARCHAR(255) UNIQUE
+* admins.failed_login_count  INTEGER DEFAULT 0
+* admins.locked_until        TIMESTAMP (NULL = not locked)
+* admins.last_login_at       TIMESTAMP (NULL = never logged in)
+
+====================================================
+
+ADMIN ACCOUNT
+
+Username:  hungrylearner
+Email:     hungrylearner786@gmail.com
+Password:  HungryLearner@2024  ← CHANGE BEFORE PRODUCTION
+URL:       [preview-url]/admin/login
+
+Login accepts either username OR email in the username field.
+
+To change the password safely:
+    python change_admin_password.py
 
 ====================================================
 
 BACKEND ENDPOINTS (all working)
 
+Public:
 GET    /api/v1/classes                       working
 GET    /api/v1/classes/{id}                  working
 GET    /api/v1/classes/{id}/subjects         working
@@ -72,102 +92,106 @@ GET    /api/v1/papers/{id}                   working
 POST   /api/v1/papers/{id}/download          working
 GET    /api/v1/exam-types                    working
 GET    /api/v1/search                        working
-POST   /api/v1/auth/login                    working
-GET    /api/v1/admin/stats                   working (JWT)
-GET    /api/v1/admin/papers                  working (JWT)
-POST   /api/v1/admin/papers                  working (JWT + multipart)
-PUT    /api/v1/admin/papers/{id}             working (JWT)
-DELETE /api/v1/admin/papers/{id}             working (JWT, removes file)
-GET    /api/v1/admin/search-analytics        working (JWT)
-GET    /api/v1/admin/recent-uploads?limit=N  working (JWT)
-GET    /api/v1/admin/content-status          working (JWT)
+
+Auth + Admin (JWT required):
+POST   /api/v1/auth/login                    working (rate-limited + audit)
+GET    /api/v1/admin/me                      working (returns email, last_login)
+GET    /api/v1/admin/stats                   working
+GET    /api/v1/admin/papers                  working
+POST   /api/v1/admin/papers                  working (audit logged)
+PUT    /api/v1/admin/papers/{id}             working (audit logged)
+DELETE /api/v1/admin/papers/{id}             working (audit logged)
+GET    /api/v1/admin/audit-logs?limit=N      working (NEW Phase 4.1)
+GET    /api/v1/admin/search-analytics        working
+GET    /api/v1/admin/recent-uploads?limit=N  working
+GET    /api/v1/admin/content-status          working
 
 ====================================================
 
 FRONTEND PAGES (all working)
 
 Public:
-  /                            Homepage — classes + recently added + most downloaded
-  /class/:id                   Class page — subject list
-  /subject/:id                 Subject page — exam type cards
+  /                            Homepage
+  /class/:id                   Class page
+  /subject/:id                 Subject page
   /papers                      Paper list with filtering
-  /paper/:id                   Paper detail — numeric ID (backward compat)
-  /paper/:slug                 Paper detail — SEO slug URL
-  /search                      Search with filters + suggestion chips
+  /paper/:id                   Paper detail (numeric ID)
+  /paper/:slug                 Paper detail (SEO slug)
+  /search                      Search with filters
   /*                           404 page
 
 Admin:
-  /admin/login                 Login form (JWT)
-  /admin/dashboard             Stats + recent papers + popular searches + upload activity
+  /admin/login                 Login form (accepts username or email)
+  /admin/dashboard             Stats + last login + audit log panel (NEW 4.1)
   /admin/papers                Papers tab + Bulk Upload tab + CSV export
-  /admin/content-status        Coverage grid showing missing content
+  /admin/content-status        Coverage grid
   /admin                       Redirects to /admin/dashboard
 
 ====================================================
 
-PHASE 4 — DEPLOYMENT PREPARATION (completed tasks)
+PHASE 4.1 — PRODUCTION SECURITY HARDENING (complete)
 
-1. .env.example (project root)
-   Documents all required environment variables with examples.
-   Variables: DATABASE_URL, JWT_SECRET_KEY, CORS_ORIGINS, ENVIRONMENT,
-              STORAGE_BACKEND, and cloud storage stubs (S3, Supabase).
+1. Admin Account (admin credentials replaced)
+   * Admin created with email: hungrylearner786@gmail.com
+   * Username changed from "admin" to "hungrylearner"
+   * Password is bcrypt-hashed (never stored in plain text)
+   * Login accepts either username OR email in the username field
+   * Script: change_admin_password.py (interactive, never prints password)
 
-2. Storage Abstraction (backend/app/services/storage.py)
-   Refactored to a clean provider pattern:
-     StorageProvider (ABC interface)
-     LocalStorageProvider   — current implementation
-     S3StorageProvider      — stub with full implementation guide
-     SupabaseStorageProvider — stub with full implementation guide
-   public API (save_file_locally / delete_file_locally) unchanged.
-   admin.py requires NO changes when swapping providers.
-   Swap by setting STORAGE_BACKEND=s3 or STORAGE_BACKEND=supabase.
+2. IP-Level Rate Limiting (backend/app/services/rate_limit.py)
+   * 5 failed login attempts from same IP within 15 minutes
+     → IP locked for 15 minutes
+   * Returns HTTP 429 with Retry-After header and human-readable message
+   * Resets automatically on successful login from that IP
+   * In-memory (per-process); swap for Redis for multi-worker deployments
 
-3. Production Security (backend/app/config.py, backend/app/main.py)
-   * ENVIRONMENT variable controls production vs development mode.
-   * API docs (/docs, /redoc, /openapi.json) disabled in production.
-   * Server raises RuntimeError at startup if:
-       - DATABASE_URL is not set
-       - JWT_SECRET_KEY is still the default value (in production)
-       - JWT_SECRET_KEY is shorter than 32 chars (in production)
-       - CORS_ORIGINS is "*" (in production)
-   * Warning (non-fatal) in development for insecure JWT default.
-   * Warning if STORAGE_BACKEND=local in production.
-   * STORAGE_BACKEND config added to config.py.
+3. Account Lockout (stored in database)
+   * 5 failed password attempts → admin.locked_until set (15 min)
+   * Persists across server restarts (stored in admins table)
+   * Successful login resets: failed_login_count=0, locked_until=NULL
+   * Returns HTTP 423 (Locked) with minutes remaining
 
-4. DEPLOYMENT_GUIDE.md (project root)
-   Step-by-step guide covering:
-     Step 1 — Set environment variables
-     Step 2 — Configure cloud storage (Supabase or S3)
-     Step 3 — Change admin password
-     Step 4 — Build and mount React frontend
-     Step 5 — Deploy on Replit Deployments
-     Step 6 — Post-deployment verification checklist
-   Also covers: database migrations, rollback instructions,
-   security checklist, environment variable reference.
+4. Audit Logging (audit_logs table + backend/app/services/audit.py)
+   Actions recorded:
+     login_success   — successful login (IP, timestamp, email)
+     login_failure   — wrong credentials (IP, identifier attempted)
+     login_blocked   — account locked (prevented from even checking password)
+     upload          — paper uploaded (paper id, title, exam_type, year)
+     bulk_upload     — paper uploaded via bulk upload tab (same fields)
+     edit            — paper metadata changed (paper id, changed fields)
+     delete          — paper deleted (paper id, title)
+   Fields: admin_id, admin_email, action, target_paper_id,
+           target_details (JSON), ip_address, timestamp
+   Logging failures are swallowed — primary action always succeeds.
 
-5. PRODUCTION_READINESS_REPORT.txt (project root)
-   Audit of 6 categories with star ratings:
-     Security            ★★★☆☆
-     Storage             ★★☆☆☆  ← BLOCKER
-     Database            ★★★★☆
-     Backend (API)       ★★★★☆
-     Frontend            ★★★★☆
-     Performance         ★★★☆☆
-     Deployment Config   ★★★☆☆
-   4 launch blockers documented (see report).
-   Recommended pre-launch checklist included.
-   Post-launch deferred items listed.
+5. Session Security
+   * JWT access tokens expire after JWT_EXPIRE_MINUTES (default: 60)
+   * Configurable via JWT_EXPIRE_MINUTES environment variable
+   * Expired tokens return HTTP 401 "Session expired. Please log in again."
+   * Frontend ProtectedRoute redirects to /admin/login on any 401
+
+6. Admin Dashboard Additions
+   * Admin identity panel (top-right): email + "Last login: [date]"
+   * Admin Actions Log card: last 30 events with action badge, paper
+     title, masked IP, and relative timestamp ("5m ago", "2h ago")
+   * "First session" shown until first login recorded
+
+7. Documentation
+   * change_admin_password.py — interactive script to safely change password
+     or email, unlock account; never stores or echoes password in source
+   * backend/migrate_41.py — one-time migration script (already run)
+   * PROJECT_STATUS.txt — this file
 
 ====================================================
 
 LAUNCH BLOCKERS (must resolve before deploying)
 
-  BLOCKER 1 — Admin default password not changed
-             admin / admin123 is in the production database
-             Fix: run password-change script in DEPLOYMENT_GUIDE.md Step 3
+  BLOCKER 1 — Temp admin password not changed
+             HungryLearner@2024 is a temporary password
+             Fix: run  python change_admin_password.py
 
   BLOCKER 2 — Local filesystem storage
-             Uploaded PDFs will be lost on each Replit redeploy
+             Uploaded PDFs lost on each Replit redeploy
              Fix: implement S3 or Supabase provider, set STORAGE_BACKEND
 
   BLOCKER 3 — JWT_SECRET_KEY not set to production value
@@ -186,15 +210,6 @@ NEXT STEPS (Phase 4 — Deploy)
   4. Click Deploy in Replit
   5. Update CORS_ORIGINS with the live .replit.app domain
   6. Run post-deployment verification checklist
-
-====================================================
-
-ADMIN CREDENTIALS (development only)
-
-Username: admin
-Password: admin123
-URL:      [preview-url]/admin/login
-⚠️  CHANGE BEFORE PRODUCTION — see DEPLOYMENT_GUIDE.md Step 3
 
 ====================================================
 

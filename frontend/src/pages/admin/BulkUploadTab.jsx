@@ -199,6 +199,7 @@ export default function BulkUploadTab({ classes, subjectsCache, onSubjectLoad, o
         fd.append('title', item.title)
         fd.append('paper_type', item.paperType)
         fd.append('file', item.file)
+        fd.append('is_bulk', 'true')
         await uploadPaper(fd, (pct) => updateItem(item.id, { progress: pct }))
         updateItem(item.id, { status: 'done', progress: 100 })
         succeeded++

@@ -1,4 +1,5 @@
 import re
+import json
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, computed_field
@@ -43,7 +44,7 @@ class PaperOut(BaseModel):
     title: str
     exam_type: str
     year: int
-    paper_type: str          # "question" | "answer_key"
+    paper_type: str
     public_url: Optional[str]
     youtube_url: Optional[str]
     is_visible: bool
@@ -90,6 +91,43 @@ class LoginRequest(BaseModel):
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+# ── Admin ──────────────────────────────────────────────────────────────────────
+
+class AdminOut(BaseModel):
+    id: int
+    username: str
+    email: Optional[str] = None
+    last_login_at: Optional[datetime] = None
+    failed_login_count: int = 0
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────────
+
+class AuditLogOut(BaseModel):
+    id: int
+    action: str
+    admin_email: Optional[str] = None
+    target_paper_id: Optional[int] = None
+    target_details: Optional[str] = None
+    ip_address: Optional[str] = None
+    timestamp: datetime
+
+    model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def details_parsed(self) -> Optional[dict]:
+        if self.target_details:
+            try:
+                return json.loads(self.target_details)
+            except Exception:
+                pass
+        return None
 
 
 # ── Search ─────────────────────────────────────────────────────────────────────

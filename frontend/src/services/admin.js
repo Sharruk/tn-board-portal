@@ -49,4 +49,12 @@ export const getRecentUploads = (limit = 20) => adminApi.get(`/admin/recent-uplo
 
 export const getContentStatus = () => adminApi.get('/admin/content-status')
 
+export const getAdminMe = () => adminApi.get('/admin/me')
+
+export const getAuditLogs = (limit = 50, action = null) => {
+  const params = new URLSearchParams({ limit })
+  if (action) params.append('action', action)
+  return adminApi.get(`/admin/audit-logs?${params}`)
+}
+
 export default adminApi
