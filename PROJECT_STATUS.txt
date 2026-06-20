@@ -9,10 +9,11 @@ Current Phase:
 PHASE 3 COMPLETE — Awaiting approval to start Phase 4
 
 Current Progress:
-All three phases complete:
+All three phases complete. Preview working.
   Phase 1 — FastAPI backend (15 endpoints, JWT, file upload)
   Phase 2 — React public frontend (7 pages, Axios service layer)
   Phase 3 — React admin panel (login, dashboard, papers management)
+  Fix     — Vite preview host config (allowedHosts: true)
 
 Last Updated:
 2026-06-20
@@ -23,6 +24,7 @@ PROGRESS SUMMARY
 Phase 1 — FastAPI Backend:       [x] COMPLETE
 Phase 2 — React Public Frontend: [x] COMPLETE
 Phase 3 — Admin Panel:           [x] COMPLETE
+Vite Preview Fix:                [x] COMPLETE
 Phase 4 — Deployment:            [ ] PENDING (awaiting approval)
 
 ====================================================
@@ -36,11 +38,16 @@ Status: Running ✓
 
 Name: "Start application"
 Command: cd frontend && npm run dev
-Port: 5000 (webview — what users see)
+Port: 5000 (webview — Replit preview)
 Status: Running ✓
 
-Proxy: Vite proxies /api/* and /uploads/* → http://localhost:8000
-Auth: JWT Bearer token stored in localStorage, attached by Axios interceptor
+Vite config:
+  host: '0.0.0.0'
+  port: 5000
+  allowedHosts: true        ← FIXED (was 'all' — broken in Vite 5)
+  strictPort: true
+  proxy /api → localhost:8000
+  proxy /uploads → localhost:8000
 
 ====================================================
 
@@ -49,74 +56,46 @@ DATABASE STATUS
 Tables:
 * classes  ✓ — 4 rows (Class 9, 10, 11, 12)
 * subjects ✓ — 32 rows
-* papers   ✓ — 1 row (test paper uploaded via admin API)
+* papers   ✓ — 1 row (test paper)
 * admins   ✓ — 1 row (admin / admin123)
 
 ====================================================
 
-BACKEND STATUS (Phase 1 — COMPLETE)
+BACKEND ENDPOINTS (all working)
 
-Framework: FastAPI 0.138.0 on port 8000
-Database:  PostgreSQL (Replit built-in)
-Auth:      PyJWT + werkzeug.security
-
-All 16 endpoints working:
-GET  /                              ✓ Health check
-GET  /health                        ✓ Health check
 GET  /api/v1/classes                ✓
 GET  /api/v1/classes/{id}           ✓
-GET  /api/v1/classes/{id}/subjects  ✓ (returns class_id + class_name)
-GET  /api/v1/subjects/{id}          ✓ (returns class_id + class_name)
-GET  /api/v1/subjects/{id}/papers   ✓ (filterable)
-GET  /api/v1/papers/recent          ✓ (limit=N)
+GET  /api/v1/classes/{id}/subjects  ✓
+GET  /api/v1/subjects/{id}          ✓
+GET  /api/v1/subjects/{id}/papers   ✓
+GET  /api/v1/papers/recent          ✓
 GET  /api/v1/papers/{id}            ✓
 GET  /api/v1/exam-types             ✓
 GET  /api/v1/search                 ✓
-POST /api/v1/auth/login             ✓ → JWT token
-GET  /api/v1/admin/papers           ✓ JWT required
-POST /api/v1/admin/papers           ✓ JWT + multipart
-PUT  /api/v1/admin/papers/{id}      ✓ JWT required
-DELETE /api/v1/admin/papers/{id}    ✓ JWT required
+POST /api/v1/auth/login             ✓
+GET  /api/v1/admin/papers           ✓ (JWT)
+POST /api/v1/admin/papers           ✓ (JWT + multipart)
+PUT  /api/v1/admin/papers/{id}      ✓ (JWT)
+DELETE /api/v1/admin/papers/{id}    ✓ (JWT)
 
 ====================================================
 
-FRONTEND STATUS (Phase 2 — COMPLETE)
+FRONTEND PAGES (all working in preview)
 
-Public pages (7/7):
-[x] / — Homepage (hero, class cards, recent papers)
-[x] /class/:id — Subjects grid
-[x] /subject/:id — Exam type cards
-[x] /papers?subject_id=X&exam_type=Y — Paper list + filter tabs
-[x] /paper/:id — Paper detail + download + YouTube embed
-[x] /search — Search with class/type filters
-[x] /* — 404 page
+Public:
+  /                 ✓ Homepage
+  /class/:id        ✓ Class subjects
+  /subject/:id      ✓ Exam type cards
+  /papers           ✓ Paper list + filter
+  /paper/:id        ✓ Paper detail + download + YouTube
+  /search           ✓ Search with filters
+  /*                ✓ 404 page
 
-====================================================
-
-ADMIN PANEL STATUS (Phase 3 — COMPLETE)
-
-Admin routes (3/3):
-[x] /admin/login     — Login form (dark background, JWT auth)
-[x] /admin/dashboard — Stats + recent papers table (protected)
-[x] /admin/papers    — Full paper management (protected)
-
-Features (8/8):
-[x] Admin Login — POST /api/v1/auth/login → JWT stored in localStorage
-[x] JWT Authentication — Axios interceptor on every admin request
-[x] Protected Routes — ProtectedRoute redirects to /admin/login if no token
-[x] Upload Question Paper — multipart form (subject, exam type, year, title, file)
-[x] Upload Answer Key — same form, paper_type=answer_key
-[x] Add YouTube URL — optional field on upload + editable via Edit modal
-[x] Delete Paper — DELETE /admin/papers/{id} with confirmation dialog
-[x] View Existing Papers — full table with class/type filters + PDF download link
-
-NOT implemented (as instructed):
-- User Management
-- Role-Based Access
-- Multiple Admins
-- Analytics Dashboard
-- Notifications / Activity Logs / Audit Trails
-- Password Reset / Profile Management
+Admin:
+  /admin/login      ✓ Login form
+  /admin/dashboard  ✓ Stats + recent papers (protected)
+  /admin/papers     ✓ Full management: upload/edit/delete (protected)
+  /admin            ✓ Redirects to /admin/dashboard
 
 ====================================================
 
@@ -124,24 +103,17 @@ ADMIN CREDENTIALS
 
 Username: admin
 Password: admin123
-URL: http://localhost:5000/admin/login
-
-====================================================
-
-CURRENT ISSUES
-
-None — all endpoints tested and all pages verified.
-One test paper exists in DB (can be deleted via admin panel).
+URL: [preview-url]/admin/login
 
 ====================================================
 
 NEXT TASKS (Phase 4 — Deployment)
 
-1. Set SESSION_SECRET environment variable
-2. Configure Supabase PostgreSQL (swap DATABASE_URL)
-3. Configure Supabase Storage for PDF files
-4. Build React frontend (npm run build)
-5. Serve React build from FastAPI as static files (or deploy separately)
-6. Deploy to Railway / Render / Replit Deployments
+1. Set SESSION_SECRET env var
+2. Connect Supabase PostgreSQL (swap DATABASE_URL)
+3. Connect Supabase Storage for PDF uploads
+4. npm run build → serve from FastAPI OR deploy Vercel + Railway
+5. Lock down CORS to production domain
+6. Change admin password to something strong
 
 ====================================================
