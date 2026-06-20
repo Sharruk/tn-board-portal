@@ -15,8 +15,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -24,8 +24,7 @@ services:
       ENVIRONMENT: development
       CORS_ORIGINS: "*"
       STORAGE_BACKEND: local
-    env_file:
-      - .env
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-in-production}
     volumes:
       - ./uploads:/uploads
     depends_on:

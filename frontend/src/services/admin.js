@@ -25,7 +25,7 @@ adminApi.interceptors.response.use(
 )
 
 export const adminLogin = (username, password) =>
-  axios.post('/api/v1/auth/login', { username, password })
+  adminApi.post('/auth/login', { username, password })
 
 export const getAdminPapers = () => adminApi.get('/admin/papers')
 

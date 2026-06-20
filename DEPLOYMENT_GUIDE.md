@@ -1,226 +1,271 @@
-# Deployment Guide
+# Deployment Guide — TN State Board Learning Platform
 
-**TN State Board Learning Platform — v1.0**
-
-This guide walks you through deploying the platform to production on Replit Deployments. Read the entire guide before starting.
+**Version: 2.0 | Updated: 2026-06-20**
 
 ---
 
-## Prerequisites
+## Architecture Decision: Option B — Single Deployment (Recommended)
 
-- Replit account with Deployments access
-- PostgreSQL database (Replit built-in or external)
-- A cloud storage account (Supabase Storage **or** AWS S3) for PDF persistence
-- A strong, randomly generated JWT secret key
+After auditing the codebase, **Option B is strongly recommended**:
 
----
-
-## Step 1 — Set Environment Variables
-
-All sensitive configuration is passed through environment variables. **Never hard-code secrets in source code.**
-
-Set each variable in **Replit → Secrets** before deploying:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `JWT_SECRET_KEY` | ✅ | Random ≥32-char secret for JWT signing |
-| `CORS_ORIGINS` | ✅ | Exact frontend URL, e.g. `https://tnboard.replit.app` |
-| `ENVIRONMENT` | ✅ | Must be `production` |
-| `STORAGE_BACKEND` | ✅ | `local` (dev only) or `s3` / `supabase` |
-| `JWT_EXPIRE_MINUTES` | ☐ | Token lifetime in minutes (default: 60) |
-| `MAX_FILE_SIZE_MB` | ☐ | PDF size cap in MB (default: 50) |
-
-**Generate a secure JWT secret:**
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
+```
+One server (Replit or Railway)
+  ├── FastAPI backend  →  /api/v1/*
+  └── React frontend   →  /* (served as static files from frontend/dist/)
 ```
 
-> ⚠️  The server **refuses to start** in production if `JWT_SECRET_KEY` is still the default value or if `CORS_ORIGINS` is `*`. This is intentional.
+**Why Option B beats Option A (Vercel + Railway):**
+
+| Factor | Option A (Vercel + Railway) | Option B (Single — Recommended) |
+|--------|----------------------------|----------------------------------|
+| CORS config | Required (cross-origin) | None needed (same origin) |
+| Env vars at build | `VITE_API_URL` must be set | Not needed — relative URLs work |
+| Cost | Two paid services | One service |
+| Complexity | Two deployments to coordinate | One deployment |
+| Code support | Needs vercel.json + rewrites | Already built into `main.py` |
+
+The frontend already uses relative URLs (`/api/v1`). FastAPI already has SPA fallback logic in `main.py` that serves `frontend/dist/index.html` when `ENVIRONMENT=production`.
+
+**Option A (Vercel + Railway) is documented in the appendix** for users who require CDN separation or independent scaling.
 
 ---
 
-## Step 2 — Configure Cloud Storage
+## Deployment — Option B: Single Deployment on Replit
 
-Local filesystem storage is **not durable** on Replit managed VMs — files are lost on each redeploy. Set up a cloud provider before deploying.
+### Prerequisites
 
-### Option A — Supabase Storage (recommended, free tier available)
-
-1. Create a project at [supabase.com](https://supabase.com).
-2. Go to **Storage → New Bucket** → name it `papers` → set to **Public**.
-3. Add these secrets in Replit:
-   ```
-   STORAGE_BACKEND=supabase
-   SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
-   SUPABASE_SERVICE_KEY=<service role key from Supabase Settings → API>
-   SUPABASE_STORAGE_BUCKET=papers
-   ```
-4. Open `backend/app/services/storage.py` and fill in `SupabaseStorageProvider.save()` and `.delete()` per the implementation guide in the docstring.
-5. Install the dependency:
-   ```
-   pip install supabase
-   ```
-   Add `supabase>=2.0.0` to `backend/requirements.txt`.
-
-### Option B — AWS S3
-
-1. Create an S3 bucket in the `ap-south-1` (Mumbai) region for low latency.
-2. Create an IAM user with `s3:PutObject` and `s3:DeleteObject` on that bucket.
-3. Add these secrets in Replit:
-   ```
-   STORAGE_BACKEND=s3
-   AWS_ACCESS_KEY_ID=<your key>
-   AWS_SECRET_ACCESS_KEY=<your secret>
-   AWS_S3_BUCKET=tnboard-uploads
-   AWS_S3_REGION=ap-south-1
-   ```
-4. Open `backend/app/services/storage.py` and fill in `S3StorageProvider.save()` and `.delete()` per the docstring.
-5. Install the dependency:
-   ```
-   pip install boto3
-   ```
-   Add `boto3>=1.35.0` to `backend/requirements.txt`.
+- Supabase account (free tier works) for PDF storage
+- Generate a JWT secret: `python -c "import secrets; print(secrets.token_hex(32))"`
 
 ---
 
-## Step 3 — Change the Admin Password
+### Step 1 — Set Up Supabase Storage
 
-The default credentials (`admin` / `admin123`) **must** be changed before going live.
+1. Go to [supabase.com](https://supabase.com) → Create a new project.
+2. Navigate to **Storage → New Bucket**.
+3. Name it `papers`, check **Public bucket** → Create.
+4. Go to **Settings → API**.
+5. Copy the **Project URL** and the **service_role** key (not the anon key).
 
-Run this once against your production database:
+---
+
+### Step 2 — Configure Replit Secrets
+
+In Replit, open **Secrets** (the padlock icon in the sidebar) and add:
+
+| Secret Name | Value |
+|-------------|-------|
+| `JWT_SECRET_KEY` | A 64-character random hex string |
+| `CORS_ORIGINS` | `https://YOUR-APP-NAME.replit.app` |
+| `ENVIRONMENT` | `production` |
+| `STORAGE_BACKEND` | `supabase` |
+| `SUPABASE_URL` | `https://xxxxxxxxxxxx.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | The service_role key from Supabase |
+| `SUPABASE_BUCKET` | `papers` |
+
+> ⚠️ Set `CORS_ORIGINS` **after** your first deploy — copy the `.replit.app` URL it assigns, then update this secret and redeploy.
+
+---
+
+### Step 3 — Seed the Database
+
+The database must be seeded before the app is functional. Run this in the Replit shell:
 
 ```bash
-cd backend
-python - <<'EOF'
-from app.database.database import SessionLocal
-from app.models.models import Admin
-from app.services.auth import hash_password
+cd backend && python seed.py
+```
 
-db = SessionLocal()
-admin = db.query(Admin).filter(Admin.username == "admin").first()
-if admin:
-    admin.password_hash = hash_password("YOUR_STRONG_PASSWORD_HERE")
-    db.commit()
-    print("Password updated.")
-else:
-    print("No admin found.")
-db.close()
-EOF
+Expected output:
+```
+Seeding database...
+  + Class: Class 9
+  ...
+  + Admin created: username=admin / password=admin123
+Seed complete.
 ```
 
 ---
 
-## Step 4 — Build the Frontend
+### Step 4 — Change the Admin Password
 
-The production deployment serves the compiled React app from FastAPI as static files.
+Immediately after seeding, change the default credentials:
 
 ```bash
-cd frontend
-npm run build
-```
-
-This creates `frontend/dist/` with the compiled assets.
-
-Then mount the dist folder in `backend/app/main.py` by adding **after** the existing `/uploads` mount:
-
-```python
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-import os
-
-FRONTEND_DIST = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "frontend", "dist"
-)
-
-if os.path.isdir(FRONTEND_DIST):
-    # Serve static assets (JS, CSS, images)
-    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
-
-    # Catch-all: serve index.html for all non-API routes (React Router)
-    @app.get("/{full_path:path}", include_in_schema=False)
-    def serve_spa(full_path: str):
-        index = os.path.join(FRONTEND_DIST, "index.html")
-        return FileResponse(index)
+python change_admin_password.py
 ```
 
 ---
 
-## Step 5 — Deploy on Replit
+### Step 5 — Deploy on Replit
 
-1. Open **Replit → Deploy** (the rocket icon).
-2. Choose **Autoscale** deployment (handles traffic spikes automatically).
+1. Click the **Deploy** button (rocket icon) in Replit.
+2. Choose **Autoscale**.
 3. Set the **Run command** to:
    ```
-   cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8080
+   sh -c "cd frontend && npm ci && npm run build && cd ../backend && uvicorn app.main:app --host 0.0.0.0 --port 5000"
    ```
-   *(Replit Deployments use port 8080 by default.)*
-4. Click **Deploy**.
-5. Replit assigns a `.replit.app` domain. Copy it and update `CORS_ORIGINS` in Secrets.
-6. Redeploy once more with the correct `CORS_ORIGINS` value.
+4. Ensure `ENVIRONMENT=production` is in Secrets.
+5. Click **Deploy**.
+
+> What this command does:
+> 1. Builds the React app into `frontend/dist/`
+> 2. Starts FastAPI on port 5000
+> 3. FastAPI detects `ENVIRONMENT=production` and serves `frontend/dist/` as static files with SPA fallback
 
 ---
 
-## Step 6 — Post-Deployment Verification
+### Step 6 — Post-Deployment Verification
 
-After the deployment goes live, verify:
+After deploy completes, verify at `https://your-app.replit.app`:
 
-- [ ] `https://your-app.replit.app/health` returns `{"status": "healthy"}`
-- [ ] `https://your-app.replit.app/docs` returns **404** (docs must be disabled in prod)
-- [ ] Homepage loads and subject cards appear
-- [ ] Admin login works at `/admin/login` with the **new** password
-- [ ] Upload a test PDF and confirm it saves to cloud storage
-- [ ] Download the test PDF and confirm it streams correctly
-- [ ] Delete the test PDF and confirm the file disappears from cloud storage
-- [ ] Content Status page loads with no errors
+- [ ] `/health` → `{"status":"healthy"}`
+- [ ] `/docs` → 404 (API docs disabled in production ✅)
+- [ ] Homepage loads with 4 classes, 32 subjects
+- [ ] Navigating to `/search` and refreshing the page does not 404
+- [ ] Admin login at `/admin/login` works with the new password
+- [ ] Upload a test PDF → confirm it appears in Supabase Storage
+- [ ] Download the test PDF → confirm it streams from Supabase CDN
+- [ ] Delete the test PDF → confirm removed from Supabase
+
+---
+
+## Deployment — Option A: Vercel (Frontend) + Railway (Backend)
+
+For reference only. Use this if you need separate scaling or a CDN for the frontend.
+
+### Railway Setup (Backend)
+
+1. Create a project at [railway.app](https://railway.app).
+2. Connect your GitHub repository.
+3. Set **Root Directory** to `backend/`.
+4. Railway auto-detects `backend/Dockerfile`.
+5. Set environment variables in Railway:
+   ```
+   DATABASE_URL=postgresql://...  (from Railway PostgreSQL plugin or external)
+   JWT_SECRET_KEY=<64-char hex>
+   ENVIRONMENT=production
+   CORS_ORIGINS=https://your-app.vercel.app
+   STORAGE_BACKEND=supabase
+   SUPABASE_URL=https://xxx.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
+   SUPABASE_BUCKET=papers
+   ```
+6. After first deploy, seed via Railway CLI:
+   ```bash
+   railway run python seed.py
+   ```
+
+### Vercel Setup (Frontend)
+
+1. Import the repository at [vercel.com](https://vercel.com).
+2. Set **Root Directory** to `frontend/`.
+3. Build settings (auto-detected):
+   - Framework: Vite
+   - Build command: `npm run build`
+   - Output directory: `dist`
+4. Set environment variable in Vercel:
+   ```
+   VITE_API_URL=https://your-backend.up.railway.app/api/v1
+   ```
+5. **Replace the placeholder in `frontend/vercel.json`:**
+   ```json
+   {
+     "rewrites": [
+       { "source": "/api/:path*", "destination": "https://your-backend.up.railway.app/api/:path*" },
+       { "source": "/uploads/:path*", "destination": "https://your-backend.up.railway.app/uploads/:path*" },
+       { "source": "/(.*)", "destination": "/index.html" }
+     ]
+   }
+   ```
+   Replace `your-backend.up.railway.app` with your actual Railway URL.
+
+6. Deploy.
+
+---
+
+## GitHub Setup
+
+1. Create a repository at github.com.
+2. Ensure `.gitignore` excludes `.env`, `frontend/dist/`, `frontend/node_modules/`, `__pycache__/`, `.pythonlibs/`.
+3. Push code:
+   ```bash
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
+   git push -u origin main
+   ```
+4. **Confirm no secrets are in the repo** before making it public.
+
+---
+
+## Deployment Order
+
+Follow this exact order on first deployment:
+
+1. ✅ Set up Supabase (bucket must exist before first upload)
+2. ✅ Set all secrets/environment variables
+3. ✅ Deploy the backend (database tables created automatically on startup)
+4. ✅ Seed the database (`python seed.py`)
+5. ✅ Change admin password (`python change_admin_password.py`)
+6. ✅ Deploy the frontend (or trigger a Replit redeploy)
+7. ✅ Update `CORS_ORIGINS` with the final frontend URL
+8. ✅ Redeploy if `CORS_ORIGINS` changed
+9. ✅ Run post-deployment verification checklist
+
+---
+
+## Rollback Procedure
+
+### Replit
+
+1. Open **History** (clock icon in sidebar).
+2. Find the last known-good checkpoint.
+3. Click **Restore**.
+4. Redeploy from the restored state.
+
+### Railway
+
+1. Go to Railway dashboard → your service → **Deployments**.
+2. Find the previous successful deployment.
+3. Click **Redeploy** on that entry.
+
+### Database Schema Rollback
+
+If a schema change was deployed and you need to revert:
+
+1. Roll back the code first (steps above).
+2. Manually revert the schema change via `DATABASE_URL`:
+   ```sql
+   -- Example: revert an added column
+   ALTER TABLE papers DROP COLUMN IF EXISTS new_column;
+   ```
 
 ---
 
 ## Database Migrations
 
-The app uses SQLAlchemy `create_all()` at startup — it creates missing tables automatically. There are no manual migrations for the current schema.
+SQLAlchemy `create_all()` runs at every startup and creates **missing tables**. It does **not** add columns to existing tables or remove tables.
 
-**If you add a new column later:**
-
-1. Add it to `backend/app/models/models.py` with a default value or `nullable=True`.
-2. Redeploy — SQLAlchemy will NOT auto-add columns to existing tables.
-3. Run the migration manually against production:
+**Adding a new column after initial deployment:**
+1. Add the column to `backend/app/models/models.py` with `nullable=True` or a default.
+2. Run the migration manually before redeploying:
    ```sql
    ALTER TABLE papers ADD COLUMN new_column TEXT DEFAULT NULL;
    ```
-   Connect via Replit's database console or any PostgreSQL client using `DATABASE_URL`.
+3. Deploy — `create_all()` will not conflict with the existing table.
 
 ---
 
-## Rollback Instructions
+## Security Checklist (Before Go-Live)
 
-Replit keeps deployment checkpoints automatically.
-
-**To roll back to a previous version:**
-1. Open **Replit → History** (clock icon in the sidebar).
-2. Find the last known-good checkpoint.
-3. Click **Restore**.
-4. Redeploy from the restored checkpoint.
-
-**If the database schema changed and you need to roll back:**
-1. Restore the checkpoint first (code rollback).
-2. Manually revert any schema changes in the database (e.g. `ALTER TABLE ... DROP COLUMN`).
-3. Redeploy.
-
----
-
-## Environment Variable Reference
-
-See `.env.example` in the project root for a complete, documented list of all environment variables with example values.
-
----
-
-## Security Checklist (before go-live)
-
-- [ ] `ENVIRONMENT=production` is set
-- [ ] `JWT_SECRET_KEY` is a random ≥32-character string
-- [ ] `CORS_ORIGINS` is set to the exact production domain (no `*`)
-- [ ] Admin default password (`admin123`) has been changed
-- [ ] `STORAGE_BACKEND` is `s3` or `supabase` (not `local`)
-- [ ] `/docs` and `/redoc` return 404 on the live URL
-- [ ] HTTPS is enforced (Replit Deployments handles this automatically)
+- [ ] `ENVIRONMENT=production` is set in deployment secrets
+- [ ] `JWT_SECRET_KEY` is a random ≥32-character string (not the dev default)
+- [ ] `CORS_ORIGINS` is the exact production domain — no `*`
+- [ ] Admin default password `admin123` has been changed
+- [ ] `STORAGE_BACKEND=supabase` (not `local`)
+- [ ] `/docs` returns 404 on the live URL
+- [ ] HTTPS is enforced (Replit and Vercel do this automatically)
+- [ ] Supabase bucket is **Public** (students need to access PDF URLs directly)
+- [ ] Supabase bucket is named exactly `papers` (or matches `SUPABASE_BUCKET`)
