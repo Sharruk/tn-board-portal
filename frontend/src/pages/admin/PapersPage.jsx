@@ -76,19 +76,96 @@ function Badge({ type }) {
     : <span className="badge bg-green-100 text-green-700">Answer Key</span>
 }
 
+/*
+ * Z-INDEX HIERARCHY (modal stack)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * page / sidebar content        z-auto  (default document flow)
+ * mobile sidebar overlay        z-40    (AdminLayout)
+ * modal backdrop + container    z-50    (this component)
+ * toast notifications           z-[60]  (Toast component)
+ * native <select> dropdown      browser-managed (OS-level, above all CSS z)
+ *
+ * OVERFLOW APPROACH
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Problem: putting overflow-y-auto on the outermost modal div creates a scroll
+ * container that, in WebKit/Blink, can cause <select> option lists to be
+ * clipped or mis-positioned near the container boundaries.  The scrollbar
+ * appearing/disappearing also shifts the page layout, producing horizontal
+ * rendering artifacts.
+ *
+ * Solution:
+ *   • Modal outer frame  →  overflow: visible  (flex column, bounded by max-h)
+ *   • Sticky header      →  shrink-0, never scrolls
+ *   • Inner body only    →  overflow-y-auto     (only the form content scrolls)
+ *
+ * This gives native <select> dropdowns a clean, unclipped parent while still
+ * allowing tall forms to scroll.  Body scroll is locked for the duration of
+ * the modal, with scrollbar-width compensation to prevent layout reflow.
+ */
 function Modal({ title, onClose, children }) {
+  /* Lock body scroll; compensate for scrollbar width to prevent horizontal shift */
+  useEffect(() => {
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
+    document.body.style.overflow = 'hidden'
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`
+    }
+    return () => {
+      document.body.style.overflow = ''
+      document.body.style.paddingRight = ''
+    }
+  }, [])
+
+  /* ESC key closes the modal */
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+    /*
+     * Backdrop: fixed full-screen at z-50.
+     * overflow-hidden prevents the backdrop itself from showing a scrollbar.
+     */
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 overflow-hidden"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      {/*
+       * Modal frame: flex-col with max-height.
+       * NO overflow on this element — keeps <select> dropdowns unclipped.
+       */}
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col"
+        style={{ maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ── Sticky header — never scrolls ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Close modal"
+          >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+
+        {/*
+         * ── Scrollable body only ──
+         * overflow-y-auto is scoped to this inner div so <select> dropdowns
+         * in the form above can render outside it without being clipped.
+         * overscroll-behavior: contain stops scroll from bleeding to the page.
+         */}
+        <div className="overflow-y-auto overscroll-contain px-6 py-5 flex-1 min-h-0">
+          {children}
+        </div>
       </div>
     </div>
   )
