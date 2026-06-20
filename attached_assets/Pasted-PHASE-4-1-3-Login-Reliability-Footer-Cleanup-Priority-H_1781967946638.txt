@@ -1,0 +1,103 @@
+PHASE 4.1.3 — Login Reliability & Footer Cleanup
+
+Priority: HIGH
+
+Current Issues:
+
+ISSUE 1 — Admin Login Reliability
+
+Symptoms:
+- Correct credentials are sometimes rejected.
+- Login may fail even when the password is correct.
+- Authentication behavior appears inconsistent.
+
+This is a deployment blocker.
+
+Investigate and document:
+
+1. Frontend login request
+   - Verify payload being sent.
+   - Verify username/email field mapping.
+   - Verify token storage after successful login.
+
+2. Backend authentication flow
+   - Verify bcrypt password comparison.
+   - Verify login using username.
+   - Verify login using email.
+   - Verify failed_login_count logic.
+   - Verify account lockout logic.
+   - Verify rate limiting logic.
+
+3. Database validation
+   - Confirm admin record exists.
+   - Confirm email lookup works.
+   - Confirm username lookup works.
+   - Confirm password hash is valid.
+
+4. JWT flow
+   - Verify token generation.
+   - Verify token expiration handling.
+   - Verify frontend redirect logic.
+
+5. Browser testing
+   Test:
+   - Login with username
+   - Login with email
+   - Logout
+   - Login again
+   - Page refresh
+   - Expired token handling
+
+Deliverable:
+- Root cause identified.
+- Fix implemented.
+- Login succeeds consistently with valid credentials.
+- Invalid credentials rejected correctly.
+- No regression in security features.
+
+------------------------------------------------
+
+ISSUE 2 — Footer Simplification
+
+Current footer section:
+
+Learn With Us
+- YouTube Channel
+- Video Solutions
+- Coding Tutorials
+
+Replace with:
+
+YouTube
+
+- Hungry Learner Channel
+
+Link:
+https://www.youtube.com/@Hungry_Learner_Forever
+
+Requirements:
+
+- Open in new tab
+- rel="noopener noreferrer"
+- Simple and professional
+- No extra promotional links
+
+------------------------------------------------
+
+Validation Required
+
+Verify:
+
+✓ Login works with username
+✓ Login works with email
+✓ Logout works
+✓ Session persists correctly
+✓ Account lockout still functions
+✓ Rate limiting still functions
+✓ Footer contains only YouTube link
+✓ No console errors
+
+Update PROJECT_STATUS.txt
+
+Add:
+Phase 4.1.3 — Authentication Reliability Fixes
