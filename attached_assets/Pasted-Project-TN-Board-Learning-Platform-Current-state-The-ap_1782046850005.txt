@@ -1,0 +1,174 @@
+Project: TN Board Learning Platform
+
+Current state:
+
+The application is now functionally working.
+
+Verified working:
+
+✓ Supabase connection
+✓ Admin login
+✓ Upload paper
+✓ View paper
+✓ Download paper
+✓ Edit paper metadata
+✓ Visibility toggle
+✓ Delete paper
+✓ Search
+✓ Classes/Subjects
+✓ Download counter
+✓ Vercel build
+
+IMPORTANT:
+
+Do NOT add new features.
+Do NOT redesign the database.
+Do NOT create new migrations.
+Do NOT modify working functionality.
+
+Goal:
+Perform a complete production cleanup audit.
+
+---
+
+## PART 1 — Repository Cleanup
+
+Audit the entire repository.
+
+Identify:
+
+* Temporary AI-generated files
+* One-time audit files
+* Verification files
+* Execution reports
+* Migration notes
+* Cleanup notes
+* Deployment notes already applied
+
+Examples visible in repo:
+
+BACKEND_REMOVAL_*
+CLEANUP_*
+COPY_PASTE_*
+EXECUTION_READY_*
+FINAL_*
+JWT_*
+VERIFY_*
+AUDIT_*
+
+Return a table:
+
+File | Purpose | Keep/Delete | Reason
+
+Do NOT delete anything before presenting the report.
+
+---
+
+## PART 2 — attached_assets Cleanup
+
+Audit attached_assets/.
+
+There are many files such as:
+
+image_1782xxxxx.png
+
+Determine:
+
+* Which assets are actually referenced in the application
+* Which are unused Replit screenshots
+* Which can be removed safely
+
+Return:
+
+Asset | Used? | Referenced By | Safe To Delete?
+
+Do not delete before reporting.
+
+---
+
+## PART 3 — Dead Code Audit
+
+Search entire codebase for:
+
+* Unused components
+* Unused pages
+* Unused hooks
+* Unused utilities
+* Unused services
+* Old backend references
+* FastAPI references
+* Flask references
+* JWT references
+* Axios references
+* Localhost references
+* Unused environment variables
+
+Return:
+
+File | Problem | Severity
+
+---
+
+## PART 4 — Database Consistency Audit
+
+Do NOT modify the database.
+
+Verify:
+
+* Frontend uses is_visible
+* No remaining status references
+* Upload workflow matches schema
+* Edit workflow matches schema
+* Search workflow matches schema
+
+List any mismatches.
+
+---
+
+## PART 5 — Deployment Readiness
+
+Verify:
+
+* package.json
+* vite.config
+* vercel.json
+* environment variables
+* build output
+
+Return:
+
+PASS / FAIL checklist.
+
+---
+
+## PART 6 — GitHub Readiness
+
+Review:
+
+README.md
+.gitignore
+project structure
+
+Recommend:
+
+* files to keep
+* files to remove
+* files to move
+
+---
+
+FINAL OUTPUT
+
+Provide only:
+
+1. Cleanup Report
+2. Risk Report
+3. Files safe to delete
+4. Files that must remain
+5. Any blockers before GitHub/Vercel deployment
+
+Do NOT make changes automatically.
+
+Do NOT delete files automatically.
+
+First produce the audit report.
