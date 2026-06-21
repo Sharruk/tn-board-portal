@@ -101,7 +101,8 @@ export const deletePaper = async (id) => {
   if (fetchError) throw fetchError
 
   if (paper?.file_path) {
-    await supabase.storage.from('papers').remove([paper.file_path])
+    const { error: storageError } = await supabase.storage.from('papers').remove([paper.file_path])
+    if (storageError) throw storageError
   }
 
   const { error } = await supabase.from('papers').delete().eq('id', id)
