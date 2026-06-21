@@ -39,8 +39,10 @@ CREATE POLICY "papers_public_read"
 
 
 -- ── 4. Update search_papers RPC ───────────────────────────────────────────────
--- Now filters by status = 'published' instead of is_visible = true.
--- Adds status column to the return type.
+-- Must DROP first — CREATE OR REPLACE cannot change a function's return type.
+-- Migration 006 defined this without the status column; we add it here.
+
+DROP FUNCTION IF EXISTS search_papers(TEXT, INTEGER, TEXT, TEXT);
 
 CREATE OR REPLACE FUNCTION search_papers(
     q            TEXT,
