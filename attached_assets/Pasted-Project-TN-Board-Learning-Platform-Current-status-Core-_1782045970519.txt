@@ -1,0 +1,129 @@
+Project: TN Board Learning Platform
+
+Current status:
+
+Core workflow now works successfully:
+
+✓ Upload paper
+✓ Store PDF in Supabase Storage
+✓ Insert metadata into papers table
+✓ View PDF
+✓ Download PDF
+✓ Edit visibility
+✓ Delete paper
+✓ Search works
+✓ Admin dashboard works
+
+Do NOT redesign the database.
+Do NOT create migrations.
+Do NOT change authentication.
+Do NOT add new features unrelated to the issues below.
+
+Issues to fix:
+
+---
+
+## ISSUE 1 — Uploaded paper filename/title mismatch
+
+Current behavior:
+
+When I upload a paper and give a title, for example:
+
+"Class 12 Maths Public Exam 2025"
+
+the PDF is stored using a UUID filename:
+
+7c01aa43-14ca-4538-9b9a-5c5363dbe138.pdf
+
+and in some places the UUID filename is shown instead of the title I entered.
+
+Expected behavior:
+
+* Everywhere in the UI, show paper.title.
+* Never show the UUID storage filename to users.
+* UUID filename should remain internal storage only.
+* Student pages, admin pages, search results, downloads, and PDF viewer labels should display the paper title.
+
+Audit all places where filename/file_path/public_url is displayed and replace with title where appropriate.
+
+---
+
+## ISSUE 2 — Edit Paper is too limited
+
+Current edit modal only allows:
+
+* visibility toggle
+* YouTube link add/remove
+
+Expected edit functionality:
+
+Admin should be able to edit:
+
+* title
+* exam_type
+* year
+* paper_type
+* visibility
+* youtube_url
+
+Optional:
+
+* subject selection
+
+Do NOT require re-uploading the PDF.
+
+Audit:
+
+* Edit modal UI
+* editForm state
+* updatePaper service
+* backend update query
+
+Implement proper metadata editing.
+
+---
+
+## ISSUE 3 — Download button behavior
+
+Current behavior:
+
+User clicks paper.
+
+PDF opens in browser.
+
+Then user must click browser download manually.
+
+Expected behavior:
+
+When user clicks Download:
+
+* File should immediately download.
+* No extra click required.
+* Browser should save the PDF directly.
+
+Audit:
+
+* download link implementation
+* anchor tags
+* download attribute
+* window.open usage
+
+Implement direct download behavior while keeping download count tracking.
+
+---
+
+## Required output
+
+Before changing code:
+
+Provide:
+
+1. Root cause for each issue.
+2. Files that need modification.
+3. Exact implementation plan.
+
+Then implement only the minimum required changes.
+
+Do not touch working upload/delete/search functionality.
+Do not introduce new database schema changes.
+Do not introduce new migrations.

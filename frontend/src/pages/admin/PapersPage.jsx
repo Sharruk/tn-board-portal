@@ -206,7 +206,7 @@ export default function PapersPage() {
   const [formErrors, setFormErrors] = useState({})
   const [uploadProgress, setUploadProgress] = useState(null)
 
-  const [editForm, setEditForm] = useState({ youtubeUrl: '', isVisible: false })
+  const [editForm, setEditForm] = useState({ title: '', examType: '', year: String(CURRENT_YEAR), paperType: 'question', youtubeUrl: '', isVisible: true })
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState(null)
 
@@ -344,7 +344,14 @@ export default function PapersPage() {
 
   const openEdit = (paper) => {
     setEditPaper(paper)
-    setEditForm({ youtubeUrl: paper.youtube_url || '', isVisible: paper.is_visible ?? true })
+    setEditForm({
+      title:      paper.title || '',
+      examType:   paper.exam_type || '',
+      year:       String(paper.year || CURRENT_YEAR),
+      paperType:  paper.paper_type || 'question',
+      youtubeUrl: paper.youtube_url || '',
+      isVisible:  paper.is_visible ?? true,
+    })
     setEditError(null)
   }
 
@@ -354,8 +361,12 @@ export default function PapersPage() {
     setEditError(null)
     try {
       await updatePaper(editPaper.id, {
+        title:       editForm.title.trim(),
+        exam_type:   editForm.examType,
+        year:        parseInt(editForm.year, 10),
+        paper_type:  editForm.paperType,
         youtube_url: editForm.youtubeUrl || null,
-        is_visible: editForm.isVisible,
+        is_visible:  editForm.isVisible,
       })
       setEditPaper(null)
       load()
@@ -633,11 +644,40 @@ export default function PapersPage() {
       {/* ── Edit Modal ── */}
       {editPaper && (
         <Modal title="Edit Paper" onClose={() => setEditPaper(null)}>
-          <div className="mb-4 bg-gray-50 rounded-xl p-3">
-            <p className="font-medium text-gray-800 text-sm">{editPaper.title}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{editPaper.exam_type} · {editPaper.year}</p>
-          </div>
           <form onSubmit={handleEdit} className="space-y-4">
+            <FormField label="Title" required>
+              <input
+                value={editForm.title}
+                onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                className={inputCls}
+                placeholder="Paper title…"
+              />
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Exam Type" required>
+                <select value={editForm.examType} onChange={e => setEditForm(f => ({ ...f, examType: e.target.value }))} className={inputCls}>
+                  {EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Year" required>
+                <select value={editForm.year} onChange={e => setEditForm(f => ({ ...f, year: e.target.value }))} className={inputCls}>
+                  {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </FormField>
+            </div>
+
+            <FormField label="Paper Type" required>
+              <div className="flex gap-3">
+                {[{ val: 'question', label: '📝 Question Paper' }, { val: 'answer_key', label: '✅ Answer Key' }].map(o => (
+                  <label key={o.val} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 cursor-pointer text-sm font-medium transition-colors ${editForm.paperType === o.val ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    <input type="radio" checked={editForm.paperType === o.val} onChange={() => setEditForm(f => ({ ...f, paperType: o.val }))} className="sr-only" />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+            </FormField>
+
             <FormField label="YouTube URL" hint="Paste a YouTube URL or leave empty to remove">
               <input value={editForm.youtubeUrl} onChange={e => setEditForm(f => ({ ...f, youtubeUrl: e.target.value }))} className={inputCls} placeholder="https://youtube.com/watch?v=…" />
               {ytIdEdit && (
@@ -647,9 +687,10 @@ export default function PapersPage() {
                 </div>
               )}
             </FormField>
+
             <FormField label="Visibility" hint="Hidden papers are not shown to students.">
               <div className="flex gap-3">
-                {[{ val: true, label: '✅ Visible — shown to students' }, { val: false, label: '🙈 Hidden — not shown to students' }].map(o => (
+                {[{ val: true, label: '✅ Visible' }, { val: false, label: '🙈 Hidden' }].map(o => (
                   <label key={String(o.val)} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 cursor-pointer text-sm font-medium transition-colors ${editForm.isVisible === o.val ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                     <input type="radio" checked={editForm.isVisible === o.val} onChange={() => setEditForm(f => ({ ...f, isVisible: o.val }))} className="sr-only" />
                     {o.label}
@@ -657,6 +698,7 @@ export default function PapersPage() {
                 ))}
               </div>
             </FormField>
+
             {editError && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{editError}</div>}
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={() => setEditPaper(null)} className="btn-secondary flex-1 justify-center">Cancel</button>

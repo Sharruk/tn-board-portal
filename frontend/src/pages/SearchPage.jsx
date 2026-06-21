@@ -3,6 +3,7 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import SearchBar from '../components/SearchBar'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { searchPapers } from '../services/search'
+import { downloadPaper } from '../utils/download'
 
 const SUGGESTIONS = [
   'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Science',
@@ -156,7 +157,7 @@ export default function SearchPage() {
                     <div className="flex items-center gap-3 shrink-0">
                       {r.public_url && (
                         <button
-                          onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(r.public_url, '_blank', 'noopener,noreferrer') }}
+                          onClick={e => { e.preventDefault(); e.stopPropagation(); downloadPaper(r.public_url, r.title) }}
                           className="btn-secondary text-sm px-3 py-1.5"
                         >
                           Download

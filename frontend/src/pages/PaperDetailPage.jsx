@@ -6,6 +6,7 @@ import ErrorMessage from '../components/ErrorMessage'
 import PaperCard from '../components/PaperCard'
 import { getPaper, getPaperBySlug, recordDownload } from '../services/papers'
 import { getPapersForSubject } from '../services/subjects'
+import { downloadPaper } from '../utils/download'
 
 function YoutubeEmbed({ url }) {
   const getVideoId = (url) => {
@@ -91,6 +92,7 @@ export default function PaperDetailPage() {
     recordDownload(paper.id)
       .then(() => setDownloadCount(c => c + 1))
       .catch(() => {})
+    downloadPaper(paper.public_url, paper.title)
   }, [paper])
 
   const handleShare = useCallback(async () => {
@@ -186,9 +188,7 @@ export default function PaperDetailPage() {
             </a>
 
             {/* Download PDF */}
-            <a
-              href={paper.public_url}
-              download
+            <button
               onClick={handleDownload}
               className="inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-800 font-semibold px-6 py-3 rounded-xl border border-gray-200 transition-colors text-base flex-1 sm:flex-none"
             >
@@ -196,7 +196,7 @@ export default function PaperDetailPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
               </svg>
               {isQuestion ? 'Download Question Paper' : 'Download Answer Key'}
-            </a>
+            </button>
 
             {/* Share */}
             <button

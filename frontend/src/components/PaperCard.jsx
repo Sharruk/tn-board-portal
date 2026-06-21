@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { downloadPaper } from '../utils/download'
 
 export default function PaperCard({ paper, showSubject = false, showDownloads = false }) {
   const isQuestion = paper.paper_type === 'question'
@@ -41,7 +42,7 @@ export default function PaperCard({ paper, showSubject = false, showDownloads = 
         </Link>
         {paper.public_url && (
           <button
-            onClick={() => window.open(paper.public_url, '_blank', 'noopener,noreferrer')}
+            onClick={() => downloadPaper(paper.public_url, paper.title)}
             className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
