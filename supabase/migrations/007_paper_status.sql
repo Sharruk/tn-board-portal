@@ -4,8 +4,8 @@
 -- =============================================================================
 -- Adds a status column (draft | published | archived) to papers.
 -- Migrates existing data from is_visible boolean.
--- Updates search_papers and increment_download_count RPCs to filter by status.
--- Updates get_admin_stats to count published papers.
+-- Updates the papers_public_read RLS policy to gate on status.
+-- Updates search_papers, increment_download_count, and get_admin_stats RPCs.
 -- =============================================================================
 
 
@@ -14,15 +14,33 @@ ALTER TABLE papers
   ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft'
   CHECK (status IN ('draft', 'published', 'archived'));
 
+CREATE INDEX IF NOT EXISTS idx_papers_status ON papers (status);
+
 
 -- ── 2. Migrate existing data from is_visible ──────────────────────────────────
+-- Guard: only update rows still sitting at the default 'draft' to prevent
+-- double-running this migration from overwriting manual status edits.
 UPDATE papers SET status = 'published' WHERE is_visible = true  AND status = 'draft';
 UPDATE papers SET status = 'archived'  WHERE is_visible = false AND status = 'draft';
 
 
--- ── 3. Update search_papers RPC ───────────────────────────────────────────────
+-- ── 3. Replace papers_public_read RLS policy ──────────────────────────────────
+-- Old policy used is_visible = true.
+-- New policy uses status = 'published' so the status column is the single source
+-- of truth for public visibility. Drafts and archived papers are never visible
+-- to anon regardless of is_visible.
+DROP POLICY IF EXISTS "papers_public_read" ON papers;
+
+CREATE POLICY "papers_public_read"
+    ON papers
+    FOR SELECT
+    TO anon
+    USING (status = 'published');
+
+
+-- ── 4. Update search_papers RPC ───────────────────────────────────────────────
 -- Now filters by status = 'published' instead of is_visible = true.
--- Adds status column to return type so callers can inspect it.
+-- Adds status column to the return type.
 
 CREATE OR REPLACE FUNCTION search_papers(
     q            TEXT,
@@ -97,7 +115,7 @@ GRANT EXECUTE ON FUNCTION search_papers(TEXT, INTEGER, TEXT, TEXT) TO anon;
 GRANT EXECUTE ON FUNCTION search_papers(TEXT, INTEGER, TEXT, TEXT) TO authenticated;
 
 
--- ── 4. Update increment_download_count RPC ────────────────────────────────────
+-- ── 5. Update increment_download_count RPC ────────────────────────────────────
 -- Guards on status = 'published' instead of is_visible = true.
 
 CREATE OR REPLACE FUNCTION increment_download_count(paper_id_param INTEGER)
@@ -126,8 +144,8 @@ GRANT EXECUTE ON FUNCTION increment_download_count(INTEGER) TO anon;
 GRANT EXECUTE ON FUNCTION increment_download_count(INTEGER) TO authenticated;
 
 
--- ── 5. Update get_admin_stats RPC ─────────────────────────────────────────────
--- published_papers replaces the old visible_papers count.
+-- ── 6. Update get_admin_stats RPC ─────────────────────────────────────────────
+-- visible_papers now counts status = 'published' instead of is_visible = true.
 
 CREATE OR REPLACE FUNCTION get_admin_stats()
 RETURNS TABLE (
@@ -146,13 +164,13 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT
-        (SELECT COUNT(*)                    FROM papers)                                    AS total_papers,
-        (SELECT COALESCE(SUM(download_count), 0) FROM papers)                              AS total_downloads,
-        (SELECT COUNT(*)                    FROM subjects)                                  AS total_subjects,
-        (SELECT COUNT(*)                    FROM classes)                                   AS total_classes,
-        (SELECT COUNT(*)                    FROM papers WHERE status = 'published')         AS visible_papers,
-        (SELECT COUNT(*)                    FROM papers WHERE paper_type = 'question')      AS question_papers,
-        (SELECT COUNT(*)                    FROM papers WHERE paper_type = 'answer_key')    AS answer_keys;
+        (SELECT COUNT(*)                         FROM papers)                                AS total_papers,
+        (SELECT COALESCE(SUM(download_count), 0) FROM papers)                               AS total_downloads,
+        (SELECT COUNT(*)                         FROM subjects)                              AS total_subjects,
+        (SELECT COUNT(*)                         FROM classes)                               AS total_classes,
+        (SELECT COUNT(*)                         FROM papers WHERE status = 'published')     AS visible_papers,
+        (SELECT COUNT(*)                         FROM papers WHERE paper_type = 'question')  AS question_papers,
+        (SELECT COUNT(*)                         FROM papers WHERE paper_type = 'answer_key') AS answer_keys;
 END;
 $$;
 
