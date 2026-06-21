@@ -17,14 +17,32 @@ const SUBJECT_ALIASES = {
   social: 'social science', science: 'science',
 }
 
+const EXAM_PATTERNS = [
+  'unit test 1', 'unit test 2', 'unit test 3',
+  'quarterly exam', 'quarterly',
+  'half yearly exam', 'half yearly',
+  'annual exam', 'annual',
+  'public exam',
+  'practical exam',
+  'model exam',
+]
+
 function expandTerms(q) {
   const normalized = q.trim().toLowerCase()
   const terms = new Set([normalized])
+
   for (const [alias, full] of Object.entries(SUBJECT_ALIASES)) {
     if (normalized.includes(alias) && full !== normalized) {
       terms.add(full)
     }
   }
+
+  for (const pattern of EXAM_PATTERNS) {
+    if (normalized.includes(pattern) && pattern !== normalized) {
+      terms.add(pattern)
+    }
+  }
+
   return [...terms]
 }
 
@@ -42,9 +60,8 @@ export const searchPapers = async ({ q, class_id, exam_type, paper_type } = {}) 
       p_exam_type:  exam_type  || null,
       p_paper_type: paper_type || null,
     })
-    if (!error && data) {
-      data.forEach(r => seen.set(r.id, r))
-    }
+    if (error) throw error
+    data?.forEach(r => seen.set(r.id, r))
   }
 
   const results = [...seen.values()]
