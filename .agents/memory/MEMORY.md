@@ -1,1 +1,0 @@
-- [Supabase migration architecture](supabase-migration.md) — full React+FastAPI+JWT→React+Supabase migration; all service files rewritten; search needs RPC; search_papers migration 006 required.
