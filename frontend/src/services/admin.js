@@ -60,7 +60,7 @@ export const uploadPaper = async (formData, onProgress) => {
     youtube_url:   formData.get('youtube_url') || null,
     file_path:     filename,
     public_url:    publicUrl,
-    status:        'draft',
+    is_visible:    false,
   }
 
   const { data, error: insertError } = await supabase

@@ -21,7 +21,7 @@ export const getPapersForSubject = async (id, params = {}) => {
     .from('papers')
     .select('*')
     .eq('subject_id', id)
-    .eq('status', 'published')
+    .eq('is_visible', true)
     .order('year', { ascending: false })
 
   if (params.exam_type)  query = query.eq('exam_type', params.exam_type)

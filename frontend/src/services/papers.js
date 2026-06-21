@@ -11,7 +11,7 @@ export const getPaper = async (id) => {
     .from('papers')
     .select('*, subjects ( *, classes ( * ) )')
     .eq('id', id)
-    .eq('status', 'published')
+    .eq('is_visible', true)
     .single()
   if (error) throw error
   return { data }
@@ -28,7 +28,7 @@ export const getRecentPapers = async (limit = 10) => {
   const { data, error } = await supabase
     .from('papers')
     .select('*')
-    .eq('status', 'published')
+    .eq('is_visible', true)
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw error
@@ -39,7 +39,7 @@ export const getPopularPapers = async (limit = 10) => {
   const { data, error } = await supabase
     .from('papers')
     .select('*')
-    .eq('status', 'published')
+    .eq('is_visible', true)
     .order('download_count', { ascending: false })
     .limit(limit)
   if (error) throw error

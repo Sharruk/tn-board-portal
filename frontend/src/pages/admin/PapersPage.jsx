@@ -206,7 +206,7 @@ export default function PapersPage() {
   const [formErrors, setFormErrors] = useState({})
   const [uploadProgress, setUploadProgress] = useState(null)
 
-  const [editForm, setEditForm] = useState({ youtubeUrl: '', status: 'draft' })
+  const [editForm, setEditForm] = useState({ youtubeUrl: '', isVisible: false })
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState(null)
 
@@ -344,7 +344,7 @@ export default function PapersPage() {
 
   const openEdit = (paper) => {
     setEditPaper(paper)
-    setEditForm({ youtubeUrl: paper.youtube_url || '', status: paper.status || 'draft' })
+    setEditForm({ youtubeUrl: paper.youtube_url || '', isVisible: paper.is_visible ?? true })
     setEditError(null)
   }
 
@@ -355,7 +355,7 @@ export default function PapersPage() {
     try {
       await updatePaper(editPaper.id, {
         youtube_url: editForm.youtubeUrl || null,
-        status: editForm.status,
+        is_visible: editForm.isVisible,
       })
       setEditPaper(null)
       load()
@@ -499,18 +499,10 @@ export default function PapersPage() {
                           </td>
                           <td className="px-4 py-3 text-gray-500 font-mono text-xs">{p.download_count ?? 0}</td>
                           <td className="px-4 py-3">
-                            {p.status === 'published' && (
-                              <span className="badge text-xs bg-emerald-100 text-emerald-700">Published</span>
-                            )}
-                            {p.status === 'draft' && (
-                              <span className="badge text-xs bg-amber-100 text-amber-700">Draft</span>
-                            )}
-                            {p.status === 'archived' && (
-                              <span className="badge text-xs bg-gray-200 text-gray-500">Archived</span>
-                            )}
-                            {!p.status && (
-                              <span className="badge text-xs bg-amber-100 text-amber-700">Draft</span>
-                            )}
+                            {p.is_visible
+                              ? <span className="badge text-xs bg-emerald-100 text-emerald-700">Visible</span>
+                              : <span className="badge text-xs bg-amber-100 text-amber-700">Hidden</span>
+                            }
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
@@ -655,16 +647,15 @@ export default function PapersPage() {
                 </div>
               )}
             </FormField>
-            <FormField label="Status" hint="Draft = hidden from students. Published = visible to students. Archived = hidden and retired.">
-              <select
-                value={editForm.status}
-                onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
-                className={inputCls}
-              >
-                <option value="draft">📝 Draft — not visible to students</option>
-                <option value="published">✅ Published — visible to students</option>
-                <option value="archived">📦 Archived — hidden and retired</option>
-              </select>
+            <FormField label="Visibility" hint="Hidden papers are not shown to students.">
+              <div className="flex gap-3">
+                {[{ val: true, label: '✅ Visible — shown to students' }, { val: false, label: '🙈 Hidden — not shown to students' }].map(o => (
+                  <label key={String(o.val)} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 cursor-pointer text-sm font-medium transition-colors ${editForm.isVisible === o.val ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    <input type="radio" checked={editForm.isVisible === o.val} onChange={() => setEditForm(f => ({ ...f, isVisible: o.val }))} className="sr-only" />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
             </FormField>
             {editError && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{editError}</div>}
             <div className="flex gap-3 pt-2">
