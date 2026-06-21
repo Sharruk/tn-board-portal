@@ -1,0 +1,201 @@
+The application is currently WORKING.
+
+Current status:
+
+✓ Upload works
+✓ View PDF works
+✓ Download works
+✓ Edit paper metadata works
+✓ Visibility toggle works
+✓ Delete works
+✓ Dashboard works
+✓ Search works
+✓ Supabase connected
+✓ Build succeeds
+
+IMPORTANT:
+
+This is now the MVP release candidate.
+
+Do NOT make any functional changes until a cleanup audit is completed.
+
+Do NOT modify application logic.
+Do NOT modify database schema.
+Do NOT modify Supabase.
+Do NOT modify search functionality.
+Do NOT modify upload functionality.
+
+Goal:
+
+Prepare the repository for:
+1. GitHub push
+2. Vercel deployment
+3. Future branch-based development
+
+I want a SAFE production cleanup.
+
+==================================================
+PHASE 1 — Repository Audit
+==================================================
+
+Verify every file listed below is truly unused before deleting anything.
+
+Candidate files:
+
+STAGE_A_VERIFICATION.md
+STAGE_B_VERIFICATION.md
+STAGE_C_VERIFICATION.md
+STAGE_D_VERIFICATION.md
+STAGE_E_VERIFICATION.md
+FINAL_CLEAN_REPOSITORY_REPORT.md
+FINAL_DEPLOYMENT_BLOCKERS.md
+FINAL_PRE_DELETE_INVENTORY.md
+FINAL_PROJECT_STATE.md
+BACKEND_REMOVAL_VERIFICATION.md
+JWT_USAGE_AUDIT.md
+REPOSITORY_CLEANUP_AUDIT.md
+EXECUTION_READY_STATUS.md
+CLEANUP_EXECUTION_PLAN.md
+COPY_PASTE_SQL_ORDER.md
+SUPABASE_ACTIVATION_CHECKLIST.md
+VERCEL_DEPLOYMENT_STEPS.md
+change_admin_password.py
+data.json
+.dockerignore
+.env.example
+frontend/src/services/api.js
+
+For EACH file:
+
+- show references
+- show imports
+- show usages
+- show grep results
+- explain why deletion is safe or unsafe
+
+Do NOT delete yet.
+
+==================================================
+PHASE 2 — attached_assets Audit
+==================================================
+
+Audit the entire attached_assets folder.
+
+For every asset:
+
+- filename
+- file size
+- referenced anywhere?
+- exact reference location if used
+
+If unused:
+
+mark SAFE TO DELETE.
+
+Do NOT delete yet.
+
+==================================================
+PHASE 3 — README Audit
+==================================================
+
+Read current README.md completely.
+
+Determine:
+
+- Is it accurate?
+- Does it mention FastAPI?
+- Docker?
+- JWT?
+- Flask?
+- backend folder?
+- SQLAlchemy?
+- Axios?
+
+If inaccurate:
+
+Generate a NEW README proposal that documents:
+
+Architecture:
+
+- React
+- Vite
+- Supabase
+- Supabase Storage
+- Vercel
+
+Features:
+
+- Upload Papers
+- Search Papers
+- Download Papers
+- Edit Metadata
+- Visibility Control
+- Dashboard Analytics
+
+Setup:
+
+npm install
+npm run dev
+npm run build
+
+Environment Variables:
+
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+
+Do NOT overwrite README yet.
+
+==================================================
+PHASE 4 — Deployment Readiness Audit
+==================================================
+
+Verify:
+
+- package.json
+- vite.config.js
+- vercel.json
+- .gitignore
+- environment variables usage
+- Supabase client configuration
+
+Report:
+
+- GitHub readiness
+- Vercel readiness
+- deployment blockers
+- security issues
+- unused dependencies
+- dead code
+
+Do NOT modify anything.
+
+==================================================
+PHASE 5 — Final Report
+==================================================
+
+Produce a final report:
+
+SAFE TO DELETE
+KEEP
+REWRITE
+UPDATE
+
+For every recommendation provide evidence.
+
+Also include:
+
+- estimated files removed
+- estimated repository size reduction
+- GitHub readiness score / 10
+- Vercel readiness score / 10
+- deployment risks
+- recommended next actions
+
+IMPORTANT:
+
+DO NOT DELETE FILES.
+DO NOT MODIFY CODE.
+DO NOT MODIFY DATABASE.
+DO NOT MODIFY SUPABASE.
+
+Return ONLY the audit report with evidence.
