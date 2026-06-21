@@ -4,11 +4,14 @@
 
 **Free question papers and answer keys for Tamil Nadu State Board students — Classes 9 to 12.**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://tn-board-portal.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Visit%20Now-black?style=for-the-badge&logo=vercel)](https://tn-board-portal.vercel.app)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
-[![Supabase](https://img.shields.io/badge/Supabase-BaaS-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
 [![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev)
+[![Supabase](https://img.shields.io/badge/Supabase-BaaS-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
+[![Vercel](https://img.shields.io/badge/Vercel-Deployed-black?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+
+### 🌐 [Live Demo → tn-board-portal.vercel.app](https://tn-board-portal.vercel.app)
 
 </div>
 
@@ -16,10 +19,11 @@
 
 ## Table of Contents
 
-- [About](#about)
+- [Why This Project Exists](#why-this-project-exists)
+- [Project Status](#project-status)
 - [Features](#features)
-- [Architecture](#architecture)
 - [Screenshots](#screenshots)
+- [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Local Installation](#local-installation)
 - [Environment Variables](#environment-variables)
@@ -27,35 +31,68 @@
 - [Deploying to Vercel](#deploying-to-vercel)
 - [Project Structure](#project-structure)
 - [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Acknowledgements](#acknowledgements)
 - [License](#license)
 
 ---
 
-## About
+## Why This Project Exists
 
-The **TN State Board Portal** is an open-access web platform that aggregates Tamil Nadu State Board question papers and official answer keys for Classes 9 through 12. Students can browse by class and subject, search across all content, and download PDFs instantly — no account required.
+Tamil Nadu State Board students preparing for Class 9–12 board exams often struggle to find official question papers and answer keys from previous years. Resources are scattered across government websites, unofficial Telegram groups, and private coaching portals — many of which are unreliable, incomplete, or behind paywalls.
 
-Admins manage all content through a protected dashboard backed by Supabase Auth and Row Level Security. There is no server-side backend; all data operations flow directly from the React frontend to Supabase via RLS-protected APIs.
+**TN State Board Portal** solves this by providing a single, free, and openly accessible platform where students can instantly find, preview, and download question papers and answer keys — organized by class, subject, and exam type.
+
+No login. No paywall. No ads.
+
+---
+
+## Project Status
+
+**Deployment:** ✅ Production — Live at [tn-board-portal.vercel.app](https://tn-board-portal.vercel.app)
+
+### Completed Features
+
+| Feature | Status |
+|---------|:------:|
+| Browse by Class & Subject | ✅ |
+| Full-text Search | ✅ |
+| PDF Download via CDN | ✅ |
+| Admin Authentication | ✅ |
+| Paper Upload (single & bulk) | ✅ |
+| Edit Paper Metadata | ✅ |
+| Delete Papers | ✅ |
+| Visibility Control (draft/published) | ✅ |
+| Download Analytics | ✅ |
+| Admin Audit Log | ✅ |
+| Content Status Overview | ✅ |
 
 ---
 
 ## Features
 
-### For Students
+### 🎓 Student Features
 
-- 📚 **Browse by Class & Subject** — Navigate a structured hierarchy: Class → Subject → Papers
-- 🔍 **Full-text Search** — Search across paper titles, subjects, exam types, and classes
-- 📄 **Paper Detail View** — View metadata, exam type, year, and download count before downloading
+- 📚 **Browse by Class & Subject** — Navigate a clear hierarchy: Class → Subject → Papers
+- 🔍 **Full-text Search** — Search by subject name, exam type, class, year, or title
+- 📄 **Paper Detail View** — View metadata and download count before downloading
 - ⬇️ **One-click PDF Download** — Files served directly from Supabase Storage CDN
+- 🚫 **No account required** — Fully open access for all students
 
-### For Admins
+### 🛡️ Admin Features
 
 - 🔐 **Secure Login** — Supabase Auth (email/password); no public registration
-- 📋 **Dashboard** — Stats: total papers, subjects, classes, and download counts
-- 🗂 **Paper Management** — Upload, edit metadata, toggle visibility (draft/published), delete
-- 📦 **Bulk Upload** — Upload multiple papers at once with metadata
-- 📊 **Content Status** — Overview of published vs. draft content across all subjects
-- 📝 **Audit Log** — Every admin action (upload, edit, delete) is recorded with timestamp
+- 📋 **Dashboard** — At-a-glance stats: total papers, subjects, classes, download counts
+- 🗂 **Paper Management** — Upload, edit metadata, toggle draft/published, delete
+- 📦 **Bulk Upload** — Upload multiple papers simultaneously with metadata
+- 📊 **Content Status** — Cross-subject view of published vs. draft coverage
+- 📝 **Audit Log** — Timestamped record of every admin action
+
+---
+
+## Screenshots
+
+Screenshots coming soon. The application is live at https://tn-board-portal.vercel.app
 
 ---
 
@@ -87,8 +124,8 @@ Admins manage all content through a protected dashboard backed by Supabase Auth 
 │  │ subjects    │  │ (email/pw)   │  │ (public CDN)  │  │
 │  │ classes     │  └──────────────┘  └───────────────┘  │
 │  │ audit_logs  │                                        │
-│  │ search_queries              RLS + SECURITY DEFINER   │
-│  └─────────────┘                    RPC functions       │
+│  │ search_queries         RLS + SECURITY DEFINER        │
+│  └─────────────┘               RPC functions            │
 └───────────────────────────┬─────────────────────────────┘
                             │
                             ▼
@@ -98,38 +135,33 @@ Admins manage all content through a protected dashboard backed by Supabase Auth 
 └─────────────────────────────────────────────────────────┘
 ```
 
+### Design Principles
+
+| Principle | Implementation |
+|-----------|---------------|
+| **Frontend-only architecture** | No custom server or API layer |
+| **React + Supabase** | All UI in React; all data in Supabase |
+| **No custom backend** | Supabase handles DB, Auth, and Storage |
+| **RLS-secured database access** | PostgreSQL Row Level Security on every table |
+| **Static deployment** | Vite SPA deployed to Vercel global CDN |
+
 > **Architecture decision:** This project intentionally uses a frontend-only React + Supabase architecture. Do not introduce a separate backend unless there is a strong technical requirement. All authorization is enforced by PostgreSQL Row Level Security policies and `SECURITY DEFINER` RPC functions — not application code.
-
----
-
-## Screenshots
-
-> _Add screenshots after deployment. Suggested captures:_
-
-| Page | Description |
-|------|-------------|
-| Home page | Class grid with search bar |
-| Subject page | Paper listing for a subject |
-| Search results | Full-text search in action |
-| Paper detail | Metadata + download button |
-| Admin dashboard | Stats overview |
-| Admin papers | Paper management table |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| UI Framework | React | 18 |
-| Build Tool | Vite | 5 |
-| Styling | Tailwind CSS | 3 |
-| Routing | React Router DOM | 6 |
-| Backend-as-a-Service | Supabase | — |
-| Database | PostgreSQL (via Supabase) | — |
-| Authentication | Supabase Auth | — |
-| File Storage | Supabase Storage | — |
-| Hosting | Vercel | — |
+| Layer | Technology |
+|-------|-----------|
+| UI Framework | React 18 |
+| Build Tool | Vite 5 |
+| Styling | Tailwind CSS 3 |
+| Routing | React Router DOM 6 |
+| Backend-as-a-Service | Supabase |
+| Database | PostgreSQL (via Supabase) |
+| Authentication | Supabase Auth |
+| File Storage | Supabase Storage |
+| Hosting | Vercel |
 
 ---
 
@@ -290,51 +322,58 @@ Vercel automatically redeploys on every push to the `main` branch.
 ```
 tn-board-portal/
 ├── frontend/                        # React application (Vercel root)
-│   ├── public/
-│   ├── src/
-│   │   ├── components/              # Reusable UI components
-│   │   │   ├── Navbar.jsx
-│   │   │   ├── Footer.jsx
-│   │   │   ├── SearchBar.jsx
-│   │   │   ├── PaperCard.jsx
-│   │   │   ├── ClassCard.jsx
-│   │   │   ├── Breadcrumb.jsx
-│   │   │   ├── LoadingSpinner.jsx
-│   │   │   ├── ErrorMessage.jsx
-│   │   │   └── admin/               # Admin-specific UI components
-│   │   ├── contexts/
-│   │   │   └── AuthContext.jsx      # Supabase Auth session state
-│   │   ├── hooks/                   # Custom React hooks
-│   │   ├── layouts/                 # Page layout wrappers
-│   │   ├── lib/
-│   │   │   └── supabase.js          # Supabase client (reads env vars)
-│   │   ├── pages/                   # Route-level page components
-│   │   │   ├── HomePage.jsx
-│   │   │   ├── ClassPage.jsx
-│   │   │   ├── SubjectPage.jsx
-│   │   │   ├── PaperListPage.jsx
-│   │   │   ├── PaperDetailPage.jsx
-│   │   │   ├── SearchPage.jsx
-│   │   │   ├── NotFoundPage.jsx
-│   │   │   └── admin/
-│   │   │       ├── LoginPage.jsx
-│   │   │       ├── DashboardPage.jsx
-│   │   │       ├── PapersPage.jsx
-│   │   │       ├── BulkUploadTab.jsx
-│   │   │       └── ContentStatusPage.jsx
-│   │   ├── router/
-│   │   │   └── index.jsx            # React Router route definitions
-│   │   ├── services/                # Supabase data-access layer
-│   │   │   ├── papers.js            # CRUD for papers
-│   │   │   ├── search.js            # Full-text search via search_papers RPC
-│   │   │   ├── classes.js           # Fetch classes and subjects
-│   │   │   └── admin.js             # Admin stats, audit log, content status
-│   │   └── utils/                   # Utility/helper functions
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── tailwind.config.js
 │   ├── postcss.config.js
-│   └── package.json
+│   ├── package.json
+│   └── src/
+│       ├── main.jsx                 # Application entry point
+│       ├── index.css                # Global styles
+│       ├── components/              # Reusable UI components
+│       │   ├── Navbar.jsx
+│       │   ├── Footer.jsx
+│       │   ├── SearchBar.jsx
+│       │   ├── PaperCard.jsx
+│       │   ├── ClassCard.jsx
+│       │   ├── Breadcrumb.jsx
+│       │   ├── LoadingSpinner.jsx
+│       │   ├── ErrorMessage.jsx
+│       │   └── admin/
+│       │       ├── AdminLayout.jsx  # Admin section shell/layout
+│       │       └── ProtectedRoute.jsx  # Auth guard for admin routes
+│       ├── contexts/
+│       │   └── AuthContext.jsx      # Supabase Auth session state
+│       ├── hooks/
+│       │   └── useFetch.js          # Generic data-fetching hook
+│       ├── layouts/
+│       │   └── MainLayout.jsx       # Public page layout wrapper
+│       ├── lib/
+│       │   └── supabase.js          # Supabase client (reads env vars)
+│       ├── pages/                   # Route-level page components
+│       │   ├── HomePage.jsx
+│       │   ├── ClassPage.jsx
+│       │   ├── SubjectPage.jsx
+│       │   ├── PaperListPage.jsx
+│       │   ├── PaperDetailPage.jsx
+│       │   ├── SearchPage.jsx
+│       │   ├── NotFoundPage.jsx
+│       │   └── admin/
+│       │       ├── LoginPage.jsx
+│       │       ├── DashboardPage.jsx
+│       │       ├── PapersPage.jsx       # Paper list, edit, delete
+│       │       ├── BulkUploadTab.jsx    # Multi-file upload UI
+│       │       └── ContentStatusPage.jsx
+│       ├── router/
+│       │   └── index.jsx            # React Router route definitions
+│       ├── services/                # Supabase data-access layer
+│       │   ├── papers.js            # CRUD for papers
+│       │   ├── search.js            # Full-text search via search_papers RPC
+│       │   ├── classes.js           # Fetch classes
+│       │   ├── subjects.js          # Fetch subjects
+│       │   └── admin.js             # Admin stats, audit log, content status
+│       └── utils/
+│           └── download.js          # PDF download helper
 │
 ├── supabase/
 │   ├── migrations/                  # SQL migrations — apply in order
@@ -357,14 +396,76 @@ tn-board-portal/
 
 ## Roadmap
 
-- [ ] **Student accounts** — Save favourites and download history
-- [ ] **Mobile app** — React Native wrapper for offline PDF viewing
-- [ ] **Push notifications** — Alert students when new papers are uploaded for their class
-- [ ] **Multi-board support** — Extend beyond Tamil Nadu to CBSE and ICSE question banks
-- [ ] **OCR text extraction** — Make scanned PDFs searchable by content
+### 🔜 Short-term
+
+- [ ] **Screenshots** — Capture and publish app screenshots
+- [ ] **Supabase CLI migrations** — Replace manual SQL Editor with `supabase db push`
 - [ ] **Paper ratings** — Students can rate answer key quality
+
+### 🗓 Medium-term
+
+- [ ] **Student accounts** — Save favourites and personal download history
 - [ ] **Analytics dashboard** — Per-subject and per-class download trend charts for admins
-- [ ] **Supabase CLI migrations** — Replace manual SQL editor workflow with `supabase db push`
+- [ ] **Push notifications** — Alert students when new papers are uploaded for their class
+
+### 🔭 Long-term
+
+- [ ] **Multi-board support** — Extend to CBSE and ICSE question banks
+- [ ] **OCR text extraction** — Make scanned PDFs searchable by content
+- [ ] **Mobile app** — React Native wrapper for offline PDF viewing
+
+---
+
+## Contributing
+
+Contributions are welcome! This is a documentation-first, architecture-stable project.
+
+### Ground rules
+
+1. **Do not introduce a server-side backend.** The frontend-only React + Supabase architecture is intentional. All auth and data access must go through Supabase RLS and RPC functions.
+2. **Do not modify migrations that have already been applied to production.** Add new migration files instead.
+3. **Verify the build locally** before opening a pull request:
+
+```bash
+cd frontend && npm install && npm run build
+```
+
+### How to contribute
+
+```bash
+# 1. Fork the repository on GitHub
+
+# 2. Clone your fork
+git clone https://github.com/YOUR_USERNAME/tn-board-portal.git
+cd tn-board-portal
+
+# 3. Create a feature branch
+git checkout -b feature/your-feature-name
+
+# 4. Make your changes, then verify the build
+cd frontend && npm install && npm run build
+
+# 5. Commit and push
+git commit -m "feat: describe your change"
+git push origin feature/your-feature-name
+
+# 6. Open a Pull Request on GitHub
+```
+
+For bug reports or feature requests, open a [GitHub Issue](https://github.com/Sharruk/tn-board-portal/issues).
+
+---
+
+## Acknowledgements
+
+| Tool | Role |
+|------|------|
+| [React](https://react.dev) | UI framework |
+| [Vite](https://vitejs.dev) | Build tool and dev server |
+| [Tailwind CSS](https://tailwindcss.com) | Utility-first styling |
+| [React Router](https://reactrouter.com) | Client-side routing |
+| [Supabase](https://supabase.com) | Database, Auth, and Storage |
+| [Vercel](https://vercel.com) | Hosting and global CDN |
 
 ---
 
@@ -401,5 +502,7 @@ SOFTWARE.
 <div align="center">
 
 Made with ❤️ for Tamil Nadu State Board students
+
+[🌐 Visit Live Site](https://tn-board-portal.vercel.app) · [🐛 Report a Bug](https://github.com/Sharruk/tn-board-portal/issues) · [💡 Request a Feature](https://github.com/Sharruk/tn-board-portal/issues)
 
 </div>
