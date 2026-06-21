@@ -206,7 +206,7 @@ export default function PapersPage() {
   const [formErrors, setFormErrors] = useState({})
   const [uploadProgress, setUploadProgress] = useState(null)
 
-  const [editForm, setEditForm] = useState({ youtubeUrl: '', isVisible: true })
+  const [editForm, setEditForm] = useState({ youtubeUrl: '', status: 'draft' })
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState(null)
 
@@ -344,7 +344,7 @@ export default function PapersPage() {
 
   const openEdit = (paper) => {
     setEditPaper(paper)
-    setEditForm({ youtubeUrl: paper.youtube_url || '', isVisible: paper.is_visible })
+    setEditForm({ youtubeUrl: paper.youtube_url || '', status: paper.status || 'draft' })
     setEditError(null)
   }
 
@@ -355,7 +355,7 @@ export default function PapersPage() {
     try {
       await updatePaper(editPaper.id, {
         youtube_url: editForm.youtubeUrl || null,
-        is_visible: editForm.isVisible,
+        status: editForm.status,
       })
       setEditPaper(null)
       load()
@@ -466,7 +466,7 @@ export default function PapersPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      {['#', 'Title', 'Class / Subject', 'Exam Type', 'Year', 'PDF', 'YouTube', 'Downloads', 'Visible', 'Actions'].map(h => (
+                      {['#', 'Title', 'Class / Subject', 'Exam Type', 'Year', 'PDF', 'YouTube', 'Downloads', 'Status', 'Actions'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -499,9 +499,18 @@ export default function PapersPage() {
                           </td>
                           <td className="px-4 py-3 text-gray-500 font-mono text-xs">{p.download_count ?? 0}</td>
                           <td className="px-4 py-3">
-                            <span className={`badge text-xs ${p.is_visible ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                              {p.is_visible ? 'Yes' : 'No'}
-                            </span>
+                            {p.status === 'published' && (
+                              <span className="badge text-xs bg-emerald-100 text-emerald-700">Published</span>
+                            )}
+                            {p.status === 'draft' && (
+                              <span className="badge text-xs bg-amber-100 text-amber-700">Draft</span>
+                            )}
+                            {p.status === 'archived' && (
+                              <span className="badge text-xs bg-gray-200 text-gray-500">Archived</span>
+                            )}
+                            {!p.status && (
+                              <span className="badge text-xs bg-amber-100 text-amber-700">Draft</span>
+                            )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
@@ -646,13 +655,16 @@ export default function PapersPage() {
                 </div>
               )}
             </FormField>
-            <FormField label="Visibility">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div onClick={() => setEditForm(f => ({ ...f, isVisible: !f.isVisible }))} className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${editForm.isVisible ? 'bg-blue-600' : 'bg-gray-300'}`}>
-                  <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${editForm.isVisible ? 'translate-x-5' : ''}`} />
-                </div>
-                <span className="text-sm text-gray-600">{editForm.isVisible ? 'Visible to students' : 'Hidden from students'}</span>
-              </label>
+            <FormField label="Status" hint="Draft = hidden from students. Published = visible to students. Archived = hidden and retired.">
+              <select
+                value={editForm.status}
+                onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                className={inputCls}
+              >
+                <option value="draft">📝 Draft — not visible to students</option>
+                <option value="published">✅ Published — visible to students</option>
+                <option value="archived">📦 Archived — hidden and retired</option>
+              </select>
             </FormField>
             {editError && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{editError}</div>}
             <div className="flex gap-3 pt-2">
