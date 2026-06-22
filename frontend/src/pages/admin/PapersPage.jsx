@@ -21,10 +21,22 @@ function extractYouTubeId(url) {
   if (!url) return null
   try {
     const u = new URL(url)
-    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v')
+    // youtu.be short links  →  https://youtu.be/VIDEO_ID
     if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('?')[0]
+    // All youtube.com variants (www, m, music, …)
+    if (u.hostname.includes('youtube.com')) {
+      // Shorts  →  /shorts/VIDEO_ID
+      const shortsMatch = u.pathname.match(/\/shorts\/([A-Za-z0-9_-]{11})/)
+      if (shortsMatch) return shortsMatch[1]
+      // Embed   →  /embed/VIDEO_ID
+      const embedMatch = u.pathname.match(/\/embed\/([A-Za-z0-9_-]{11})/)
+      if (embedMatch) return embedMatch[1]
+      // Standard watch  →  ?v=VIDEO_ID
+      return u.searchParams.get('v')
+    }
   } catch {
-    const m = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+    // Fallback regex covering watch?v=, youtu.be/, and /shorts/
+    const m = url.match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/)
     return m ? m[1] : null
   }
   return null
