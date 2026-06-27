@@ -8,12 +8,15 @@ import ClassPage from '../pages/ClassPage'
 import SubjectPage from '../pages/SubjectPage'
 import PaperListPage from '../pages/PaperListPage'
 import PaperDetailPage from '../pages/PaperDetailPage'
+import OfficialNoticesPage from '../pages/OfficialNoticesPage'
+import NoticeDetailPage from '../pages/NoticeDetailPage'
 import SearchPage from '../pages/SearchPage'
 import NotFoundPage from '../pages/NotFoundPage'
 
 import LoginPage from '../pages/admin/LoginPage'
 import DashboardPage from '../pages/admin/DashboardPage'
 import PapersPage from '../pages/admin/PapersPage'
+import AdminOfficialNoticesPage from '../pages/admin/OfficialNoticesPage'
 import ContentStatusPage from '../pages/admin/ContentStatusPage'
 
 const router = createBrowserRouter([
@@ -27,6 +30,8 @@ const router = createBrowserRouter([
       { path: 'subject/:id', element: <SubjectPage /> },
       { path: 'papers', element: <PaperListPage /> },
       { path: 'paper/:id', element: <PaperDetailPage /> },
+      { path: 'official-notices', element: <OfficialNoticesPage /> },
+      { path: 'notice/:id', element: <NoticeDetailPage /> },
       { path: 'search', element: <SearchPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
@@ -47,6 +52,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'papers', element: <PapersPage /> },
+      { path: 'official-notices', element: <AdminOfficialNoticesPage /> },
       { path: 'content-status', element: <ContentStatusPage /> },
     ],
   },

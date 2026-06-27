@@ -168,3 +168,120 @@ export const getAuditLogs = async (limit = 50, action = null) => {
   if (error) throw error
   return { data }
 }
+
+// =============================================================================
+// Official Notices Admin CRUD
+// Uses the separate "official-updates" Supabase Storage bucket.
+// =============================================================================
+
+export const getAdminNotices = async () => {
+  const { data, error } = await supabase
+    .from('official_notices')
+    .select('*, classes(name)')
+    .order('is_pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return {
+    data: data.map(n => ({ ...n, class_name: n.classes?.name ?? null })),
+  }
+}
+
+/**
+ * Upload a notice file to the "official-updates" bucket and insert a DB row.
+ * formData fields expected:
+ *   title, category, class_id (optional), year, description (optional),
+ *   expires_at (optional ISO string), file (File object)
+ */
+export const uploadNotice = async (formData, onProgress) => {
+  const file     = formData.get('file')
+  const ext      = file.name.split('.').pop().toLowerCase()
+  const filename = `${crypto.randomUUID()}.${ext}`
+
+  // Determine file type for preview strategy
+  const FILE_TYPE_MAP = {
+    pdf: 'pdf',
+    jpg: 'image', jpeg: 'image', png: 'image', gif: 'image', webp: 'image', svg: 'image',
+    doc: 'docx', docx: 'docx',
+    xls: 'xlsx', xlsx: 'xlsx',
+    ppt: 'pptx', pptx: 'pptx',
+  }
+  const fileType = FILE_TYPE_MAP[ext] ?? 'other'
+
+  if (onProgress) onProgress(10)
+
+  const { error: uploadError } = await supabase.storage
+    .from('official-updates')
+    .upload(filename, file, { upsert: false })
+  if (uploadError) throw uploadError
+
+  if (onProgress) onProgress(60)
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('official-updates')
+    .getPublicUrl(filename)
+
+  const classIdRaw = formData.get('class_id')
+  const expiresAtRaw = formData.get('expires_at')
+
+  const metadata = {
+    title:       formData.get('title'),
+    category:    formData.get('category'),
+    class_id:    classIdRaw ? parseInt(classIdRaw, 10) : null,
+    year:        parseInt(formData.get('year'), 10),
+    description: formData.get('description') || null,
+    file_path:   filename,
+    public_url:  publicUrl,
+    file_type:   fileType,
+    expires_at:  expiresAtRaw || null,
+    is_visible:  false,
+    is_pinned:   false,
+  }
+
+  const { data, error: insertError } = await supabase
+    .from('official_notices')
+    .insert(metadata)
+    .select()
+    .single()
+  if (insertError) throw insertError
+
+  if (onProgress) onProgress(90)
+
+  await insertAuditLog('upload_notice', null, { title: data.title, category: data.category, year: data.year })
+
+  if (onProgress) onProgress(100)
+
+  return { data }
+}
+
+export const updateNotice = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('official_notices')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  await insertAuditLog('edit_notice', null, { id, changes: updates })
+  return { data }
+}
+
+export const deleteNotice = async (id) => {
+  const { data: notice, error: fetchError } = await supabase
+    .from('official_notices')
+    .select('file_path, title')
+    .eq('id', id)
+    .single()
+  if (fetchError) throw fetchError
+
+  if (notice?.file_path) {
+    const { error: storageError } = await supabase.storage
+      .from('official-updates')
+      .remove([notice.file_path])
+    if (storageError) throw storageError
+  }
+
+  const { error } = await supabase.from('official_notices').delete().eq('id', id)
+  if (error) throw error
+
+  await insertAuditLog('delete_notice', null, { id, title: notice?.title })
+}

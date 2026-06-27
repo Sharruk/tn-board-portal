@@ -3,22 +3,31 @@ import { Link } from 'react-router-dom'
 import SearchBar from '../components/SearchBar'
 import ClassCard from '../components/ClassCard'
 import PaperCard from '../components/PaperCard'
+import NoticeCard from '../components/NoticeCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { getClasses } from '../services/classes'
 import { getRecentPapers, getPopularPapers } from '../services/papers'
+import { getRecentNotices, CATEGORY_ICONS } from '../services/notices'
 
 export default function HomePage() {
   const [classes, setClasses] = useState([])
   const [recentPapers, setRecentPapers] = useState([])
   const [popularPapers, setPopularPapers] = useState([])
+  const [recentNotices, setRecentNotices] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([getClasses(), getRecentPapers(10), getPopularPapers(10)])
-      .then(([clsRes, recentRes, popularRes]) => {
+    Promise.all([
+      getClasses(),
+      getRecentPapers(10),
+      getPopularPapers(10),
+      getRecentNotices(6),
+    ])
+      .then(([clsRes, recentRes, popularRes, noticesRes]) => {
         setClasses(clsRes.data)
         setRecentPapers(recentRes.data)
         setPopularPapers(popularRes.data)
+        setRecentNotices(noticesRes.data)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -59,6 +68,67 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Latest Official Notices ── */}
+      {!loading && recentNotices.length > 0 && (
+        <section className="bg-gradient-to-br from-indigo-50 to-blue-50 border-t border-indigo-100">
+          <div className="max-w-6xl mx-auto px-4 py-10">
+            <div className="flex items-end justify-between mb-5">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  <span>📢</span> Latest Official Notices
+                </h2>
+                <p className="text-gray-500 text-sm mt-1">Timetables, results, circulars, and important announcements</p>
+              </div>
+              <Link
+                to="/official-notices"
+                className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold hidden sm:flex items-center gap-1"
+              >
+                View All →
+              </Link>
+            </div>
+
+            {/* Featured pinned notice banner */}
+            {recentNotices.find(n => n.is_pinned) && (() => {
+              const pinned = recentNotices.find(n => n.is_pinned)
+              const icon = CATEGORY_ICONS[pinned.category] ?? '📄'
+              return (
+                <Link
+                  to={`/notice/${pinned.id}`}
+                  className="flex items-center gap-4 bg-white border border-amber-200 rounded-2xl p-4 mb-5 shadow-sm hover:shadow-md transition-shadow group"
+                >
+                  <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
+                    {icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">📌 Featured Notice</span>
+                      <span className="text-xs text-gray-400">{pinned.category}</span>
+                    </div>
+                    <p className="font-bold text-gray-900 group-hover:text-indigo-700 transition-colors truncate">{pinned.title}</p>
+                  </div>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              )
+            })()}
+
+            {/* Compact notice list */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+              {recentNotices.filter(n => !n.is_pinned).slice(0, 5).map(notice => (
+                <NoticeCard key={notice.id} notice={notice} compact />
+              ))}
+            </div>
+
+            <div className="mt-4 text-center sm:hidden">
+              <Link to="/official-notices" className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold">
+                View All Official Notices →
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Classes */}
       <section className="max-w-6xl mx-auto px-4 py-14">
         <div className="flex items-end justify-between mb-8">
@@ -76,6 +146,7 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
 
       {/* Recently Added Papers */}
       <section className="bg-white border-t border-gray-100">
