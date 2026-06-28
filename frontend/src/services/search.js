@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 
 // =============================================================================
-// Search Service — searches Question Papers AND Official Notices together
+// Search Service — searches Question Papers, Official Notices, and News
 // =============================================================================
 
 // ── Subject / exam-type aliases for paper search ──────────────────────────────
@@ -133,11 +133,46 @@ export const searchNotices = async ({ q, category, class_id, year } = {}) => {
   }
 }
 
-// ── Combined global search (newest first across both types) ───────────────────
+// ── News search ───────────────────────────────────────────────────────────────
+
+export const searchNews = async ({ q, category } = {}) => {
+  const rawQuery = (q || '').trim()
+  if (!rawQuery) return { data: { query: '', total: 0, results: [] } }
+
+  const { data, error } = await supabase.rpc('search_news', {
+    q:          rawQuery,
+    p_category: category || null,
+    p_limit:    50,
+  })
+  if (error) throw error
+
+  return {
+    data: {
+      query:  rawQuery,
+      total:  data?.length ?? 0,
+      results: (data ?? []).map(r => ({
+        _type:         'news',
+        id:            r.id,
+        title:         r.title,
+        slug:          r.slug,
+        summary:       r.summary,
+        category:      r.category,
+        thumbnail_url: r.thumbnail_url,
+        youtube_url:   r.youtube_url,
+        is_pinned:     r.is_pinned,
+        view_count:    r.view_count,
+        published_at:  r.published_at,
+        created_at:    r.created_at,
+      })),
+    },
+  }
+}
+
+// ── Combined global search (newest first across all three types) ──────────────
 
 /**
- * Search both Question Papers and Official Notices simultaneously.
- * Results are merged and sorted by created_at descending (newest first).
+ * Search Question Papers, Official Notices, and News simultaneously.
+ * Results are merged and sorted by published_at / created_at descending.
  *
  * @param {object} opts
  * @param {string} opts.q            - Search term (required)
@@ -149,20 +184,25 @@ export const globalSearch = async ({ q, class_id, paper_type } = {}) => {
   const rawQuery = (q || '').trim()
   if (!rawQuery) return { data: { query: '', total: 0, results: [] } }
 
-  const [papersRes, noticesRes] = await Promise.allSettled([
+  const [papersRes, noticesRes, newsRes] = await Promise.allSettled([
     searchPapers({ q: rawQuery, class_id, paper_type }),
     searchNotices({ q: rawQuery }),
+    searchNews({ q: rawQuery }),
   ])
 
   const paperResults  = papersRes.status  === 'fulfilled' ? papersRes.value.data.results  : []
   const noticeResults = noticesRes.status === 'fulfilled' ? noticesRes.value.data.results : []
+  const newsResults   = newsRes.status    === 'fulfilled' ? newsRes.value.data.results    : []
 
-  // Merge and sort by created_at descending
-  const merged = [...paperResults, ...noticeResults].sort((a, b) => {
-    const ta = a.created_at ? new Date(a.created_at).getTime() : 0
-    const tb = b.created_at ? new Date(b.created_at).getTime() : 0
-    return tb - ta   // newest first
-  })
+  // Use published_at for news, created_at for papers/notices — newest first
+  const getTime = (r) => {
+    const d = r._type === 'news' ? (r.published_at || r.created_at) : r.created_at
+    return d ? new Date(d).getTime() : 0
+  }
+
+  const merged = [...paperResults, ...noticeResults, ...newsResults].sort(
+    (a, b) => getTime(b) - getTime(a)
+  )
 
   return {
     data: {

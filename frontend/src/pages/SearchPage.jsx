@@ -5,6 +5,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import { globalSearch } from '../services/search'
 import { downloadPaper } from '../utils/download'
 import { CATEGORY_ICONS } from '../services/notices'
+import { NEWS_CATEGORY_ICONS, formatPublishedDate } from '../services/news'
 
 // ── Suggestion chips ──────────────────────────────────────────────────────────
 
@@ -96,6 +97,51 @@ function NoticeResult({ r }) {
   )
 }
 
+function NewsResult({ r }) {
+  const icon      = NEWS_CATEGORY_ICONS[r.category] ?? '📰'
+  const published = r.published_at
+    ? formatPublishedDate(r.published_at, { short: true })
+    : r.created_at
+      ? new Date(r.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+      : ''
+  return (
+    <Link
+      to={`/news/${r.slug}`}
+      className="card p-4 flex items-start sm:items-center gap-4 hover:border-blue-200 flex-col sm:flex-row"
+    >
+      {/* Thumbnail */}
+      {r.thumbnail_url && (
+        <img
+          src={r.thumbnail_url}
+          alt={r.title}
+          className="w-16 h-12 rounded-xl object-cover shrink-0 hidden sm:block"
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="badge text-xs bg-blue-100 text-blue-800">
+            📰 News
+          </span>
+          <span className="badge bg-gray-100 text-gray-600 text-xs">{icon} {r.category}</span>
+          {r.is_pinned && <span className="badge bg-amber-100 text-amber-700 text-xs">📌 Pinned</span>}
+          {r.youtube_url && (
+            <span className="badge bg-red-100 text-red-700 text-xs">▶ Video</span>
+          )}
+        </div>
+        <h3 className="font-semibold text-gray-800 leading-snug">{r.title}</h3>
+        {r.summary && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{r.summary}</p>}
+        {published && <p className="text-xs text-gray-400 mt-0.5">📅 {published}</p>}
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <span className="badge bg-blue-50 text-blue-600 text-xs">Read →</span>
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+    </Link>
+  )
+}
+
 // =============================================================================
 // SearchPage
 // =============================================================================
@@ -138,14 +184,14 @@ export default function SearchPage() {
     setSearchParams(next)
   }
 
-  // Count by type for display
   const paperCount  = results?.results.filter(r => r._type === 'paper').length  ?? 0
   const noticeCount = results?.results.filter(r => r._type === 'notice').length ?? 0
+  const newsCount   = results?.results.filter(r => r._type === 'news').length   ?? 0
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       <h1 className="text-3xl font-extrabold text-gray-900 mb-2">Search</h1>
-      <p className="text-gray-500 text-sm mb-6">Search question papers, answer keys, timetables, circulars, and all official notices together.</p>
+      <p className="text-gray-500 text-sm mb-6">Search question papers, answer keys, official notices, and news articles together.</p>
       <SearchBar initialValue={query} size="md" />
 
       {/* Filters */}
@@ -218,6 +264,9 @@ export default function SearchPage() {
                   {noticeCount > 0 && (
                     <span className="badge text-xs bg-indigo-100 text-indigo-700">📢 {noticeCount} Notice{noticeCount !== 1 ? 's' : ''}</span>
                   )}
+                  {newsCount > 0 && (
+                    <span className="badge text-xs bg-blue-100 text-blue-800">📰 {newsCount} News</span>
+                  )}
                 </div>
               )}
             </div>
@@ -238,7 +287,9 @@ export default function SearchPage() {
                 {results.results.map(r =>
                   r._type === 'paper'
                     ? <PaperResult  key={`paper-${r.id}`}  r={r} />
-                    : <NoticeResult key={`notice-${r.id}`} r={r} />
+                    : r._type === 'notice'
+                      ? <NoticeResult key={`notice-${r.id}`} r={r} />
+                      : <NewsResult   key={`news-${r.id}`}   r={r} />
                 )}
               </div>
             )}

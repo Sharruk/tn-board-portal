@@ -4,16 +4,19 @@ import SearchBar from '../components/SearchBar'
 import ClassCard from '../components/ClassCard'
 import PaperCard from '../components/PaperCard'
 import NoticeCard from '../components/NoticeCard'
+import NewsCard from '../components/NewsCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { getClasses } from '../services/classes'
 import { getRecentPapers, getPopularPapers } from '../services/papers'
 import { getRecentNotices, CATEGORY_ICONS } from '../services/notices'
+import { getRecentNews } from '../services/news'
 
 export default function HomePage() {
   const [classes, setClasses] = useState([])
   const [recentPapers, setRecentPapers] = useState([])
   const [popularPapers, setPopularPapers] = useState([])
   const [recentNotices, setRecentNotices] = useState([])
+  const [recentNews, setRecentNews] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -22,12 +25,14 @@ export default function HomePage() {
       getRecentPapers(10),
       getPopularPapers(10),
       getRecentNotices(6),
+      getRecentNews(6),
     ])
-      .then(([clsRes, recentRes, popularRes, noticesRes]) => {
+      .then(([clsRes, recentRes, popularRes, noticesRes, newsRes]) => {
         setClasses(clsRes.data)
         setRecentPapers(recentRes.data)
         setPopularPapers(popularRes.data)
         setRecentNotices(noticesRes.data)
+        setRecentNews(newsRes.data)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -129,7 +134,41 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Classes */}
+      {/* ── Latest Education News ── */}
+      {!loading && recentNews.length > 0 && (
+        <section className="bg-white border-t border-gray-100">
+          <div className="max-w-6xl mx-auto px-4 py-10">
+            <div className="flex items-end justify-between mb-5">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  <span>📰</span> Latest Education News
+                </h2>
+                <p className="text-gray-500 text-sm mt-1">Holiday announcements, exam updates, government circulars, and more</p>
+              </div>
+              <Link
+                to="/news"
+                className="text-sm text-blue-600 hover:text-blue-800 font-semibold hidden sm:flex items-center gap-1"
+              >
+                View All →
+              </Link>
+            </div>
+
+            {/* Compact news list */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+              {recentNews.slice(0, 6).map(article => (
+                <NewsCard key={article.id} article={article} compact />
+              ))}
+            </div>
+
+            <div className="mt-4 text-center sm:hidden">
+              <Link to="/news" className="text-sm text-blue-600 hover:text-blue-800 font-semibold">
+                View All News →
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="max-w-6xl mx-auto px-4 py-14">
         <div className="flex items-end justify-between mb-8">
           <div>

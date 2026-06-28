@@ -66,6 +66,10 @@ export default function Navbar() {
               Official Notices
             </NavLink>
 
+            <NavLink to="/news" className={({ isActive }) => `text-sm font-medium transition-colors ${isActive ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}>
+              News
+            </NavLink>
+
             <NavLink to="/search" className={({ isActive }) => `text-sm font-medium transition-colors ${isActive ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}>
               Search
             </NavLink>
@@ -110,6 +114,7 @@ export default function Navbar() {
             </Link>
           ))}
           <Link to="/official-notices" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Official Notices</Link>
+          <Link to="/news" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">News</Link>
           <Link to="/search" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Search</Link>
           <form onSubmit={handleSearch} className="flex items-center gap-2 px-3 py-2">
             <input
