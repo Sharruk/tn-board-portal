@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getAdminNotices, uploadNotice, updateNotice, deleteNotice } from '../../services/admin'
 import { getClasses } from '../../services/classes'
-import { NOTICE_CATEGORIES, CATEGORY_ICONS } from '../../services/notices'
+import { NOTICE_CATEGORIES, CATEGORY_ICONS, isValidYouTubeUrl } from '../../services/notices'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ const ACCEPTED_EXTENSIONS = '.pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xl
 
 const EMPTY_FORM = {
   title: '', category: '', classId: '', year: String(CURRENT_YEAR),
-  description: '', expiresAt: '', file: null,
+  description: '', expiresAt: '', youtubeUrl: '', file: null,
 }
 
 // ── Shared sub-components (same patterns as PapersPage) ──────────────────────
@@ -127,7 +127,7 @@ export default function AdminOfficialNoticesPage() {
   // Edit form
   const [editForm, setEditForm] = useState({
     title: '', category: '', classId: '', year: String(CURRENT_YEAR),
-    description: '', expiresAt: '', isVisible: false, isPinned: false,
+    description: '', expiresAt: '', youtubeUrl: '', isVisible: false, isPinned: false,
   })
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError]     = useState(null)
@@ -178,6 +178,8 @@ export default function AdminOfficialNoticesPage() {
     if (!form.title.trim())   errors.title    = 'Title is required'
     if (!form.category)       errors.category = 'Please select a category'
     if (!form.file)           errors.file     = 'A file is required'
+    if (form.youtubeUrl && !isValidYouTubeUrl(form.youtubeUrl))
+      errors.youtubeUrl = 'Enter a valid YouTube URL (youtu.be, youtube.com/watch?v=, or youtube.com/shorts/)'
     return errors
   }
 
@@ -196,6 +198,7 @@ export default function AdminOfficialNoticesPage() {
       fd.append('year',        form.year)
       if (form.description) fd.append('description', form.description)
       if (form.expiresAt)   fd.append('expires_at', new Date(form.expiresAt).toISOString())
+      if (form.youtubeUrl)  fd.append('youtube_url', form.youtubeUrl.trim())
       fd.append('file', form.file)
       await uploadNotice(fd, pct => setUploadProgress(pct))
       setShowUpload(false)
@@ -222,6 +225,7 @@ export default function AdminOfficialNoticesPage() {
       year:        String(n.year || CURRENT_YEAR),
       description: n.description || '',
       expiresAt:   n.expires_at ? n.expires_at.slice(0, 10) : '',
+      youtubeUrl:  n.youtube_url || '',
       isVisible:   n.is_visible ?? false,
       isPinned:    n.is_pinned  ?? false,
     })
@@ -230,6 +234,11 @@ export default function AdminOfficialNoticesPage() {
 
   const handleEdit = async (e) => {
     e.preventDefault()
+    // Validate YouTube URL before submitting
+    if (editForm.youtubeUrl && !isValidYouTubeUrl(editForm.youtubeUrl)) {
+      setEditError('Enter a valid YouTube URL (youtu.be, youtube.com/watch?v=, or youtube.com/shorts/)')
+      return
+    }
     setEditLoading(true)
     setEditError(null)
     try {
@@ -239,6 +248,7 @@ export default function AdminOfficialNoticesPage() {
         class_id:    editForm.classId ? parseInt(editForm.classId, 10) : null,
         year:        parseInt(editForm.year, 10),
         description: editForm.description || null,
+        youtube_url: editForm.youtubeUrl.trim() || null,
         expires_at:  editForm.expiresAt ? new Date(editForm.expiresAt).toISOString() : null,
         is_visible:  editForm.isVisible,
         is_pinned:   editForm.isPinned,
@@ -471,6 +481,21 @@ export default function AdminOfficialNoticesPage() {
             </FormField>
 
             <FormField
+              label="YouTube Video / Shorts URL"
+              hint="Optional — paste a YouTube link to embed a video on the notice page"
+              error={formErrors.youtubeUrl}
+            >
+              <input
+                name="youtubeUrl"
+                type="url"
+                value={form.youtubeUrl}
+                onChange={handleFormChange}
+                className={formErrors.youtubeUrl ? inputErrCls : inputCls}
+                placeholder="https://youtu.be/... or https://youtube.com/watch?v=..."
+              />
+            </FormField>
+
+            <FormField
               label="File"
               required
               hint="PDF, images (JPG/PNG), Word, Excel, PowerPoint — Max 50 MB"
@@ -545,6 +570,19 @@ export default function AdminOfficialNoticesPage() {
 
             <FormField label="Expiry Date" hint="Clear the date to remove expiry">
               <input type="date" value={editForm.expiresAt} onChange={e => setEditForm(f => ({ ...f, expiresAt: e.target.value }))} className={inputCls} />
+            </FormField>
+
+            <FormField
+              label="YouTube Video / Shorts URL"
+              hint="Optional — paste a YouTube link to embed a video on the notice page"
+            >
+              <input
+                type="url"
+                value={editForm.youtubeUrl}
+                onChange={e => setEditForm(f => ({ ...f, youtubeUrl: e.target.value }))}
+                className={inputCls}
+                placeholder="https://youtu.be/... or https://youtube.com/watch?v=..."
+              />
             </FormField>
 
             {/* Visibility */}

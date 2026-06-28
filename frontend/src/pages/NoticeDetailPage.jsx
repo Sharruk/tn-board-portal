@@ -11,6 +11,7 @@ import {
   recordNoticeDownload,
   CATEGORY_ICONS,
   getOfficeViewerUrl,
+  getYouTubeEmbedUrl,
 } from '../services/notices'
 
 // =============================================================================
@@ -378,6 +379,52 @@ export default function NoticeDetailPage() {
             <p className="text-sm text-amber-700">File not yet uploaded. Check back soon.</p>
           </div>
         )}
+
+        {/* YouTube embed — shown above file preview when a video URL exists */}
+        {notice.youtube_url && (() => {
+          const embedUrl = getYouTubeEmbedUrl(notice.youtube_url)
+          if (!embedUrl) return null
+          return (
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-base font-bold text-gray-700 flex items-center gap-2">
+                  <span className="text-red-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
+                    </svg>
+                  </span>
+                  Watch Explanation Video
+                </h2>
+                <a
+                  href={notice.youtube_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                    <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
+                  </svg>
+                  Watch on YouTube
+                </a>
+              </div>
+              <div
+                className="rounded-2xl overflow-hidden border border-gray-200 bg-black"
+                style={{ position: 'relative', paddingTop: '56.25%' }}
+              >
+                <iframe
+                  src={embedUrl}
+                  title={`${notice.title} — YouTube Video`}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{
+                    position: 'absolute', top: 0, left: 0,
+                    width: '100%', height: '100%', border: 'none',
+                  }}
+                />
+              </div>
+            </div>
+          )
+        })()}
 
         {/* File preview */}
         {notice.public_url && <FilePreview notice={notice} />}

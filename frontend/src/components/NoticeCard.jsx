@@ -32,6 +32,17 @@ export default function NoticeCard({ notice, compact = false }) {
           </p>
           <p className="text-xs text-gray-400 mt-0.5">{notice.category} · {notice.year}</p>
         </div>
+        {notice.youtube_url && (
+          <span
+            className="inline-flex items-center gap-0.5 text-xs font-semibold bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full shrink-0"
+            title="Has explanation video"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
+              <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
+            </svg>
+            Video
+          </span>
+        )}
         {notice.is_pinned && (
           <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full shrink-0">
             📌 Pinned
@@ -81,6 +92,17 @@ export default function NoticeCard({ notice, compact = false }) {
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
             {notice.year}
           </span>
+          {notice.youtube_url && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700"
+              title="Explanation video available"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
+                <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
+              </svg>
+              Video
+            </span>
+          )}
           {isExpired && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
               Expired

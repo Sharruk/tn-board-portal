@@ -229,6 +229,7 @@ export const uploadNotice = async (formData, onProgress) => {
     class_id:    classIdRaw ? parseInt(classIdRaw, 10) : null,
     year:        parseInt(formData.get('year'), 10),
     description: formData.get('description') || null,
+    youtube_url: formData.get('youtube_url') || null,
     file_path:   filename,
     public_url:  publicUrl,
     file_type:   fileType,

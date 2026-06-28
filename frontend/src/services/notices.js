@@ -73,6 +73,52 @@ export function getOfficeViewerUrl(publicUrl) {
   return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(publicUrl)}`
 }
 
+/**
+ * Extract the YouTube video ID from any supported YouTube URL.
+ * Supports:
+ *   https://youtu.be/<id>
+ *   https://www.youtube.com/watch?v=<id>
+ *   https://www.youtube.com/shorts/<id>
+ * Returns the video ID string or null if not matched.
+ */
+export function extractYouTubeId(url) {
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    const host = parsed.hostname.replace(/^www\./, '')
+    if (host === 'youtu.be') {
+      return parsed.pathname.slice(1) || null
+    }
+    if (host === 'youtube.com') {
+      if (parsed.pathname.startsWith('/shorts/')) {
+        return parsed.pathname.replace('/shorts/', '') || null
+      }
+      return parsed.searchParams.get('v') || null
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+/**
+ * Returns true if the URL is a valid YouTube link we support.
+ */
+export function isValidYouTubeUrl(url) {
+  if (!url || !url.trim()) return true // blank is fine (optional field)
+  return extractYouTubeId(url) !== null
+}
+
+/**
+ * Build the embed URL for a YouTube video/Shorts.
+ * Returns null if the input URL is not a recognised YouTube link.
+ */
+export function getYouTubeEmbedUrl(url) {
+  const id = extractYouTubeId(url)
+  if (!id) return null
+  return `https://www.youtube.com/embed/${id}`
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /** Fetch the most recent visible, non-expired notices.  */
