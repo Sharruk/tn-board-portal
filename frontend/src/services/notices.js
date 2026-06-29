@@ -7,11 +7,12 @@ import { supabase } from '../lib/supabase'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 export const NOTICE_CATEGORIES = [
-  'Public Exam Timetable',
+  'Monthly Test Timetable',
   'Unit Test Timetable',
   'Quarterly Timetable',
   'Half Yearly Timetable',
   'Annual Exam Timetable',
+  'Public Exam Timetable',
   'Supplementary Timetable',
   'Practical Timetable',
   'Hall Ticket',
@@ -27,11 +28,12 @@ export const NOTICE_CATEGORIES = [
 ]
 
 export const CATEGORY_ICONS = {
-  'Public Exam Timetable':  '📅',
+  'Monthly Test Timetable': '🗓️',
   'Unit Test Timetable':    '📝',
   'Quarterly Timetable':    '📅',
   'Half Yearly Timetable':  '📅',
   'Annual Exam Timetable':  '📅',
+  'Public Exam Timetable':  '📅',
   'Supplementary Timetable':'📅',
   'Practical Timetable':    '🔬',
   'Hall Ticket':            '🎫',
