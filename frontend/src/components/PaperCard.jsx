@@ -42,7 +42,7 @@ export default function PaperCard({ paper, showSubject = false, showDownloads = 
         </Link>
         {paper.public_url && (
           <button
-            onClick={() => downloadPaper(paper.public_url, paper.title)}
+            onClick={() => downloadPaper(paper.public_url, paper.title, paper.original_filename)}
             className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
