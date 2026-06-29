@@ -24,6 +24,7 @@ const SUBJECT_ALIASES = {
 }
 
 const EXAM_PATTERNS = [
+  'monthly test',
   'unit test 1', 'unit test 2', 'unit test 3',
   'quarterly exam', 'quarterly',
   'half yearly exam', 'half yearly',
@@ -32,6 +33,7 @@ const EXAM_PATTERNS = [
   'practical exam',
   'model exam',
 ]
+
 
 function expandTerms(q) {
   const normalized = q.trim().toLowerCase()
@@ -84,17 +86,19 @@ export const searchPapers = async ({ q, class_id, exam_type, paper_type } = {}) 
       query: rawQuery,
       total: results.length,
       results: results.map(r => ({
-        _type:        'paper',
-        id:           r.id,
-        title:        r.title,
-        exam_type:    r.exam_type,
-        year:         r.year,
-        paper_type:   r.paper_type,
-        public_url:   r.public_url,
-        subject_name: r.subject_name,
-        class_name:   r.class_name,
-        created_at:   r.created_at,
+        _type:             'paper',
+        id:                r.id,
+        title:             r.title,
+        exam_type:         r.exam_type,
+        year:              r.year,
+        paper_type:        r.paper_type,
+        public_url:        r.public_url,
+        original_filename: r.original_filename ?? null,
+        subject_name:      r.subject_name,
+        class_name:        r.class_name,
+        created_at:        r.created_at,
       })),
+
     },
   }
 }

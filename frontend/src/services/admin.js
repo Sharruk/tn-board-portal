@@ -52,16 +52,18 @@ export const uploadPaper = async (formData, onProgress) => {
     .getPublicUrl(filename)
 
   const metadata = {
-    subject_id:    parseInt(formData.get('subject_id'), 10),
-    exam_type:     formData.get('exam_type'),
-    year:          parseInt(formData.get('year'), 10),
-    title:         formData.get('title'),
-    paper_type:    formData.get('paper_type'),
-    youtube_url:   formData.get('youtube_url') || null,
-    file_path:     filename,
-    public_url:    publicUrl,
-    is_visible:    false,
+    subject_id:        parseInt(formData.get('subject_id'), 10),
+    exam_type:         formData.get('exam_type'),
+    year:              parseInt(formData.get('year'), 10),
+    title:             formData.get('title'),
+    paper_type:        formData.get('paper_type'),
+    youtube_url:       formData.get('youtube_url') || null,
+    file_path:         filename,
+    public_url:        publicUrl,
+    original_filename: file.name || null,
+    is_visible:        false,
   }
+
 
   const { data, error: insertError } = await supabase
     .from('papers')
