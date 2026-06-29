@@ -1,10 +1,12 @@
 import { supabase } from '../lib/supabase'
 
 export const EXAM_TYPES = [
+  'Monthly Test',
   'Unit Test 1', 'Unit Test 2', 'Unit Test 3',
   'Quarterly Exam', 'Half Yearly Exam',
   'Annual Exam', 'Public Exam', 'Practical Exam', 'Model Exam',
 ]
+
 
 export const getPaper = async (id) => {
   const { data, error } = await supabase

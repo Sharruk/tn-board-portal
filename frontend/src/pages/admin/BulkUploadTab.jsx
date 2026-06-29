@@ -3,6 +3,7 @@ import { uploadPaper } from '../../services/admin'
 import { getSubjectsForClass } from '../../services/classes'
 
 const EXAM_TYPES = [
+  'Monthly Test',
   'Unit Test 1', 'Unit Test 2', 'Unit Test 3',
   'Quarterly Exam', 'Half Yearly Exam',
   'Annual Exam', 'Public Exam', 'Practical Exam', 'Model Exam',
@@ -29,6 +30,7 @@ const SUBJECT_ALIASES = {
 }
 
 const EXAM_ALIASES = {
+  monthly: 'Monthly Test', monthlytest: 'Monthly Test', 'monthly test': 'Monthly Test',
   annual: 'Annual Exam',
   halfyearly: 'Half Yearly Exam', 'half-yearly': 'Half Yearly Exam', 'half yearly': 'Half Yearly Exam',
   quarterly: 'Quarterly Exam',
@@ -200,6 +202,8 @@ export default function BulkUploadTab({ classes, subjectsCache, onSubjectLoad, o
         fd.append('paper_type', item.paperType)
         fd.append('file', item.file)
         fd.append('is_bulk', 'true')
+        // original_filename is captured from the File object — preserved through uploadPaper
+        fd.append('original_filename', item.file.name)
         await uploadPaper(fd, (pct) => updateItem(item.id, { progress: pct }))
         updateItem(item.id, { status: 'done', progress: 100 })
         succeeded++

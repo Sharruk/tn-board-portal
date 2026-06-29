@@ -4,6 +4,7 @@ import { getClasses, getSubjectsForClass } from '../../services/classes'
 import BulkUploadTab from './BulkUploadTab'
 
 const EXAM_TYPES = [
+  'Monthly Test',
   'Unit Test 1', 'Unit Test 2', 'Unit Test 3',
   'Quarterly Exam', 'Half Yearly Exam',
   'Annual Exam', 'Public Exam', 'Practical Exam', 'Model Exam',
@@ -218,7 +219,7 @@ export default function PapersPage() {
   const [formErrors, setFormErrors] = useState({})
   const [uploadProgress, setUploadProgress] = useState(null)
 
-  const [editForm, setEditForm] = useState({ title: '', examType: '', year: String(CURRENT_YEAR), paperType: 'question', youtubeUrl: '', isVisible: true })
+  const [editForm, setEditForm] = useState({ title: '', examType: '', year: String(CURRENT_YEAR), paperType: 'question', youtubeUrl: '', isVisible: true, originalFilename: null })
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState(null)
 
@@ -357,12 +358,13 @@ export default function PapersPage() {
   const openEdit = (paper) => {
     setEditPaper(paper)
     setEditForm({
-      title:      paper.title || '',
-      examType:   paper.exam_type || '',
-      year:       String(paper.year || CURRENT_YEAR),
-      paperType:  paper.paper_type || 'question',
-      youtubeUrl: paper.youtube_url || '',
-      isVisible:  paper.is_visible ?? true,
+      title:            paper.title || '',
+      examType:         paper.exam_type || '',
+      year:             String(paper.year || CURRENT_YEAR),
+      paperType:        paper.paper_type || 'question',
+      youtubeUrl:       paper.youtube_url || '',
+      isVisible:        paper.is_visible ?? true,
+      originalFilename: paper.original_filename || null,
     })
     setEditError(null)
   }
@@ -373,12 +375,14 @@ export default function PapersPage() {
     setEditError(null)
     try {
       await updatePaper(editPaper.id, {
-        title:       editForm.title.trim(),
-        exam_type:   editForm.examType,
-        year:        parseInt(editForm.year, 10),
-        paper_type:  editForm.paperType,
-        youtube_url: editForm.youtubeUrl || null,
-        is_visible:  editForm.isVisible,
+        title:             editForm.title.trim(),
+        exam_type:         editForm.examType,
+        year:              parseInt(editForm.year, 10),
+        paper_type:        editForm.paperType,
+        youtube_url:       editForm.youtubeUrl || null,
+        is_visible:        editForm.isVisible,
+        // Preserve original_filename — only null if it was never set
+        original_filename: editForm.originalFilename || null,
       })
       setEditPaper(null)
       load()
