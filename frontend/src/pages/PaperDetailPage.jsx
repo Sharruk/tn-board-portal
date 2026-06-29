@@ -103,8 +103,11 @@ export default function PaperDetailPage() {
     recordDownload(paper.id)
       .then(() => setDownloadCount(c => c + 1))
       .catch(() => {})
-    downloadPaper(paper.public_url, paper.title)
+    // Pass original_filename so the blob-download uses the correct filename.
+    // Falls back to paper.title + ".pdf" for pre-migration papers (original_filename = null).
+    downloadPaper(paper.public_url, paper.title, paper.original_filename)
   }, [paper])
+
 
   const handleShare = useCallback(async () => {
     const url = window.location.href

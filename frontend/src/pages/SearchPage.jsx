@@ -11,10 +11,11 @@ import { NEWS_CATEGORY_ICONS, formatPublishedDate } from '../services/news'
 
 const SUGGESTIONS = [
   'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Science',
-  'Annual Exam', 'Quarterly Exam', 'Half Yearly Exam', 'Answer Key',
-  'Public Exam Timetable', 'Hall Ticket', 'Results', 'TNEA Counselling',
+  'Monthly Test', 'Annual Exam', 'Quarterly Exam', 'Half Yearly Exam', 'Answer Key',
+  'Monthly Test Timetable', 'Public Exam Timetable', 'Hall Ticket', 'Results', 'TNEA Counselling',
   'Government Circular', 'Scholarships',
 ]
+
 
 function SuggestionChip({ label, onClick }) {
   return (
@@ -50,12 +51,13 @@ function PaperResult({ r }) {
       <div className="flex items-center gap-3 shrink-0">
         {r.public_url && (
           <button
-            onClick={e => { e.preventDefault(); e.stopPropagation(); downloadPaper(r.public_url, r.title) }}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); downloadPaper(r.public_url, r.title, r.original_filename) }}
             className="btn-secondary text-sm px-3 py-1.5"
           >
             Download
           </button>
         )}
+
         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
