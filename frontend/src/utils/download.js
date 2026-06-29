@@ -79,46 +79,13 @@ export async function downloadPaper(url, title, filename) {
 }
 
 // =============================================================================
-// viewPdf — open the PDF in a new browser tab without exposing the UUID
+// viewPdf — open the PDF in a new browser tab
 // =============================================================================
 /**
- * Open a PDF in a new tab via a blob: URL so the browser tab title never
- * shows the Supabase Storage UUID filename.
+ * Open a PDF in a new tab.
  *
- * How it works:
- *   1. Fetch the PDF bytes from Supabase Storage.
- *   2. Wrap them in a Blob typed as "application/pdf".
- *   3. Create a same-origin blob: URL — Chrome uses the blob filename
- *      (which we set via the File constructor) as the PDF viewer title.
- *   4. Open the blob: URL in a new tab.
- *   5. Revoke the blob: URL after 5 minutes (plenty of time for rendering).
- *
- * Fallback order for the tab/viewer title:
- *   1. `filename` (original_filename from DB)
- *   2. `title` + ".pdf"
- *   3. "document.pdf"
- *
- * @param {string}      url      - Supabase Storage public URL
- * @param {string|null} [title]  - Paper title (fallback)
- * @param {string|null} [filename] - Original uploaded filename (preferred)
+ * @param {string} url - Supabase Storage public URL
  */
-export async function viewPdf(url, title, filename) {
-  const safeFilename = _resolveFilename(filename, title, 'document.pdf')
-
-  try {
-    const blob = await _fetchBlob(url)
-
-    // Using the File constructor sets a filename on the Blob, which Chrome's
-    // PDF viewer picks up as the document title shown in the tab.
-    const namedBlob = new File([blob], safeFilename, { type: 'application/pdf' })
-    const blobUrl   = URL.createObjectURL(namedBlob)
-
-    window.open(blobUrl, '_blank', 'noopener,noreferrer')
-
-    // Revoke after 5 minutes — enough for any PDF to load and render.
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 5 * 60 * 1000)
-  } catch {
-    // Network error fallback — open the raw URL (UUID will show, but rare)
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
+export function viewPdf(url) {
+  window.open(url, '_blank', 'noopener,noreferrer')
 }

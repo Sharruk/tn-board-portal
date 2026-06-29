@@ -145,11 +145,11 @@ export default function PaperDetailPage() {
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
 
       {/* Breadcrumb */}
-      {paper.subject && (
+      {paper.subjects && (
         <Breadcrumb items={[
           { label: 'Home', href: '/' },
-          { label: paper.subject.class_name || 'Class', href: `/class/${paper.subject.class_id}` },
-          { label: paper.subject.name, href: `/subject/${paper.subject_id}` },
+          { label: paper.subjects.classes?.name || 'Class', href: `/class/${paper.subjects.class_id}` },
+          { label: paper.subjects.name, href: `/subject/${paper.subject_id}` },
           { label: paper.exam_type, href: `/papers?subject_id=${paper.subject_id}&exam_type=${encodeURIComponent(paper.exam_type)}` },
           { label: paper.title },
         ]} />
@@ -172,8 +172,8 @@ export default function PaperDetailPage() {
         {/* Meta grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
           {[
-            { label: 'Class',     value: paper.subject?.class_name || '—' },
-            { label: 'Subject',   value: paper.subject?.name || '—' },
+            { label: 'Class',     value: paper.subjects?.classes?.name || '—' },
+            { label: 'Subject',   value: paper.subjects?.name || '—' },
             { label: 'Exam Type', value: paper.exam_type },
             { label: 'Year',      value: paper.year },
           ].map(m => (
@@ -281,7 +281,7 @@ export default function PaperDetailPage() {
         <div className="mt-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-900">
-              More from {paper.subject?.name || 'this subject'}
+              More from {paper.subjects?.name || 'this subject'}
             </h2>
             <Link
               to={`/subject/${paper.subject_id}`}
@@ -299,7 +299,7 @@ export default function PaperDetailPage() {
       {/* Back link */}
       <div className="mt-8">
         <Link to={`/subject/${paper.subject_id}`} className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
-          ← Back to {paper.subject?.name || 'Subject'}
+          ← Back to {paper.subjects?.name || 'Subject'}
         </Link>
       </div>
     </div>

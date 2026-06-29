@@ -499,11 +499,11 @@ export default function PapersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {filteredPapers.map(p => {
+                    {filteredPapers.map((p, index) => {
                       const sub = subjectMap[p.subject_id]
                       return (
                         <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3 text-gray-400 font-mono text-xs">{p.id}</td>
+                          <td className="px-4 py-3 text-gray-400 font-mono text-xs">{index + 1}</td>
                           <td className="px-4 py-3 max-w-xs">
                             <div className="font-medium text-gray-800 truncate">{p.title}</div>
                             <Badge type={p.paper_type} />
