@@ -390,11 +390,11 @@ export default function AdminOfficialNoticesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map(n => {
+                {filtered.map((n, index) => {
                   const isExpired = n.expires_at && new Date(n.expires_at) < new Date()
                   return (
                     <tr key={n.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-gray-400 font-mono text-xs">{n.id}</td>
+                      <td className="px-4 py-3 text-gray-400 font-mono text-xs">{index + 1}</td>
                       <td className="px-4 py-3 max-w-xs">
                         <div className="font-medium text-gray-800 truncate">{n.title}</div>
                         {n.is_pinned && <span className="badge bg-amber-100 text-amber-700 text-xs">📌 Pinned</span>}
