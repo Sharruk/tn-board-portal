@@ -35,5 +35,8 @@ uv.lock
 # Agent memory
 .agents/
 
+# Private AI operating manual (never commit — local only)
+.ai/
+
 # Debug / session artifacts
 attached_assets/
