@@ -24,7 +24,7 @@ export default function HomePage() {
       getClasses(),
       getRecentPapers(10),
       getPopularPapers(10),
-      getRecentNotices(6),
+      getRecentNotices(6, true),
       getRecentNews(6),
     ])
       .then(([clsRes, recentRes, popularRes, noticesRes, newsRes]) => {
