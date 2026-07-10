@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { CATEGORY_ICONS } from '../services/notices'
+import { CATEGORY_ICONS, isNoticeExpired } from '../services/notices'
 
 /**
  * NoticeCard — compact card for the Official Notices listing and home page.
@@ -7,16 +7,28 @@ import { CATEGORY_ICONS } from '../services/notices'
  * Props:
  *   notice    — notice row from the DB (with class_name resolved)
  *   compact   — if true, renders a smaller single-row variant for the home page
+ *
+ * Visual states:
+ *   Active notice   — white card, normal styling
+ *   Archived notice — gray card (bg-gray-50, gray border), "Archive" badge,
+ *                     expiry date shown. All links and navigation remain available.
+ *                     Opacity is NOT reduced per design spec.
  */
 export default function NoticeCard({ notice, compact = false }) {
-  const icon = CATEGORY_ICONS[notice.category] ?? '📄'
+  const icon       = CATEGORY_ICONS[notice.category] ?? '📄'
+  const isArchived = isNoticeExpired(notice)
+
   const published = notice.created_at
     ? new Date(notice.created_at).toLocaleDateString('en-IN', {
         day: '2-digit', month: 'short', year: 'numeric',
       })
     : ''
 
-  const isExpired = notice.expires_at && new Date(notice.expires_at) < new Date()
+  const expiresOn = notice.expires_at
+    ? new Date(notice.expires_at).toLocaleDateString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      })
+    : null
 
   if (compact) {
     // ── Compact variant — used on the Home page latest-notices strip ─────────
@@ -52,40 +64,62 @@ export default function NoticeCard({ notice, compact = false }) {
     )
   }
 
-  // ── Full card variant — used on the Official Notices page ─────────────────
+  // ── Full card variant — used on the Official Notices page ──────────────────
+  //
+  // Active notices:  white bg, normal border, blue icon bg
+  // Archived notices: gray bg, gray border, gray icon bg, Archive badge, expiry date
+
+  const cardBg      = isArchived ? 'bg-gray-50'  : 'bg-white'
+  const cardBorder  = isArchived
+    ? 'border-gray-200'
+    : notice.is_pinned ? 'border-amber-300 shadow-amber-100' : 'border-gray-100'
+  const iconBg      = isArchived ? 'bg-gray-100' : 'bg-blue-50'
+  const titleColor  = isArchived ? 'text-gray-600 hover:text-gray-800' : 'text-gray-900 hover:text-blue-700'
+
   return (
-    <div className={`bg-white rounded-2xl border ${isExpired ? 'border-gray-200 opacity-60' : notice.is_pinned ? 'border-amber-300 shadow-amber-100' : 'border-gray-100'} shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col`}>
-      {/* Pinned stripe */}
+    <div className={`${cardBg} rounded-2xl border ${cardBorder} shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col`}>
+
+      {/* Pinned stripe — shown even for archived pinned notices */}
       {notice.is_pinned && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-1.5 flex items-center gap-1.5">
+        <div className={`${isArchived ? 'bg-gray-100 border-b border-gray-200' : 'bg-amber-50 border-b border-amber-200'} px-4 py-1.5 flex items-center gap-1.5`}>
           <span className="text-sm">📌</span>
-          <span className="text-xs font-semibold text-amber-700">Pinned Notice</span>
+          <span className={`text-xs font-semibold ${isArchived ? 'text-gray-500' : 'text-amber-700'}`}>
+            {isArchived ? 'Pinned (Archived)' : 'Pinned Notice'}
+          </span>
+        </div>
+      )}
+
+      {/* Archive banner — replaces the pinned stripe position when not pinned */}
+      {isArchived && !notice.is_pinned && (
+        <div className="bg-gray-100 border-b border-gray-200 px-4 py-1.5 flex items-center gap-1.5">
+          <span className="text-sm">🗂️</span>
+          <span className="text-xs font-semibold text-gray-500">Archived Notice</span>
         </div>
       )}
 
       <div className="p-5 flex flex-col flex-1">
         {/* Icon + Title */}
         <div className="flex items-start gap-3 mb-3">
-          <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
+          <div className={`w-11 h-11 ${iconBg} rounded-xl flex items-center justify-center text-2xl shrink-0`}>
             {icon}
           </div>
           <div className="flex-1 min-w-0">
             <Link
               to={`/notice/${notice.id}`}
-              className="font-bold text-gray-900 text-sm leading-snug hover:text-blue-700 transition-colors line-clamp-2"
+              className={`font-bold ${titleColor} text-sm leading-snug transition-colors line-clamp-2`}
             >
               {notice.title}
             </Link>
           </div>
         </div>
 
-        {/* Meta */}
+        {/* Meta badges */}
         <div className="flex flex-wrap gap-1.5 mb-3">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isArchived ? 'bg-gray-100 text-gray-600' : 'bg-blue-50 text-blue-700'}`}>
             {notice.category}
           </span>
           {notice.class_name && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-700">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isArchived ? 'bg-gray-100 text-gray-500' : 'bg-purple-50 text-purple-700'}`}>
               {notice.class_name}
             </span>
           )}
@@ -103,31 +137,36 @@ export default function NoticeCard({ notice, compact = false }) {
               Video
             </span>
           )}
-          {isExpired && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
-              Expired
+          {/* Archive badge — replaces the old inline "Expired" badge */}
+          {isArchived && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-200 text-gray-600 border border-gray-300">
+              🗂️ Archive
             </span>
           )}
         </div>
 
         {/* Description snippet */}
         {notice.description && (
-          <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-3 flex-1">
+          <p className={`text-xs ${isArchived ? 'text-gray-400' : 'text-gray-500'} leading-relaxed line-clamp-2 mb-3 flex-1`}>
             {notice.description}
           </p>
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-3 border-t border-gray-50 mt-auto">
-          <div className="flex items-center gap-3 text-xs text-gray-400">
+        <div className="flex items-center justify-between pt-3 border-t border-gray-100 mt-auto">
+          <div className={`flex flex-col gap-0.5 text-xs ${isArchived ? 'text-gray-400' : 'text-gray-400'}`}>
             <span>📅 {published}</span>
+            {/* Show expiry date on archived cards */}
+            {isArchived && expiresOn && (
+              <span className="text-gray-400">Expired on: {expiresOn}</span>
+            )}
             {notice.download_count > 0 && (
               <span>⬇ {notice.download_count.toLocaleString()}</span>
             )}
           </div>
           <Link
             to={`/notice/${notice.id}`}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+            className={`text-xs font-semibold ${isArchived ? 'text-gray-500 hover:text-gray-700' : 'text-blue-600 hover:text-blue-800'} transition-colors`}
           >
             View →
           </Link>
