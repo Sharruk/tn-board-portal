@@ -10,7 +10,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Placeholder for next release work
+- **Archive Mode for Official Notices** — Expired notices are no longer hidden from the
+  student portal. Instead, they remain visible with clear archive styling so students can
+  still access old circulars, hall ticket instructions, scholarship notifications,
+  counselling information, and past announcements for reference.
+- **Notice status filter** — New pill-style filter on the Official Notices page:
+  `All Notices` | `Active` | `Archive`. Works in combination with Category, Year, and Class filters.
+- **Archive visual style on `NoticeCard`** — Archived notices render with a light gray
+  card background (`bg-gray-50`), gray border, gray icon background, a `🗂️ Archive` banner
+  stripe, an `Archive` badge, and the expiry date (`Expired on: DD MMM YYYY`) in the footer.
+  All navigation links, PDF previews, and downloads remain fully functional.
+- **Expiry date on archive cards** — The notice card footer now displays `Expired on: <date>`
+  for archived notices so students can immediately understand when the notice became inactive.
+- **Pinned ordering preserved in archive group** — Pinned archived notices appear first
+  within the archived group, matching the same priority logic used for active notices.
+- **Search includes archived notices** — The `search_notices()` PostgreSQL RPC now returns
+  both active and archived visible notices. Searching for an old circular still surfaces it.
+- **Admin notice statistics** — Admin Dashboard now shows three new stat cards:
+  Active Notices, Archived Notices, and Draft Notices. Powered by extended `get_admin_stats()` RPC.
+- **`isNoticeExpired()` helper** — New pure-function export from `services/notices.js` for
+  consistent expired state computation across all components.
+
+### Changed
+- **`notices_public_select` RLS policy** (migration 015) — The `expires_at > NOW()` gate
+  has been removed. Public `anon` role can now SELECT all `is_visible = true` notices
+  regardless of expiry. Expiry distinction is handled at the presentation layer.
+- **`search_notices()` RPC** (migration 015) — Updated to return all visible notices
+  including expired ones. Adds `is_expired` (computed BOOLEAN) and `expires_at` to the
+  return type so the frontend can render archive styling in search results.
+- **`get_admin_stats()` RPC** (migration 015) — Extended return TABLE with three new
+  columns: `active_notices`, `expired_notices`, `draft_notices`. All existing columns
+  preserved (fully backward compatible).
+- **Home page "Latest Notices" strip** — Continues to show only active (non-expired)
+  notices. Achieved via `activeOnly=true` parameter on `getRecentNotices()`.
+- **`getRecentNotices()`** — Now accepts an optional `activeOnly` parameter (default `false`).
+  The full notices listing page passes `false`; the home page passes `true`.
+- **`getRelatedNotices()`** — Expiry filter removed; related notices panel on the detail
+  page now includes archived notices in the same category.
+- **Official Notices page search placeholder** — Updated to include "(includes archive)"
+  to inform students that old notices are discoverable.
 
 ---
 

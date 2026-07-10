@@ -163,3 +163,47 @@ Notes:
 - Before making the repository public, review whether `.ai/` should remain or move to a separate private repository
 - All 17 `.ai/` files were security-scanned — no credentials found
 - No duplicate rules found across files; cross-references verified consistent
+
+---
+
+### [2026-07-10] — Archive Mode for Official Notices (migration 015)
+
+**Implemented by:** Antigravity (AI Assistant)
+**Session type:** Feature
+
+**What was done:**
+- Read all 17 `.ai/` documentation files before implementing
+- Performed full root-cause analysis: expiry filter was present in 3 places (RLS, RPC, service layer)
+- Created migration 015 to: (1) relax RLS policy, (2) update search_notices() RPC, (3) extend get_admin_stats() RPC
+- Updated `services/notices.js`: added `isNoticeExpired()` helper, `activeOnly` param on `getRecentNotices()`, removed expiry filters from `getRecentNotices()` and `getRelatedNotices()`
+- Updated `services/search.js`: mapped new `is_expired` and `expires_at` fields from search_notices RPC
+- Rewrote `NoticeCard.jsx`: gray card background, archive banner stripe, Archive badge, expiry date footer; NO opacity reduction per design spec
+- Rewrote `OfficialNoticesPage.jsx`: added Archive status pill filter (All / Active / Archive), updated sort order (pinned-active → active → pinned-archived → archived), added result count breakdown
+- Updated `HomePage.jsx`: `getRecentNotices(6, true)` — home page still shows only active notices
+- Updated `admin/DashboardPage.jsx`: added "Official Notices" stats section with Active, Archived, Draft stat cards
+
+**Files created:**
+- `supabase/migrations/015_expired_notices_visibility.sql`
+
+**Files modified:**
+- `frontend/src/services/notices.js`
+- `frontend/src/services/search.js`
+- `frontend/src/components/NoticeCard.jsx`
+- `frontend/src/pages/OfficialNoticesPage.jsx`
+- `frontend/src/pages/HomePage.jsx`
+- `frontend/src/pages/admin/DashboardPage.jsx`
+- `CHANGELOG.md`
+- `ROADMAP.md`
+- `.ai/CHANGE_HISTORY.md` (this file)
+
+**Migrations applied:**
+- 015_expired_notices_visibility.sql — RLS update, search_notices() RPC, get_admin_stats() RPC
+
+**Build status:** ✅ Pass (vite build — 116 modules, 17.48s)
+
+**Notes:**
+- Migration 015 must be applied manually in Supabase Dashboard → SQL Editor before deploying to production
+- The `get_admin_stats()` RPC column additions are backward compatible; no callers broke
+- The large bundle size warning (~636kB) is pre-existing and not related to this feature
+- `NoticeDetailPage.jsx` required no changes — the expired banner at line 264 already existed and the RLS relaxation is the only requirement for detail pages to load archived notices
+- `admin/OfficialNoticesPage.jsx` required no changes — admin already sees all notices via `notices_admin_all` RLS policy
