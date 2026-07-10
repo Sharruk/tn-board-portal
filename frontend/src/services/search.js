@@ -129,6 +129,9 @@ export const searchNotices = async ({ q, category, class_id, year } = {}) => {
         public_url:    r.public_url,
         file_type:     r.file_type,
         is_pinned:     r.is_pinned,
+        // Fields added in migration 015 — allow search results to render archive styling
+        is_expired:    r.is_expired ?? false,
+        expires_at:    r.expires_at ?? null,
         view_count:    r.view_count,
         download_count:r.download_count,
         created_at:    r.created_at,

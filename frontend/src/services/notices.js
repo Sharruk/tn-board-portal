@@ -51,6 +51,17 @@ export const CATEGORY_ICONS = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
+ * Returns true if the notice has a set expiry date that is in the past.
+ * Pure function — no side effects, safe to call in render.
+ * @param {{ expires_at?: string|null }} notice
+ * @returns {boolean}
+ */
+export function isNoticeExpired(notice) {
+  if (!notice?.expires_at) return false
+  return new Date(notice.expires_at) < new Date()
+}
+
+/**
  * Given a filename/file_path, determine the preview strategy.
  *   'pdf'   → browser PDF viewer
  *   'image' → <img> preview
@@ -123,13 +134,24 @@ export function getYouTubeEmbedUrl(url) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/** Fetch the most recent visible, non-expired notices.  */
-export const getRecentNotices = async (limit = 10) => {
-  const { data, error } = await supabase
+/**
+ * Fetch the most recent visible notices.
+ * @param {number} limit - Maximum rows to return.
+ * @param {boolean} activeOnly - When true, only non-expired notices are returned.
+ *   Pass true for the home page strip; pass false (default) for the full notices listing.
+ */
+export const getRecentNotices = async (limit = 10, activeOnly = false) => {
+  let query = supabase
     .from('official_notices')
     .select('*, classes(name)')
     .eq('is_visible', true)
-    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+
+  // Home page: show only active (non-expired) notices
+  if (activeOnly) {
+    query = query.or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+  }
+
+  const { data, error } = await query
     .order('is_pinned', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -142,7 +164,10 @@ export const getRecentNotices = async (limit = 10) => {
   }
 }
 
-/** Fetch a single notice by id (public view — only visible, non-expired). */
+/**
+ * Fetch a single notice by id (public view — all visible notices, including archived).
+ * The expires_at filter was removed in migration 015; RLS now allows expired visible notices.
+ */
 export const getNotice = async (id) => {
   const { data, error } = await supabase
     .from('official_notices')
@@ -175,7 +200,10 @@ export const getNoticeAdmin = async (id) => {
   }
 }
 
-/** Fetch related notices in the same category (excluding the current notice). */
+/**
+ * Fetch related notices in the same category (excluding the current notice).
+ * Returns both active and archived notices — expiry filter removed in migration 015.
+ */
 export const getRelatedNotices = async (category, excludeId, limit = 4) => {
   const { data, error } = await supabase
     .from('official_notices')
@@ -183,7 +211,6 @@ export const getRelatedNotices = async (category, excludeId, limit = 4) => {
     .eq('category', category)
     .eq('is_visible', true)
     .neq('id', excludeId)
-    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw error
