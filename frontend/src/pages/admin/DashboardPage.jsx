@@ -150,7 +150,32 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick links */}
+      {/* Official Notices Stats — added in migration 015 */}
+      <div className="mb-8">
+        <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">Official Notices</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard
+            label="Active Notices"
+            value={fmt(stats?.active_notices)}
+            color="bg-emerald-50"
+            icon="📢"
+          />
+          <StatCard
+            label="Archived Notices"
+            value={fmt(stats?.expired_notices)}
+            color="bg-gray-100"
+            icon="🗂️"
+          />
+          <StatCard
+            label="Draft Notices"
+            value={fmt(stats?.draft_notices)}
+            color="bg-amber-50"
+            icon="📝"
+          />
+        </div>
+      </div>
+
+
       <div className="flex flex-wrap gap-3 mb-8">
         <Link to="/admin/papers" className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 text-sm font-semibold rounded-xl hover:bg-blue-100 transition-colors">
           📦 Bulk Upload
