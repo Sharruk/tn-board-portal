@@ -1,13 +1,7 @@
 import { useState, useCallback } from 'react'
 import { uploadPaper } from '../../services/admin'
 import { getSubjectsForClass } from '../../services/classes'
-
-const EXAM_TYPES = [
-  'Monthly Test',
-  'Unit Test 1', 'Unit Test 2', 'Unit Test 3',
-  'Quarterly Exam', 'Half Yearly Exam',
-  'Annual Exam', 'Public Exam', 'Practical Exam', 'Model Exam',
-]
+import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../../services/papers'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i)
@@ -31,6 +25,8 @@ const SUBJECT_ALIASES = {
 
 const EXAM_ALIASES = {
   monthly: 'Monthly Test', monthlytest: 'Monthly Test', 'monthly test': 'Monthly Test',
+  firstmidterm: 'First Mid Term Test', 'first mid term': 'First Mid Term Test',
+  firstmidtermtest: 'First Mid Term Test', 'first mid term test': 'First Mid Term Test',
   annual: 'Annual Exam',
   halfyearly: 'Half Yearly Exam', 'half-yearly': 'Half Yearly Exam', 'half yearly': 'Half Yearly Exam',
   quarterly: 'Quarterly Exam',
@@ -40,6 +36,22 @@ const EXAM_ALIASES = {
   public: 'Public Exam',
   model: 'Model Exam',
   practical: 'Practical Exam',
+}
+
+// Month name → canonical form mapping for filename extraction
+const MONTH_NAMES = {
+  jan: 'January', january: 'January',
+  feb: 'February', february: 'February',
+  mar: 'March', march: 'March',
+  apr: 'April', april: 'April',
+  may: 'May',
+  jun: 'June', june: 'June',
+  jul: 'July', july: 'July',
+  aug: 'August', august: 'August',
+  sep: 'September', sept: 'September', september: 'September',
+  oct: 'October', october: 'October',
+  nov: 'November', november: 'November',
+  dec: 'December', december: 'December',
 }
 
 function extractMetadata(filename, classes, subjectsCache) {
@@ -67,9 +79,18 @@ function extractMetadata(filename, classes, subjectsCache) {
     }
   }
 
+  // Extract month from filename parts
+  let month = ''
+  const parts = normed.split(/[\s_\-]+/)
+  for (const part of parts) {
+    if (MONTH_NAMES[part]) {
+      month = MONTH_NAMES[part]
+      break
+    }
+  }
+
   let subjectName = ''
   let subjectId = ''
-  const parts = normed.split(/[\s_\-]+/)
   for (const part of parts) {
     if (SUBJECT_ALIASES[part]) {
       subjectName = SUBJECT_ALIASES[part]
@@ -89,10 +110,10 @@ function extractMetadata(filename, classes, subjectsCache) {
     if (sub) subjectId = String(sub.id)
   }
 
-  const titleParts = [classNum ? `Class ${classNum}` : '', subjectName, examType, year].filter(Boolean)
+  const titleParts = [classNum ? `Class ${classNum}` : '', subjectName, examType, month, year].filter(Boolean)
   const title = titleParts.join(' ') || base
 
-  return { classId, subjectId, examType, year, title, subjectName }
+  return { classId, subjectId, examType, year, month, title, subjectName }
 }
 
 function computeWarnings(item, allItems) {
@@ -133,6 +154,8 @@ export default function BulkUploadTab({ classes, subjectsCache, onSubjectLoad, o
         subjectId: meta.subjectId,
         examType: meta.examType,
         year: meta.year,
+        month: meta.month,
+        district: '',
         title: meta.title,
         paperType: 'question',
         status: 'pending',
@@ -160,12 +183,12 @@ export default function BulkUploadTab({ classes, subjectsCache, onSubjectLoad, o
     }
   }
 
-  const handleFieldChange = (id, field, value) => {
+  const handleFieldChange = useCallback((id, field, value) => {
     setItems(prev => {
       const updated = prev.map(it => it.id === id ? { ...it, [field]: value } : it)
       return updated.map(it => ({ ...it, warnings: computeWarnings(it, updated) }))
     })
-  }
+  }, [])
 
   const removeItem = (id) => {
     setItems(prev => {
@@ -198,6 +221,8 @@ export default function BulkUploadTab({ classes, subjectsCache, onSubjectLoad, o
         fd.append('subject_id', item.subjectId)
         fd.append('exam_type', item.examType)
         fd.append('year', item.year)
+        fd.append('month', item.month || '')
+        fd.append('district', item.district || '')
         fd.append('title', item.title)
         fd.append('paper_type', item.paperType)
         fd.append('file', item.file)
@@ -359,6 +384,20 @@ export default function BulkUploadTab({ classes, subjectsCache, onSubjectLoad, o
                         <label className="block text-xs font-semibold text-gray-500 mb-1">Year</label>
                         <select value={item.year} onChange={e => handleFieldChange(item.id, 'year', e.target.value)} className={inputCls} disabled={uploading}>
                           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">Month</label>
+                        <select value={item.month} onChange={e => handleFieldChange(item.id, 'month', e.target.value)} className={inputCls} disabled={uploading}>
+                          <option value="">No month</option>
+                          {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 mb-1">District</label>
+                        <select value={item.district} onChange={e => handleFieldChange(item.id, 'district', e.target.value)} className={inputCls} disabled={uploading}>
+                          <option value="">No district</option>
+                          {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
                       </div>
                       <div className="col-span-2">

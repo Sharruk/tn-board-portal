@@ -1,20 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getAdminPapers, uploadPaper, deletePaper, updatePaper } from '../../services/admin'
 import { getClasses, getSubjectsForClass } from '../../services/classes'
+import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../../services/papers'
 import BulkUploadTab from './BulkUploadTab'
-
-const EXAM_TYPES = [
-  'Monthly Test',
-  'Unit Test 1', 'Unit Test 2', 'Unit Test 3',
-  'Quarterly Exam', 'Half Yearly Exam',
-  'Annual Exam', 'Public Exam', 'Practical Exam', 'Model Exam',
-]
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i)
 
 const EMPTY_FORM = {
   classId: '', subjectId: '', examType: '', year: String(CURRENT_YEAR),
+  month: '', district: '',
   title: '', paperType: 'question', youtubeUrl: '', file: null,
 }
 
@@ -44,7 +39,7 @@ function extractYouTubeId(url) {
 }
 
 function exportCSV(papers, subjectMap) {
-  const rows = [['id', 'title', 'class', 'subject', 'exam_type', 'year', 'paper_type', 'download_count']]
+  const rows = [['id', 'title', 'class', 'subject', 'exam_type', 'month', 'year', 'district', 'paper_type', 'download_count']]
   papers.forEach(p => {
     const sub = subjectMap[p.subject_id]
     rows.push([
@@ -53,7 +48,9 @@ function exportCSV(papers, subjectMap) {
       sub?.class_name || '',
       `"${(sub?.name || '').replace(/"/g, '""')}"`,
       p.exam_type,
+      p.month || '',
       p.year,
+      p.district || '',
       p.paper_type,
       p.download_count ?? 0,
     ])
@@ -219,7 +216,10 @@ export default function PapersPage() {
   const [formErrors, setFormErrors] = useState({})
   const [uploadProgress, setUploadProgress] = useState(null)
 
-  const [editForm, setEditForm] = useState({ title: '', examType: '', year: String(CURRENT_YEAR), paperType: 'question', youtubeUrl: '', isVisible: true, originalFilename: null })
+  const [editForm, setEditForm] = useState({
+    title: '', examType: '', year: String(CURRENT_YEAR), month: '', district: '',
+    paperType: 'question', youtubeUrl: '', isVisible: true, originalFilename: null,
+  })
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState(null)
 
@@ -323,6 +323,8 @@ export default function PapersPage() {
       fd.append('subject_id', form.subjectId)
       fd.append('exam_type', form.examType)
       fd.append('year', form.year)
+      fd.append('month', form.month)
+      fd.append('district', form.district)
       fd.append('title', form.title)
       fd.append('paper_type', form.paperType)
       if (form.youtubeUrl) fd.append('youtube_url', form.youtubeUrl)
@@ -361,6 +363,8 @@ export default function PapersPage() {
       title:            paper.title || '',
       examType:         paper.exam_type || '',
       year:             String(paper.year || CURRENT_YEAR),
+      month:            paper.month || '',
+      district:         paper.district || '',
       paperType:        paper.paper_type || 'question',
       youtubeUrl:       paper.youtube_url || '',
       isVisible:        paper.is_visible ?? true,
@@ -378,6 +382,8 @@ export default function PapersPage() {
         title:             editForm.title.trim(),
         exam_type:         editForm.examType,
         year:              parseInt(editForm.year, 10),
+        month:             editForm.month || null,
+        district:          editForm.district || null,
         paper_type:        editForm.paperType,
         youtube_url:       editForm.youtubeUrl || null,
         is_visible:        editForm.isVisible,
@@ -493,7 +499,7 @@ export default function PapersPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      {['#', 'Title', 'Class / Subject', 'Exam Type', 'Year', 'PDF', 'YouTube', 'Downloads', 'Status', 'Actions'].map(h => (
+                      {['#', 'Title', 'Class / Subject', 'Exam Type', 'Month', 'Year', 'District', 'PDF', 'YouTube', 'Downloads', 'Status', 'Actions'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -513,7 +519,9 @@ export default function PapersPage() {
                             <div className="text-gray-400 text-xs">{sub?.name || `Subject #${p.subject_id}`}</div>
                           </td>
                           <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{p.exam_type}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{p.month || '—'}</td>
                           <td className="px-4 py-3 text-gray-600">{p.year}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{p.district || '—'}</td>
                           <td className="px-4 py-3">
                             {p.public_url
                               ? <a href={p.public_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">✓ YES</a>
@@ -553,7 +561,7 @@ export default function PapersPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="mb-5">
             <h2 className="text-base font-bold text-gray-900">Bulk Upload</h2>
-            <p className="text-sm text-gray-500 mt-1">Upload multiple PDF files at once. Metadata is auto-extracted from filenames like <code className="bg-gray-100 px-1 rounded text-xs">Class10_Maths_Quarterly_2024.pdf</code></p>
+            <p className="text-sm text-gray-500 mt-1">Upload multiple PDF files at once. Metadata is auto-extracted from filenames like <code className="bg-gray-100 px-1 rounded text-xs">Class10_Maths_FirstMidTerm_July_2026_Chennai.pdf</code></p>
           </div>
           <BulkUploadTab
             classes={classes}
@@ -597,7 +605,22 @@ export default function PapersPage() {
               </FormField>
             </div>
 
-            <FormField label="Title" required hint="e.g. Class 10 Maths Annual Exam 2024" error={formErrors.title}>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Month" hint="Optional — leave blank if unknown">
+                <select name="month" value={form.month} onChange={handleFormChange} className={inputCls}>
+                  <option value="">Select month…</option>
+                  {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </FormField>
+              <FormField label="District" hint="Optional — leave blank if state-wide">
+                <select name="district" value={form.district} onChange={handleFormChange} className={inputCls}>
+                  <option value="">Select district…</option>
+                  {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </FormField>
+            </div>
+
+            <FormField label="Title" required hint="e.g. Class 10 Maths First Mid Term Test July 2026 Chennai" error={formErrors.title}>
               <input name="title" value={form.title} onChange={handleFormChange} className={formErrors.title ? inputErrCls : inputCls} placeholder="Paper title…" />
             </FormField>
 
@@ -679,6 +702,21 @@ export default function PapersPage() {
               <FormField label="Year" required>
                 <select value={editForm.year} onChange={e => setEditForm(f => ({ ...f, year: e.target.value }))} className={inputCls}>
                   {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Month" hint="Optional">
+                <select value={editForm.month} onChange={e => setEditForm(f => ({ ...f, month: e.target.value }))} className={inputCls}>
+                  <option value="">No month</option>
+                  {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </FormField>
+              <FormField label="District" hint="Optional">
+                <select value={editForm.district} onChange={e => setEditForm(f => ({ ...f, district: e.target.value }))} className={inputCls}>
+                  <option value="">No district</option>
+                  {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </FormField>
             </div>
