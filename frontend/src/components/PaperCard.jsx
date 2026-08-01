@@ -5,6 +5,10 @@ export default function PaperCard({ paper, showSubject = false, showDownloads = 
   const isQuestion = paper.paper_type === 'question'
   const paperUrl = paper.slug ? `/paper/${paper.slug}` : `/paper/${paper.id}`
 
+  // Combine month and year for a more descriptive date label.
+  // Falls back to just the year for pre-sprint papers that have no month.
+  const dateBadge = paper.month ? `${paper.month} ${paper.year}` : String(paper.year)
+
   return (
     <div className="card p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
@@ -18,7 +22,10 @@ export default function PaperCard({ paper, showSubject = false, showDownloads = 
 
       <div className="flex items-center gap-2 flex-wrap">
         <span className="badge bg-gray-100 text-gray-600">{paper.exam_type}</span>
-        <span className="badge bg-gray-100 text-gray-600">{paper.year}</span>
+        <span className="badge bg-gray-100 text-gray-600">{dateBadge}</span>
+        {paper.district && (
+          <span className="badge bg-orange-50 text-orange-700">{paper.district}</span>
+        )}
         {showSubject && paper.subject && (
           <span className="badge bg-purple-100 text-purple-700">{paper.subject.name}</span>
         )}
