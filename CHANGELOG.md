@@ -30,6 +30,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Active Notices, Archived Notices, and Draft Notices. Powered by extended `get_admin_stats()` RPC.
 - **`isNoticeExpired()` helper** — New pure-function export from `services/notices.js` for
   consistent expired state computation across all components.
+- **`month` column on `papers`** — New nullable TEXT column stores the month the exam was
+  held (e.g. `'July'`). Has a CHECK constraint enforcing valid month names. Papers without
+  a month continue to display correctly with the year only.
+- **`district` column on `papers`** — New nullable TEXT column stores the Tamil Nadu district
+  for district-specific papers (e.g. `'Chennai'`, `'Coimbatore'`). Papers without a district
+  display without a district badge.
+- **`First Mid Term Test` exam type** — Added as a first-class exam type across all dropdowns
+  (Upload, Edit, Bulk Upload) and the SubjectPage category grouping. Positioned after Monthly
+  Test in the canonical exam type order.
+- **Month + Year display on `PaperCard`** — Papers with a month set display `"July 2026"`
+  instead of bare `"2026"`. Fully backward compatible — year-only for pre-sprint papers.
+- **District badge on `PaperCard`** — An orange district badge appears conditionally when
+  `paper.district` is set.
+- **Month and District in `PaperDetailPage` meta grid** — Conditionally rendered meta cells
+  for Month (via combined month+year label) and District when set.
+- **Month and District upload fields in Admin** — Upload and Edit modals in the Admin Papers
+  page now include Month and District dropdowns. Both optional.
+- **Month and District fields in Bulk Upload** — Each file row in `BulkUploadTab` has Month
+  and District dropdowns. Month is auto-extracted from the filename if present.
+- **Month name extraction in Bulk Upload filename parser** — `extractMetadata()` now
+  recognises month names (e.g. `july`, `august`, `sept`) in filenames and pre-fills the
+  Month dropdown.
+- **`MONTHS` and `TN_DISTRICTS` exports from `services/papers.js`** — Centralised constants
+  for all 12 month names and all 38 Tamil Nadu districts (alphabetically sorted). Admin pages
+  and the search page import these instead of duplicating.
+- **Exam Type, Month, and District filters on Search page** — Three new filter dropdowns
+  added to `/search`. All are wired to URL params and forwarded to `globalSearch()`.
+- **`search_papers()` RPC updated** (migration 016) — Now returns `month` and `district`
+  columns. Accepts new optional parameters `p_month` and `p_district` for exact/ILIKE
+  filtering. ILIKE search body extended to cover month and district fields.
+- **`First Mid Term Test` in search EXAM_PATTERNS** — `services/search.js` now recognises
+  `'first mid term test'` and `'first mid term'` for alias-expansion during search.
+- **`EXAM_TYPES` centralised in `services/papers.js`** — Admin pages (`PapersPage.jsx`,
+  `BulkUploadTab.jsx`) no longer define their own local `EXAM_TYPES` constant; they import
+  from the single source of truth.
 
 ### Changed
 - **`notices_public_select` RLS policy** (migration 015) — The `expires_at > NOW()` gate
@@ -49,6 +84,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page now includes archived notices in the same category.
 - **Official Notices page search placeholder** — Updated to include "(includes archive)"
   to inform students that old notices are discoverable.
+- **`search_papers()` RPC** (migration 016) — Dropped and recreated with extended RETURNS
+  TABLE (`month`, `district` columns) and new filter parameters. All existing behaviour
+  preserved; new params default to NULL.
+- **Admin Papers table** — Added Month and District columns to the admin papers list table.
+  `exportCSV()` includes month and district.
+- **SubjectPage `EXAM_CATEGORY_GROUPS`** — Added `First Mid Term Test` as an independent
+  group positioned between Monthly Test and Unit Tests.
+
+### Data Migration (migration 016)
+- **Class 10 July 2026 papers** — Papers previously stored as `exam_type = 'Model Exam'`
+  for Tamil, English, Mathematics, Science, and Social Science (Class 10, year 2026) have
+  been updated to `exam_type = 'First Mid Term Test'`, `month = 'July'`, `district = 'Chennai'`.
+  Migration is scoped exactly to these rows and is idempotent.
 
 ---
 

@@ -36,6 +36,46 @@ Notes:
 
 ## History
 
+### 2026-08-01 — Sprint 01: Version 1 Paper Metadata Upgrade
+Implemented by: Antigravity
+Session type: Feature | Database
+
+What was done:
+- Added `month` and `district` columns to `papers` table to capture comprehensive exam metadata.
+- Upgraded `search_papers` RPC to return the new columns and support `p_month` and `p_district` filtering (backward compatible).
+- Migrated existing Class 10 July 2026 data incorrectly labelled as 'Model Exam' to the newly introduced 'First Mid Term Test' exam type.
+- Updated admin UIs (PapersPage, BulkUploadTab) to include dropdowns for Month and District. Added auto-extraction of month from filenames during bulk upload.
+- Centralised `EXAM_TYPES`, `MONTHS`, and `TN_DISTRICTS` to `services/papers.js` to eliminate duplicated constants.
+- Updated public UIs (PaperCard, PaperDetailPage, SubjectPage, SearchPage) to display and filter by Month and District. Paper cards now elegantly combine month and year (e.g., "July 2026").
+- Search now dynamically supports `First Mid Term Test` alongside other categories.
+
+Files created:
+- `supabase/migrations/016_paper_metadata_upgrade.sql`
+- `progress/SPRINT_01.md`
+
+Files modified:
+- `CHANGELOG.md`
+- `ROADMAP.md`
+- `frontend/src/components/PaperCard.jsx`
+- `frontend/src/pages/PaperDetailPage.jsx`
+- `frontend/src/pages/SearchPage.jsx`
+- `frontend/src/pages/SubjectPage.jsx`
+- `frontend/src/pages/admin/BulkUploadTab.jsx`
+- `frontend/src/pages/admin/PapersPage.jsx`
+- `frontend/src/services/admin.js`
+- `frontend/src/services/papers.js`
+- `frontend/src/services/search.js`
+
+Migrations applied:
+- `016_paper_metadata_upgrade.sql` (Creates columns, recreates RPC, runs idempotent data migration)
+
+Build status: ✅ Pass
+
+Notes:
+- The new `month` and `district` columns are nullable. Existing papers without this metadata render gracefully without visual regressions.
+- No backend/architecture changes (FastAPI migration is planned for V2).
+- Ensure migration 016 is executed in the Supabase SQL editor before deploying the frontend code.
+
 ---
 
 ### [Pre-2026-07-01] — Initial v1.0 Development

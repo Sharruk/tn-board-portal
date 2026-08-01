@@ -1,6 +1,6 @@
 # ROADMAP — TN Board Portal
 
-> Last updated: 2026-07-10
+> Last updated: 2026-08-01
 > This roadmap reflects real planned work. Dates are targets, not guarantees.
 
 ---
@@ -16,12 +16,13 @@ The portal is live on Vercel with the following capabilities:
 | Supabase Auth (single admin account, email/password) | ✅ Live |
 | Paper status system (draft / published / archived) | ✅ Live |
 | Three storage buckets (papers, official-updates, news-media) | ✅ Live |
-| 15 database migrations with full RLS and RPCs | ✅ Live |
+| 16 database migrations with full RLS and RPCs | ✅ Live |
 | Search across papers, notices, and news via ILIKE RPCs | ✅ Live |
 | Search analytics, audit logs, download counters, view counters | ✅ Live |
 | Original filename preservation on uploads | ✅ Live |
 | Vercel SPA deployment with rewrite rules | ✅ Live |
 | **Archive Mode for Official Notices** — expired notices remain accessible with clear archive styling, status filter (All / Active / Archive), and admin notice stats | ✅ Shipped |
+| **Sprint 01 — Paper Metadata Upgrade** — `month` and `district` columns on papers table; `First Mid Term Test` exam type; combined month+year display on cards; district badge; admin upload/edit/bulk fields; Search page Exam Type, Month, District filters; data migration for Class 10 July 2026 Chennai papers | ✅ Shipped |
 
 ---
 
