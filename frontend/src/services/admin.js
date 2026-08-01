@@ -55,6 +55,8 @@ export const uploadPaper = async (formData, onProgress) => {
     subject_id:        parseInt(formData.get('subject_id'), 10),
     exam_type:         formData.get('exam_type'),
     year:              parseInt(formData.get('year'), 10),
+    month:             formData.get('month') || null,
+    district:          formData.get('district') || null,
     title:             formData.get('title'),
     paper_type:        formData.get('paper_type'),
     youtube_url:       formData.get('youtube_url') || null,

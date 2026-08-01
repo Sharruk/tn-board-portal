@@ -25,6 +25,7 @@ const SUBJECT_ALIASES = {
 
 const EXAM_PATTERNS = [
   'monthly test',
+  'first mid term test', 'first mid term',
   'unit test 1', 'unit test 2', 'unit test 3',
   'quarterly exam', 'quarterly',
   'half yearly exam', 'half yearly',
@@ -56,7 +57,7 @@ function expandTerms(q) {
 
 // ── Individual search functions ───────────────────────────────────────────────
 
-export const searchPapers = async ({ q, class_id, exam_type, paper_type } = {}) => {
+export const searchPapers = async ({ q, class_id, exam_type, paper_type, month, district } = {}) => {
   const rawQuery = (q || '').trim()
   if (!rawQuery) return { data: { query: '', total: 0, results: [] } }
 
@@ -66,9 +67,11 @@ export const searchPapers = async ({ q, class_id, exam_type, paper_type } = {}) 
   for (const term of terms) {
     const { data, error } = await supabase.rpc('search_papers', {
       q:            term,
-      p_class_id:   class_id ? parseInt(class_id, 10) : null,
+      p_class_id:   class_id  ? parseInt(class_id, 10) : null,
       p_exam_type:  exam_type  || null,
       p_paper_type: paper_type || null,
+      p_month:      month      || null,
+      p_district:   district   || null,
     })
     if (error) throw error
     data?.forEach(r => seen.set(r.id, r))
@@ -91,6 +94,8 @@ export const searchPapers = async ({ q, class_id, exam_type, paper_type } = {}) 
         title:             r.title,
         exam_type:         r.exam_type,
         year:              r.year,
+        month:             r.month ?? null,
+        district:          r.district ?? null,
         paper_type:        r.paper_type,
         public_url:        r.public_url,
         original_filename: r.original_filename ?? null,
@@ -185,14 +190,17 @@ export const searchNews = async ({ q, category } = {}) => {
  * @param {string} opts.q            - Search term (required)
  * @param {string} [opts.class_id]   - Filter papers by class
  * @param {string} [opts.paper_type] - Filter papers by type ('question'|'answer_key')
+ * @param {string} [opts.exam_type]  - Filter papers by exam type
+ * @param {string} [opts.month]      - Filter papers by month
+ * @param {string} [opts.district]   - Filter papers by district
  * @returns {Promise<{data: {query, total, results}}>}
  */
-export const globalSearch = async ({ q, class_id, paper_type } = {}) => {
+export const globalSearch = async ({ q, class_id, paper_type, exam_type, month, district } = {}) => {
   const rawQuery = (q || '').trim()
   if (!rawQuery) return { data: { query: '', total: 0, results: [] } }
 
   const [papersRes, noticesRes, newsRes] = await Promise.allSettled([
-    searchPapers({ q: rawQuery, class_id, paper_type }),
+    searchPapers({ q: rawQuery, class_id, paper_type, exam_type, month, district }),
     searchNotices({ q: rawQuery }),
     searchNews({ q: rawQuery }),
   ])
