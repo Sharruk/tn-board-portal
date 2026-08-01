@@ -6,14 +6,15 @@ import { globalSearch } from '../services/search'
 import { downloadPaper } from '../utils/download'
 import { CATEGORY_ICONS } from '../services/notices'
 import { NEWS_CATEGORY_ICONS, formatPublishedDate } from '../services/news'
+import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../services/papers'
 
 // ── Suggestion chips ──────────────────────────────────────────────────────────
 
 const SUGGESTIONS = [
   'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Science',
-  'Monthly Test', 'Annual Exam', 'Quarterly Exam', 'Half Yearly Exam', 'Answer Key',
+  'First Mid Term Test', 'Monthly Test', 'Annual Exam', 'Quarterly Exam', 'Half Yearly Exam', 'Answer Key',
   'Monthly Test Timetable', 'Public Exam Timetable', 'Hall Ticket', 'Results', 'TNEA Counselling',
-  'Government Circular', 'Scholarships',
+  'Government Circular', 'Scholarships', 'Chennai', 'Coimbatore',
 ]
 
 
@@ -31,6 +32,7 @@ function SuggestionChip({ label, onClick }) {
 // ── Result card ───────────────────────────────────────────────────────────────
 
 function PaperResult({ r }) {
+  const dateBadge = r.month ? `${r.month} ${r.year}` : r.year
   return (
     <Link
       to={`/paper/${r.id}`}
@@ -44,7 +46,10 @@ function PaperResult({ r }) {
           <span className="badge bg-gray-100 text-gray-600 text-xs">{r.class_name}</span>
           <span className="badge bg-purple-100 text-purple-600 text-xs">{r.subject_name}</span>
           <span className="badge bg-gray-100 text-gray-600 text-xs">{r.exam_type}</span>
-          <span className="badge bg-gray-100 text-gray-600 text-xs">{r.year}</span>
+          <span className="badge bg-gray-100 text-gray-600 text-xs">{dateBadge}</span>
+          {r.district && (
+            <span className="badge bg-orange-50 text-orange-700 text-xs">{r.district}</span>
+          )}
         </div>
         <h3 className="font-semibold text-gray-800 leading-snug">{r.title}</h3>
       </div>
@@ -150,9 +155,12 @@ function NewsResult({ r }) {
 
 export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const query       = searchParams.get('q') || ''
-  const filterClass = searchParams.get('class_id') || ''
-  const filterType  = searchParams.get('paper_type') || ''
+  const query        = searchParams.get('q') || ''
+  const filterClass  = searchParams.get('class_id') || ''
+  const filterType   = searchParams.get('paper_type') || ''
+  const filterExam   = searchParams.get('exam_type') || ''
+  const filterMonth  = searchParams.get('month') || ''
+  const filterDistrict = searchParams.get('district') || ''
 
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -163,13 +171,16 @@ export default function SearchPage() {
     setLoading(true)
     setError(null)
     const params = { q: query }
-    if (filterClass) params.class_id   = filterClass
-    if (filterType)  params.paper_type = filterType
+    if (filterClass)    params.class_id   = filterClass
+    if (filterType)     params.paper_type = filterType
+    if (filterExam)     params.exam_type  = filterExam
+    if (filterMonth)    params.month      = filterMonth
+    if (filterDistrict) params.district   = filterDistrict
     globalSearch(params)
       .then(res => setResults(res.data))
       .catch(err => setError(err.message || 'Search failed'))
       .finally(() => setLoading(false))
-  }, [query, filterClass, filterType])
+  }, [query, filterClass, filterType, filterExam, filterMonth, filterDistrict])
 
   const updateFilter = (key, value) => {
     const next = new URLSearchParams(searchParams)
@@ -183,8 +194,13 @@ export default function SearchPage() {
     next.set('q', term)
     next.delete('class_id')
     next.delete('paper_type')
+    next.delete('exam_type')
+    next.delete('month')
+    next.delete('district')
     setSearchParams(next)
   }
+
+  const hasActiveFilters = filterClass || filterType || filterExam || filterMonth || filterDistrict
 
   const paperCount  = results?.results.filter(r => r._type === 'paper').length  ?? 0
   const noticeCount = results?.results.filter(r => r._type === 'notice').length ?? 0
@@ -219,9 +235,42 @@ export default function SearchPage() {
           <option value="answer_key">Answer Key</option>
         </select>
 
-        {(filterClass || filterType) && (
+        <select
+          value={filterExam}
+          onChange={e => updateFilter('exam_type', e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-100"
+        >
+          <option value="">All Exam Types</option>
+          {EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        <select
+          value={filterMonth}
+          onChange={e => updateFilter('month', e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-100"
+        >
+          <option value="">All Months</option>
+          {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+
+        <select
+          value={filterDistrict}
+          onChange={e => updateFilter('district', e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 bg-white outline-none focus:ring-2 focus:ring-blue-100"
+        >
+          <option value="">All Districts</option>
+          {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+
+        {hasActiveFilters && (
           <button
-            onClick={() => { updateFilter('class_id', ''); updateFilter('paper_type', '') }}
+            onClick={() => {
+              updateFilter('class_id', '')
+              updateFilter('paper_type', '')
+              updateFilter('exam_type', '')
+              updateFilter('month', '')
+              updateFilter('district', '')
+            }}
             className="text-sm text-red-500 hover:text-red-700 font-medium"
           >
             Clear filters
@@ -240,7 +289,7 @@ export default function SearchPage() {
           <div className="text-center py-16 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
             <div className="text-5xl mb-4">🔍</div>
             <p className="text-gray-500 font-medium">Search question papers, timetables, circulars &amp; more</p>
-            <p className="text-gray-400 text-sm mt-1 mb-6">Try: "Class 10 Maths Annual Exam", "Public Exam Timetable", "TNEA"</p>
+            <p className="text-gray-400 text-sm mt-1 mb-6">Try: "Class 10 Maths First Mid Term Test", "Public Exam Timetable", "TNEA"</p>
             <div className="flex flex-wrap justify-center gap-2 px-6">
               {SUGGESTIONS.map(s => (
                 <SuggestionChip key={s} label={s} onClick={handleSuggestion} />
