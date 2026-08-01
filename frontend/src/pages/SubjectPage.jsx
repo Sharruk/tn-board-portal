@@ -7,12 +7,13 @@ import { getSubject, getPapersForSubject } from '../services/subjects'
 import { getExamTypes } from '../services/papers'
 
 const EXAM_CATEGORY_GROUPS = [
-  { label: 'Monthly Test',           types: ['Monthly Test'],                              icon: '🗓️' },
-  { label: 'Unit Tests',             types: ['Unit Test 1', 'Unit Test 2', 'Unit Test 3'], icon: '📝' },
-  { label: 'Quarterly Exam',         types: ['Quarterly Exam'],                            icon: '📅' },
-  { label: 'Half Yearly Exam',       types: ['Half Yearly Exam'],                          icon: '📆' },
-  { label: 'Annual / Public Exam',   types: ['Annual Exam', 'Public Exam', 'Model Exam'], icon: '🎯' },
-  { label: 'Practical Exam',         types: ['Practical Exam'],                            icon: '🔬', practicalOnly: true },
+  { label: 'Monthly Test',           types: ['Monthly Test'],                                         icon: '🗓️' },
+  { label: 'First Mid Term Test',    types: ['First Mid Term Test'],                                  icon: '📝' },
+  { label: 'Unit Tests',             types: ['Unit Test 1', 'Unit Test 2', 'Unit Test 3'],             icon: '📝' },
+  { label: 'Quarterly Exam',         types: ['Quarterly Exam'],                                       icon: '📅' },
+  { label: 'Half Yearly Exam',       types: ['Half Yearly Exam'],                                     icon: '📆' },
+  { label: 'Annual / Public Exam',   types: ['Annual Exam', 'Public Exam', 'Model Exam'],              icon: '🎯' },
+  { label: 'Practical Exam',         types: ['Practical Exam'],                                       icon: '🔬', practicalOnly: true },
 ]
 
 
