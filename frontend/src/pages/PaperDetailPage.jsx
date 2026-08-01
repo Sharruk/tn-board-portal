@@ -175,8 +175,9 @@ export default function PaperDetailPage() {
             { label: 'Class',     value: paper.subjects?.classes?.name || '—' },
             { label: 'Subject',   value: paper.subjects?.name || '—' },
             { label: 'Exam Type', value: paper.exam_type },
-            { label: 'Year',      value: paper.year },
-          ].map(m => (
+            { label: 'Year',      value: paper.month ? `${paper.month} ${paper.year}` : paper.year },
+            paper.district ? { label: 'District', value: paper.district } : null,
+          ].filter(Boolean).map(m => (
             <div key={m.label} className="bg-gray-50 rounded-xl p-3">
               <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">{m.label}</p>
               <p className="text-sm font-semibold text-gray-800 mt-0.5">{m.value}</p>
