@@ -10,12 +10,15 @@ import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../services/papers'
 
 // ── Suggestion chips ──────────────────────────────────────────────────────────
 
-const SUGGESTIONS = [
+const OTHER_SUGGESTIONS = [
   'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Science',
-  'First Mid Term Test', 'Monthly Test', 'Annual Exam', 'Quarterly Exam', 'Half Yearly Exam', 'Answer Key',
-  'Monthly Test Timetable', 'Public Exam Timetable', 'Hall Ticket', 'Results', 'TNEA Counselling',
+  'Answer Key', 'Monthly Test Timetable', 'Public Exam Timetable', 
+  'Hall Ticket', 'Results', 'TNEA Counselling',
   'Government Circular', 'Scholarships', 'Chennai', 'Coimbatore',
 ]
+
+// Dynamically combine centralized EXAM_TYPES with other search queries
+const SUGGESTIONS = [...EXAM_TYPES, ...OTHER_SUGGESTIONS]
 
 
 function SuggestionChip({ label, onClick }) {
