@@ -1,0 +1,56 @@
+# ======================================================================
+# render.yaml — Render deployment configuration
+# https://render.com/docs/blueprint-spec
+# ======================================================================
+#
+# Deploy via: Render Dashboard → New → Blueprint → point to this file
+# Or push this file to your repo and Render will auto-detect it.
+#
+# Environment variable VALUES are never stored here.
+# Set them in Render Dashboard → Environment after first deploy.
+# ======================================================================
+
+services:
+  - type: web
+    name: tn-board-portal-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+
+    # ── Scaling ──────────────────────────────────────────────────────
+    plan: free          # Change to starter/standard for production
+
+    # ── Health check ─────────────────────────────────────────────────
+    healthCheckPath: /health
+
+    # ── Auto-deploy ──────────────────────────────────────────────────
+    autoDeploy: true
+    branch: dev         # Deploy from dev branch; change to main for production
+
+    # ── Environment variables ────────────────────────────────────────
+    # Set ACTUAL values in Render Dashboard → Environment.
+    # Only variable NAMES are listed here — never values.
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+
+      - key: LOG_LEVEL
+        value: INFO
+
+      - key: DEBUG
+        value: "false"
+
+      - key: SUPABASE_URL
+        sync: false       # Must be set manually in Render Dashboard
+
+      - key: SUPABASE_ANON_KEY
+        sync: false       # Must be set manually in Render Dashboard
+
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false       # Must be set manually in Render Dashboard
+
+      - key: CORS_ORIGINS
+        sync: false       # Set to your Vercel frontend URL in Render Dashboard
+
+      - key: BACKEND_URL
+        sync: false       # Set to your Render service URL after first deploy
