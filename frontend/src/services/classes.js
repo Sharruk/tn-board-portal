@@ -1,47 +1,46 @@
-import { supabase } from '../lib/supabase'
+// =============================================================================
+// Classes Service — migrated to FastAPI
+// =============================================================================
+// All requests now go through FastAPI DEV:
+//   GET /api/v1/classes
+//   GET /api/v1/classes/{class_id}
+//   GET /api/v1/subjects?class_id={id}      ← getSubjectsForClass
+//
+// Public function signatures and return shapes are preserved so that
+// components (HomePage, ClassPage) require zero changes.
+// =============================================================================
 
+import { apiFetch } from '../lib/api'
+
+/**
+ * Fetch all classes with subject counts.
+ * @returns {Promise<{ data: ClassResponse[] }>}
+ */
 export const getClasses = async () => {
-  const { data, error } = await supabase
-    .from('classes')
-    .select('*, subjects(count)')
-    .order('id')
-  if (error) throw error
-  return {
-    data: data.map(c => ({
-      ...c,
-      subject_count: c.subjects?.[0]?.count ?? 0,
-    })),
-  }
+  const res = await apiFetch('/api/v1/classes')
+  // API returns { data: [...], count: N }
+  return { data: res.data }
 }
 
+/**
+ * Fetch a single class by id.
+ * @param {number|string} id
+ * @returns {Promise<{ data: ClassResponse }>}
+ */
 export const getClass = async (id) => {
-  const { data, error } = await supabase
-    .from('classes')
-    .select('*, subjects(count)')
-    .eq('id', id)
-    .single()
-  if (error) throw error
-  return {
-    data: { ...data, subject_count: data.subjects?.[0]?.count ?? 0 },
-  }
+  const data = await apiFetch(`/api/v1/classes/${id}`)
+  // API returns a flat ClassResponse object (not wrapped)
+  return { data }
 }
 
+/**
+ * Fetch all subjects for a given class.
+ * Used by ClassPage — returns subjects with paper_count.
+ * @param {number|string} id  class id (9, 10, 11, 12)
+ * @returns {Promise<{ data: SubjectResponse[] }>}
+ */
 export const getSubjectsForClass = async (id) => {
-  const { data, error } = await supabase
-    .from('subjects')
-    .select(`
-      id, name, slug, is_practical, display_order, class_id,
-      classes ( name ),
-      papers ( count )
-    `)
-    .eq('class_id', id)
-    .order('display_order')
-  if (error) throw error
-  return {
-    data: data.map(s => ({
-      ...s,
-      class_name: s.classes?.name,
-      paper_count: s.papers?.[0]?.count ?? 0,
-    })),
-  }
+  const res = await apiFetch(`/api/v1/subjects?class_id=${id}`)
+  // API returns { data: [...], count: N, class_id: N }
+  return { data: res.data }
 }

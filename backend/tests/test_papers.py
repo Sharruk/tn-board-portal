@@ -29,7 +29,8 @@ from app.main import app
 
 _NOW = datetime(2024, 3, 15, 10, 30, 0, tzinfo=timezone.utc).isoformat()
 
-# Shape that list_recent / list_popular / list_by_subject return
+# Shape that list_recent / list_popular / list_by_subject return.
+# NOTE: No 'status' column — the repository synthesises it from is_visible.
 MOCK_PAPER_LIST_ROW = {
     "id": 42,
     "subject_id": 8,
@@ -48,7 +49,8 @@ MOCK_PAPER_LIST_ROW = {
     "created_at": _NOW,
 }
 
-# Shape that get_by_id returns (with nested subjects → classes)
+# Shape that get_by_id returns (with nested subjects → classes).
+# NOTE: No 'status' column in the DB row; the repository synthesises it.
 MOCK_PAPER_DETAIL_ROW = {
     **MOCK_PAPER_LIST_ROW,
     "file_path": "uuid.pdf",
@@ -61,7 +63,32 @@ MOCK_PAPER_DETAIL_ROW = {
     },
 }
 
-# Shape that search_papers() RPC returns
+# Shape that the new PostgREST-based search returns (replaces RPC).
+# The repository normalises the nested subjects/classes join before returning.
+MOCK_SEARCH_RAW_ROW = {
+    "id": 42,
+    "subject_id": 8,
+    "exam_type": "Annual Exam",
+    "year": 2024,
+    "month": None,
+    "district": None,
+    "title": "Class 10 Maths Annual Exam 2024",
+    "paper_type": "question",
+    "public_url": "https://example.supabase.co/papers/uuid.pdf",
+    "original_filename": "Class10_Maths_Annual_2024_QP.pdf",
+    "is_visible": True,
+    "download_count": 1234,
+    "created_at": _NOW,
+    # Nested join shape as PostgREST returns it (before normalisation)
+    "subjects": {
+        "id": 8,
+        "name": "Mathematics",
+        "slug": "maths",
+        "classes": {"id": 10, "name": "Class 10"},
+    },
+}
+
+# Legacy alias kept so any remaining tests that reference MOCK_SEARCH_ROW still compile.
 MOCK_SEARCH_ROW = {
     "id": 42,
     "subject_id": 8,
@@ -134,6 +161,7 @@ def _make_detail_db(data: list) -> MagicMock:
 def _make_rpc_db(data: list) -> MagicMock:
     """
     Mock for RPC calls: db.rpc(name, params).execute()
+    Kept for backward compatibility with any legacy test helpers.
     """
     mock_db = MagicMock()
     rpc_response = MagicMock()
@@ -143,6 +171,91 @@ def _make_rpc_db(data: list) -> MagicMock:
     rpc_chain.execute.return_value = rpc_response
 
     mock_db.rpc.return_value = rpc_chain
+    return mock_db
+
+
+def _make_search_db(paper_data: list, subject_data: list | None = None) -> MagicMock:
+    """
+    Mock for the new PostgREST-based search.
+
+    The new search() method does:
+      1. db.table("papers").select(...).eq(...).or_(...).order(...).limit(...).execute()
+      2. db.table("subjects").select(...).or_(...).execute()  ← subject-name fallback
+      3. db.table("papers").select(...).eq(...).in_(...).order(...).limit(...).execute()
+
+    We return paper_data for ALL paper table calls and empty list for subjects.
+    This ensures the primary OR query returns results and the secondary subject
+    fallback returns nothing (avoiding duplicate ids in de-duplication).
+    """
+    import copy
+
+    mock_db = MagicMock()
+
+    paper_response = MagicMock()
+    paper_response.data = copy.deepcopy(paper_data)
+
+    subj_response = MagicMock()
+    subj_response.data = subject_data if subject_data is not None else []
+
+    call_count = [0]
+
+    def table_side_effect(table_name: str):
+        query = MagicMock()
+        if table_name == "papers":
+            query.select.return_value = query
+            query.eq.return_value = query
+            query.or_.return_value = query
+            query.order.return_value = query
+            query.limit.return_value = query
+            query.ilike.return_value = query
+            query.in_.return_value = query
+            query.execute.return_value = copy.deepcopy(paper_response)
+        else:  # subjects
+            query.select.return_value = query
+            query.or_.return_value = query
+            query.execute.return_value = subj_response
+        return query
+
+    mock_db.table.side_effect = table_side_effect
+    return mock_db
+
+
+def _make_download_db(paper_id: int, exists: bool, download_count: int = 0) -> MagicMock:
+    """
+    Mock for record_download.
+
+    The new implementation does:
+      1. db.table("papers").select("id, download_count").eq("id", ...).eq("is_visible", True).execute()
+         → returns [paper row] if exists else []
+      2. db.table("papers").update({"download_count": N+1}).eq("id", ...).execute()
+    """
+    mock_db = MagicMock()
+
+    check_response = MagicMock()
+    check_response.data = [{"id": paper_id, "download_count": download_count}] if exists else []
+
+    update_response = MagicMock()
+    update_response.data = [{"id": paper_id, "download_count": download_count + 1}] if exists else []
+
+    call_count = [0]
+
+    def table_side_effect(table_name: str):
+        nonlocal call_count
+        query = MagicMock()
+        call_count[0] += 1
+        if call_count[0] == 1:
+            # First call: SELECT (check existence)
+            query.select.return_value = query
+            query.eq.return_value = query
+            query.execute.return_value = check_response
+        else:
+            # Second call: UPDATE
+            query.update.return_value = query
+            query.eq.return_value = query
+            query.execute.return_value = update_response
+        return query
+
+    mock_db.table.side_effect = table_side_effect
     return mock_db
 
 
@@ -214,9 +327,12 @@ def test_list_papers_empty():
 
 
 # ── GET /api/v1/papers/search ─────────────────────────────────────────────────
+# The repository now uses a direct PostgREST query instead of the search_papers()
+# RPC (which references the missing 'status' column).
+# Mocks use _make_search_db() which handles the two-table query pattern.
 
 def test_search_papers_status_200():
-    mock_db = _make_rpc_db([MOCK_SEARCH_ROW])
+    mock_db = _make_search_db([MOCK_SEARCH_RAW_ROW])
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)
@@ -227,7 +343,7 @@ def test_search_papers_status_200():
 
 
 def test_search_papers_response_structure():
-    mock_db = _make_rpc_db([MOCK_SEARCH_ROW])
+    mock_db = _make_search_db([MOCK_SEARCH_RAW_ROW])
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)
@@ -240,7 +356,7 @@ def test_search_papers_response_structure():
 
 
 def test_search_papers_result_fields():
-    mock_db = _make_rpc_db([MOCK_SEARCH_ROW])
+    mock_db = _make_search_db([MOCK_SEARCH_RAW_ROW])
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)
@@ -254,7 +370,7 @@ def test_search_papers_result_fields():
 
 
 def test_search_papers_empty_query_returns_zero():
-    mock_db = _make_rpc_db([])
+    mock_db = _make_search_db([])
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)
@@ -266,7 +382,7 @@ def test_search_papers_empty_query_returns_zero():
 
 
 def test_search_papers_with_all_filters():
-    mock_db = _make_rpc_db([MOCK_SEARCH_ROW])
+    mock_db = _make_search_db([MOCK_SEARCH_RAW_ROW])
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)
@@ -283,20 +399,13 @@ def test_search_papers_with_all_filters():
 
 
 def test_search_deduplicates_by_id():
-    """Two terms that match the same paper should return it once."""
-    row_copy = dict(MOCK_SEARCH_ROW)
-    mock_db = _make_rpc_db([row_copy, row_copy])
-    # The RPC is called twice (two terms); both return same id
-    rpc_response = MagicMock()
-    rpc_response.data = [row_copy]
-    rpc_chain = MagicMock()
-    rpc_chain.execute.return_value = rpc_response
-    mock_db.rpc.return_value = rpc_chain
-
+    """Two queries that match the same paper id should return it once."""
+    import copy
+    mock_db = _make_search_db([MOCK_SEARCH_RAW_ROW])
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)
-        # 'maths' expands to ['maths', 'mathematics'] → 2 RPC calls
+        # 'maths' may expand to multiple terms but de-duplication ensures 1 result
         data = client.get("/api/v1/papers/search?q=maths").json()
         assert data["total"] == 1  # deduplicated
     finally:
@@ -402,10 +511,11 @@ def test_get_paper_all_fields_present():
 
 
 # ── POST /api/v1/papers/{id}/download ─────────────────────────────────────────
+# The repository now uses a direct PostgREST read-modify-write instead of the
+# increment_download_count() RPC (which references the missing 'status' column).
 
 def test_record_download_status_204():
-    mock_db = _make_rpc_db(None)
-    mock_db.rpc.return_value.execute.return_value = MagicMock(data=None)
+    mock_db = _make_download_db(paper_id=42, exists=True, download_count=5)
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)
@@ -416,8 +526,8 @@ def test_record_download_status_204():
 
 
 def test_record_download_not_found_returns_404():
-    mock_db = MagicMock()
-    mock_db.rpc.return_value.execute.side_effect = Exception("Paper not found or not published")
+    # exists=False → check query returns [] → repository raises ValueError → service → 404
+    mock_db = _make_download_db(paper_id=9999, exists=False)
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)

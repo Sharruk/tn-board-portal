@@ -1,33 +1,53 @@
-import { supabase } from '../lib/supabase'
+// =============================================================================
+// Subjects Service — migrated to FastAPI
+// =============================================================================
+// All requests now go through FastAPI DEV:
+//   GET /api/v1/subjects/{subject_id}        ← getSubject
+//   GET /api/v1/papers/by-subject/{id}       ← getPapersForSubject
+//
+// Public function signatures and return shapes are preserved so that
+// components (SubjectPage, PaperListPage, PaperDetailPage) require zero changes.
+// =============================================================================
 
+import { apiFetch } from '../lib/api'
+
+/**
+ * Fetch a single subject by id, including parent class information.
+ *
+ * FastAPI returns a flat SubjectResponse:
+ *   { id, class_id, name, slug, is_practical, display_order,
+ *     class_name, class_slug, paper_count }
+ *
+ * We preserve the shape that components expect:
+ *   { data: { ...subject, class_name, class_slug } }
+ *
+ * @param {number|string} id
+ * @returns {Promise<{ data: SubjectResponse }>}
+ */
 export const getSubject = async (id) => {
-  const { data, error } = await supabase
-    .from('subjects')
-    .select('*, classes ( id, name, slug )')
-    .eq('id', id)
-    .single()
-  if (error) throw error
-  return {
-    data: {
-      ...data,
-      class_name: data.classes?.name,
-      class_slug: data.classes?.slug,
-    },
-  }
+  const data = await apiFetch(`/api/v1/subjects/${id}`)
+  // FastAPI already includes class_name and class_slug at the top level —
+  // no reshaping needed.
+  return { data }
 }
 
+/**
+ * Fetch all papers for a subject, with optional filters.
+ *
+ * FastAPI returns { data: PaperSummary[], count, limit }.
+ * We return { data: [...] } to match the existing shape components expect.
+ *
+ * @param {number|string} id
+ * @param {{ exam_type?: string, paper_type?: string }} [params]
+ * @returns {Promise<{ data: PaperSummary[] }>}
+ */
 export const getPapersForSubject = async (id, params = {}) => {
-  let query = supabase
-    .from('papers')
-    .select('*')
-    .eq('subject_id', id)
-    .eq('is_visible', true)
-    .order('year', { ascending: false })
+  const qs = new URLSearchParams()
+  if (params.exam_type)  qs.set('exam_type',  params.exam_type)
+  if (params.paper_type) qs.set('paper_type', params.paper_type)
 
-  if (params.exam_type)  query = query.eq('exam_type', params.exam_type)
-  if (params.paper_type) query = query.eq('paper_type', params.paper_type)
-
-  const { data, error } = await query
-  if (error) throw error
-  return { data }
+  const query = qs.toString() ? `?${qs.toString()}` : ''
+  const res = await apiFetch(`/api/v1/papers/by-subject/${id}${query}`)
+  // API returns { data: [...], count, limit }
+  return { data: res.data }
 }

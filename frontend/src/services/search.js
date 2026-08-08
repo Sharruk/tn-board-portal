@@ -1,10 +1,23 @@
 import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/api'
 
 // =============================================================================
-// Search Service — searches Question Papers, Official Notices, and News
+// Search Service — papers via FastAPI, notices/news remain on Supabase
+// =============================================================================
+//
+// Migration status:
+//   searchPapers()  → FastAPI  GET /api/v1/papers/search  ✅ migrated
+//   searchNotices() → Supabase RPC search_notices          ⚠️  stays (no FastAPI endpoint)
+//   searchNews()    → Supabase RPC search_news             ⚠️  stays (no FastAPI endpoint)
+//   globalSearch()  → unchanged orchestration logic
+//
+// Term expansion (maths → mathematics) is now handled server-side by FastAPI.
+// The client-side expandTerms() loop is no longer needed for paper search.
+// It is kept below in case it is needed for notices/news in the future.
+//
 // =============================================================================
 
-// ── Subject / exam-type aliases for paper search ──────────────────────────────
+// ── Subject / exam-type aliases (kept for reference / future use) ─────────────
 
 const SUBJECT_ALIASES = {
   maths: 'mathematics', math: 'mathematics', mathematics: 'mathematics',
@@ -35,7 +48,8 @@ const EXAM_PATTERNS = [
   'model exam',
 ]
 
-
+// Kept for reference — FastAPI now handles expansion server-side.
+// eslint-disable-next-line no-unused-vars
 function expandTerms(q) {
   const normalized = q.trim().toLowerCase()
   const terms = new Set([normalized])
@@ -55,58 +69,60 @@ function expandTerms(q) {
   return [...terms]
 }
 
-// ── Individual search functions ───────────────────────────────────────────────
+// ── Paper search — FastAPI ────────────────────────────────────────────────────
 
+/**
+ * Search published papers via FastAPI.
+ *
+ * FastAPI GET /api/v1/papers/search handles term expansion server-side
+ * (e.g. "maths" → "mathematics") and returns:
+ *   { query: string, total: number, results: PaperSearchResult[] }
+ *
+ * Results are mapped to add `_type: 'paper'` so SearchPage can identify them.
+ *
+ * @param {{ q?, class_id?, exam_type?, paper_type?, month?, district? }} opts
+ * @returns {Promise<{ data: { query, total, results } }>}
+ */
 export const searchPapers = async ({ q, class_id, exam_type, paper_type, month, district } = {}) => {
   const rawQuery = (q || '').trim()
   if (!rawQuery) return { data: { query: '', total: 0, results: [] } }
 
-  const terms = expandTerms(rawQuery)
-  const seen = new Map()
+  const qs = new URLSearchParams({ q: rawQuery })
+  if (class_id)   qs.set('class_id',   String(class_id))
+  if (exam_type)  qs.set('exam_type',  exam_type)
+  if (paper_type) qs.set('paper_type', paper_type)
+  if (month)      qs.set('month',      month)
+  if (district)   qs.set('district',   district)
 
-  for (const term of terms) {
-    const { data, error } = await supabase.rpc('search_papers', {
-      q:            term,
-      p_class_id:   class_id  ? parseInt(class_id, 10) : null,
-      p_exam_type:  exam_type  || null,
-      p_paper_type: paper_type || null,
-      p_month:      month      || null,
-      p_district:   district   || null,
-    })
-    if (error) throw error
-    data?.forEach(r => seen.set(r.id, r))
-  }
-
-  const results = [...seen.values()]
-
-  supabase
-    .from('search_queries')
-    .insert({ term: rawQuery, result_count: results.length })
-    .then(() => {})
+  const res = await apiFetch(`/api/v1/papers/search?${qs.toString()}`)
+  // FastAPI returns { query, total, results: PaperSearchResult[] }
+  // Map results to add _type: 'paper' for SearchPage result-type discrimination
+  const results = (res.results ?? []).map(r => ({
+    _type:             'paper',
+    id:                r.id,
+    title:             r.title,
+    exam_type:         r.exam_type,
+    year:              r.year,
+    month:             r.month        ?? null,
+    district:          r.district     ?? null,
+    paper_type:        r.paper_type,
+    public_url:        r.public_url   ?? null,
+    original_filename: r.original_filename ?? null,
+    subject_name:      r.subject_name,
+    class_name:        r.class_name,
+    created_at:        r.created_at,
+  }))
 
   return {
     data: {
-      query: rawQuery,
-      total: results.length,
-      results: results.map(r => ({
-        _type:             'paper',
-        id:                r.id,
-        title:             r.title,
-        exam_type:         r.exam_type,
-        year:              r.year,
-        month:             r.month ?? null,
-        district:          r.district ?? null,
-        paper_type:        r.paper_type,
-        public_url:        r.public_url,
-        original_filename: r.original_filename ?? null,
-        subject_name:      r.subject_name,
-        class_name:        r.class_name,
-        created_at:        r.created_at,
-      })),
-
+      query:   res.query ?? rawQuery,
+      total:   results.length,
+      results,
     },
   }
 }
+
+// ── Notice search — Supabase (no FastAPI endpoint available) ─────────────────
 
 export const searchNotices = async ({ q, category, class_id, year } = {}) => {
   const rawQuery = (q || '').trim()
@@ -145,7 +161,7 @@ export const searchNotices = async ({ q, category, class_id, year } = {}) => {
   }
 }
 
-// ── News search ───────────────────────────────────────────────────────────────
+// ── News search — Supabase (no FastAPI endpoint available) ───────────────────
 
 export const searchNews = async ({ q, category } = {}) => {
   const rawQuery = (q || '').trim()
@@ -183,7 +199,7 @@ export const searchNews = async ({ q, category } = {}) => {
 // ── Combined global search (newest first across all three types) ──────────────
 
 /**
- * Search Question Papers, Official Notices, and News simultaneously.
+ * Search Question Papers (FastAPI), Official Notices, and News (Supabase) simultaneously.
  * Results are merged and sorted by published_at / created_at descending.
  *
  * @param {object} opts
