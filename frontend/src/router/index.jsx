@@ -14,6 +14,7 @@ import NewsPage from '../pages/NewsPage'
 import NewsDetailPage from '../pages/NewsDetailPage'
 import SearchPage from '../pages/SearchPage'
 import NotFoundPage from '../pages/NotFoundPage'
+import SubmitMaterialPage from '../pages/SubmitMaterialPage'
 
 import LoginPage from '../pages/admin/LoginPage'
 import DashboardPage from '../pages/admin/DashboardPage'
@@ -21,6 +22,7 @@ import PapersPage from '../pages/admin/PapersPage'
 import AdminOfficialNoticesPage from '../pages/admin/OfficialNoticesPage'
 import AdminNewsPage from '../pages/admin/NewsPage'
 import ContentStatusPage from '../pages/admin/ContentStatusPage'
+import SubmissionsPage from '../pages/admin/SubmissionsPage'
 
 const router = createBrowserRouter([
   // ── Public routes ──────────────────────────────────────
@@ -38,6 +40,7 @@ const router = createBrowserRouter([
       { path: 'news', element: <NewsPage /> },
       { path: 'news/:slug', element: <NewsDetailPage /> },
       { path: 'search', element: <SearchPage /> },
+      { path: 'submit-material', element: <SubmitMaterialPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
@@ -60,6 +63,7 @@ const router = createBrowserRouter([
       { path: 'official-notices', element: <AdminOfficialNoticesPage /> },
       { path: 'news', element: <AdminNewsPage /> },
       { path: 'content-status', element: <ContentStatusPage /> },
+      { path: 'submissions', element: <SubmissionsPage /> },
     ],
   },
 ])
