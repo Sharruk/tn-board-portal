@@ -56,25 +56,25 @@ logger = logging.getLogger(__name__)
 # Select for list endpoints — excludes internal file_path and the missing
 # status column.  A synthesised status="published" is added in _add_status().
 _LIST_COLUMNS = (
-    "id, subject_id, exam_type, year, month, district, title, paper_type, "
-    "public_url, youtube_url, original_filename, is_visible, "
-    "download_count, created_at"
+    "id,subject_id,exam_type,year,month,district,title,paper_type,"
+    "public_url,youtube_url,original_filename,is_visible,"
+    "download_count,created_at"
 )
 
 # Select for the full paper detail — includes the subjects/classes join.
 _DETAIL_SELECT = (
-    "id, subject_id, exam_type, year, month, district, title, paper_type, "
-    "public_url, youtube_url, original_filename, is_visible, "
-    "download_count, created_at, "
-    "subjects(id, name, slug, is_practical, classes(id, name, slug))"
+    "id,subject_id,exam_type,year,month,district,title,paper_type,"
+    "public_url,youtube_url,original_filename,is_visible,"
+    "download_count,created_at,"
+    "subjects(id,name,slug,is_practical,classes(id,name,slug))"
 )
 
 # Select for search — includes the subjects/classes join so we can return
 # subject_name and class_name without calling the broken search_papers() RPC.
 _SEARCH_SELECT = (
-    "id, subject_id, exam_type, year, month, district, title, paper_type, "
-    "public_url, original_filename, is_visible, download_count, created_at, "
-    "subjects(id, name, slug, classes(id, name))"
+    "id,subject_id,exam_type,year,month,district,title,paper_type,"
+    "public_url,original_filename,is_visible,download_count,created_at,"
+    "subjects(id,name,slug,classes(id,name))"
 )
 
 
