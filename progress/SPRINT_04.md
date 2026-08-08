@@ -331,6 +331,19 @@ publicly-accessible URL.
 
 ---
 
+## Backend Hardening Audit
+
+A full engineering audit of the FastAPI backend was completed:
+- ✅ Endpoints verified for proper parameter validation and route thinness.
+- ✅ Pydantic models validated for consistency across `subjects`, `classes`, and `papers`.
+- ✅ All business logic confirmed to reside within `services`. No duplicated logic.
+- ✅ Standardized HTTP status codes (200, 204, 404, 422, 500) confirmed across responses.
+- ✅ Exception handling verified, and a global `Exception` handler was added to `main.py` to gracefully catch and standardize 500 internal server errors.
+- ✅ Supabase RPCs and Postgres table interactions verified to be fully encapsulated within `repositories`.
+- ✅ Complete backend architecture documentation generated at `docs/ARCHITECTURE.md`.
+
+---
+
 ## Sprint 05 Candidates
 
 Suggested topics for Sprint 05 (awaiting approval):

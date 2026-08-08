@@ -18,7 +18,8 @@ import logging.config
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as api_v1_router
@@ -96,6 +97,17 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )
+
+    # ------------------------------------------------------------------ #
+    # Global exception handler
+    # ------------------------------------------------------------------ #
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.error("Unhandled exception: %s", exc, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "An unexpected server error occurred."},
+        )
 
     # ------------------------------------------------------------------ #
     # CORS middleware
