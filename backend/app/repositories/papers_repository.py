@@ -66,7 +66,7 @@ _DETAIL_SELECT = (
     "id, subject_id, exam_type, year, month, district, title, paper_type, "
     "public_url, youtube_url, original_filename, is_visible, "
     "download_count, created_at, "
-    "subjects ( id, name, slug, is_practical, classes ( id, name, slug ) )"
+    "subjects(id, name, slug, is_practical, classes(id, name, slug))"
 )
 
 # Select for search — includes the subjects/classes join so we can return
@@ -74,7 +74,7 @@ _DETAIL_SELECT = (
 _SEARCH_SELECT = (
     "id, subject_id, exam_type, year, month, district, title, paper_type, "
     "public_url, original_filename, is_visible, download_count, created_at, "
-    "subjects ( id, name, slug, classes ( id, name ) )"
+    "subjects(id, name, slug, classes(id, name))"
 )
 
 
@@ -311,15 +311,22 @@ class PapersRepository:
         Fetch papers whose subject name or class name matches q.
         Called internally by search() to complement the PostgREST OR query.
         """
-        # First find matching subject_ids via subjects table
-        like = f"%{q}%"
+        # Fetch all subjects and filter them in Python. There are < 50 subjects.
+        # This avoids PostgREST PGRST100 syntax errors when trying to use or_
+        # across embedded foreign tables (classes.name).
         subj_resp = (
             self._db.table("subjects")
-            .select("id, name, class_id, classes ( id, name )")
-            .or_(f"name.ilike.{like},classes.name.ilike.{like}")
+            .select("id, name, class_id, classes(id, name)")
             .execute()
         )
-        matching_subject_ids = [s["id"] for s in (subj_resp.data or [])]
+        
+        q_lower = q.lower()
+        matching_subject_ids = []
+        for s in (subj_resp.data or []):
+            s_name = (s.get("name") or "").lower()
+            c_name = (s.get("classes") or {}).get("name", "").lower()
+            if q_lower in s_name or q_lower in c_name:
+                matching_subject_ids.append(s["id"])
 
         if not matching_subject_ids:
             return []
