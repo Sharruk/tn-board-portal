@@ -33,6 +33,7 @@ export default function Footer() {
             <div className="space-y-2">
               <Link to="/" className="block text-sm hover:text-white transition-colors">Home</Link>
               <Link to="/search" className="block text-sm hover:text-white transition-colors">Search Papers</Link>
+              <Link to="/submit-material" className="block text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">Submit Material</Link>
             </div>
           </div>
 

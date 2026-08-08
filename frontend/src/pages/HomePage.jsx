@@ -73,6 +73,19 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Submit Material CTA */}
+      <section className="bg-blue-50 border-b border-blue-100">
+        <div className="max-w-4xl mx-auto px-4 py-8 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-left">
+            <h3 className="text-xl font-bold text-gray-900">Have a question paper or answer key?</h3>
+            <p className="text-gray-600 mt-1">Share it with other Tamil Nadu students and help the community.</p>
+          </div>
+          <Link to="/submit-material" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-sm whitespace-nowrap">
+            Submit Material
+          </Link>
+        </div>
+      </section>
+
       {/* ── Latest Official Notices ── */}
       {!loading && recentNotices.length > 0 && (
         <section className="bg-gradient-to-br from-indigo-50 to-blue-50 border-t border-indigo-100">

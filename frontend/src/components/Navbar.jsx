@@ -6,17 +6,7 @@ const CLASSES = [9, 10, 11, 12]
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [classesOpen, setClassesOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const navigate = useNavigate()
-
-  const handleSearch = (e) => {
-    e.preventDefault()
-    if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
-      setSearchQuery('')
-      setMenuOpen(false)
-    }
-  }
 
   return (
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
@@ -74,19 +64,9 @@ export default function Navbar() {
               Search
             </NavLink>
 
-            {/* Inline search */}
-            <form onSubmit={handleSearch} className="flex items-center bg-gray-100 rounded-lg px-3 py-1.5 gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
-              </svg>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search papers…"
-                className="bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none w-36"
-              />
-            </form>
+            <Link to="/submit-material" className="ml-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
+              Submit Material
+            </Link>
           </div>
 
           {/* Mobile burger */}
@@ -116,16 +96,9 @@ export default function Navbar() {
           <Link to="/official-notices" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Official Notices</Link>
           <Link to="/news" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">News</Link>
           <Link to="/search" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Search</Link>
-          <form onSubmit={handleSearch} className="flex items-center gap-2 px-3 py-2">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search papers…"
-              className="flex-1 bg-gray-100 rounded-lg px-3 py-1.5 text-sm text-gray-700 outline-none"
-            />
-            <button type="submit" className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Go</button>
-          </form>
+          <Link to="/submit-material" onClick={() => setMenuOpen(false)} className="block mt-2 mx-3 mb-3 px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 text-center shadow-sm">
+            Submit Material
+          </Link>
         </div>
       )}
     </nav>
