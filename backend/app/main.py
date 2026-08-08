@@ -99,24 +99,15 @@ def create_app() -> FastAPI:
     )
 
     # ------------------------------------------------------------------ #
-    # ------------------------------------------------------------------ #
     # Global exception handler
     # ------------------------------------------------------------------ #
-    import traceback
-    app.state.last_error = "No errors yet"
-    
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.error("Unhandled exception: %s", exc, exc_info=True)
-        app.state.last_error = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         return JSONResponse(
             status_code=500,
             content={"detail": "An unexpected server error occurred."},
         )
-        
-    @app.get("/api/v1/debug/last-error")
-    async def get_last_error():
-        return {"last_error": app.state.last_error}
 
     # ------------------------------------------------------------------ #
     # CORS middleware
