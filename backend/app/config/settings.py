@@ -59,6 +59,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000"
     )
 
+    # ------------------------------------------------------------------ #
+    # Firebase Auth
+    # ------------------------------------------------------------------ #
+    FIREBASE_SERVICE_ACCOUNT_PATH: str = ""
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Return CORS_ORIGINS as a parsed Python list."""
