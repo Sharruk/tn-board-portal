@@ -81,7 +81,6 @@ class SubmissionsRepository:
                     "status": "pending",
                 }
             )
-            .select()
             .execute()
         )
         if not response.data:
@@ -146,7 +145,6 @@ class SubmissionsRepository:
                     "file_size": file_size,
                 }
             )
-            .select()
             .execute()
         )
         if not row_response.data:
@@ -303,7 +301,6 @@ class SubmissionsRepository:
             self._db.table("submissions")
             .update(payload)
             .eq("id", submission_id)
-            .select()
             .execute()
         )
         if not response.data:
@@ -403,7 +400,6 @@ class SubmissionsRepository:
                     "download_count": 0,
                 }
             )
-            .select()
             .execute()
         )
         if not response.data:

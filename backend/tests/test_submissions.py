@@ -100,16 +100,22 @@ def _make_query_mock(data: list) -> MagicMock:
     response = MagicMock()
     response.data = data
 
+    builder = MagicMock()
+    builder.execute.return_value = response
+
     query = MagicMock()
     query.select.return_value = query
-    query.insert.return_value = query
-    query.update.return_value = query
+    query.insert.return_value = builder
+    query.update.return_value = builder
     query.eq.return_value = query
     query.in_.return_value = query
     query.or_.return_value = query
     query.order.return_value = query
     query.limit.return_value = query
     query.execute.return_value = response
+    
+    # Allow builder methods for chained eq after update
+    builder.eq.return_value = builder
 
     return query
 
