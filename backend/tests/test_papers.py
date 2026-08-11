@@ -517,6 +517,10 @@ def test_get_paper_all_fields_present():
 def test_record_download_status_204():
     mock_db = _make_download_db(paper_id=42, exists=True, download_count=5)
     app.dependency_overrides[get_db] = lambda: mock_db
+    from app.dependencies.auth import get_current_user
+    from app.db.supabase_client import get_supabase_admin_client
+    app.dependency_overrides[get_supabase_admin_client] = lambda: MagicMock()
+    app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "test@example.com", "firebase_uid": "testuid"}
     try:
         client = TestClient(app)
         resp = client.post("/api/v1/papers/42/download")
@@ -529,6 +533,10 @@ def test_record_download_not_found_returns_404():
     # exists=False → check query returns [] → repository raises ValueError → service → 404
     mock_db = _make_download_db(paper_id=9999, exists=False)
     app.dependency_overrides[get_db] = lambda: mock_db
+    from app.dependencies.auth import get_current_user
+    from app.db.supabase_client import get_supabase_admin_client
+    app.dependency_overrides[get_supabase_admin_client] = lambda: MagicMock()
+    app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "test@example.com", "firebase_uid": "testuid"}
     try:
         client = TestClient(app)
         resp = client.post("/api/v1/papers/9999/download")

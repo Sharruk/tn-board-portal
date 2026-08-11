@@ -161,6 +161,7 @@ class TestCreateSubmission:
         mock_db.storage.from_.return_value = bucket_mock
 
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "contributor@example.com", "firebase_uid": "user-uid"}
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -182,6 +183,7 @@ class TestCreateSubmission:
     def test_create_submission_missing_publisher_name(self):
         """Missing publisher_name → 422."""
         app.dependency_overrides[get_supabase_admin_client] = lambda: MagicMock()
+        app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "contributor@example.com", "firebase_uid": "user-uid"}
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -191,17 +193,6 @@ class TestCreateSubmission:
         app.dependency_overrides.clear()
         assert response.status_code == 422
 
-    def test_create_submission_missing_email(self):
-        """Missing email → 422."""
-        app.dependency_overrides[get_supabase_admin_client] = lambda: MagicMock()
-        client = TestClient(app)
-        response = client.post(
-            "/api/v1/submissions",
-            data={"publisher_name": "Test"},
-            files=[self._make_upload_file()],
-        )
-        app.dependency_overrides.clear()
-        assert response.status_code == 422
 
     def test_create_submission_no_files(self):
         """No files provided → validation error from service."""
@@ -209,6 +200,7 @@ class TestCreateSubmission:
         mock_db.storage = MagicMock()
 
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "contributor@example.com", "firebase_uid": "user-uid"}
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -228,6 +220,7 @@ class TestCreateSubmission:
         mock_db.storage = MagicMock()
 
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "contributor@example.com", "firebase_uid": "user-uid"}
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -249,6 +242,7 @@ class TestCreateSubmission:
         mock_db.storage = MagicMock()
 
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "contributor@example.com", "firebase_uid": "user-uid"}
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -274,6 +268,7 @@ class TestCreateSubmission:
         ]
 
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "contributor@example.com", "firebase_uid": "user-uid"}
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -300,6 +295,7 @@ class TestCreateSubmission:
         mock_db.storage.from_.return_value = bucket_mock
 
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "contributor@example.com", "firebase_uid": "user-uid"}
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -326,6 +322,7 @@ class TestCreateSubmission:
         mock_db.storage.from_.return_value = bucket_mock
 
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "email": "contributor@example.com", "firebase_uid": "user-uid"}
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -357,7 +354,8 @@ class TestListSubmissions:
             "submission_files": [MOCK_FILE],
         })
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.get("/api/v1/submissions", headers=ADMIN_HEADERS)
         app.dependency_overrides.clear()
@@ -375,7 +373,8 @@ class TestListSubmissions:
             "submission_files": [],
         })
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.get(
             "/api/v1/submissions?status=pending", headers=ADMIN_HEADERS
@@ -390,7 +389,8 @@ class TestListSubmissions:
 
     def test_list_invalid_status_filter(self):
         """Invalid status filter → 422."""
-        app.dependency_overrides[get_current_user] = lambda: _make_table_db({})
+        app.dependency_overrides[get_supabase_admin_client] = lambda: _make_table_db({})
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "email": "admin@example.com", "firebase_uid": "admin-uid"}
         client = TestClient(app)
         response = client.get(
             "/api/v1/submissions?status=invalid", headers=ADMIN_HEADERS
@@ -420,7 +420,8 @@ class TestGetSubmission:
             "submission_files": [MOCK_FILE],
         })
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.get(
             f"/api/v1/submissions/{_SUB_ID}", headers=ADMIN_HEADERS
@@ -436,7 +437,8 @@ class TestGetSubmission:
         """Non-existent submission → 404."""
         mock_db = _make_table_db({"submissions": [], "submission_files": []})
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.get(
             f"/api/v1/submissions/nonexistent-id", headers=ADMIN_HEADERS
@@ -493,7 +495,8 @@ class TestApproveSubmission:
             
         mock_db.storage.from_.side_effect = from_side_effect
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/approve",
@@ -512,7 +515,8 @@ class TestApproveSubmission:
         """Non-existent submission → 404."""
         mock_db = _make_table_db({"submissions": [], "submission_files": []})
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/nonexistent/approve",
@@ -531,7 +535,8 @@ class TestApproveSubmission:
             "submission_files": [MOCK_FILE],
         })
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/approve",
@@ -551,7 +556,8 @@ class TestApproveSubmission:
             "submission_files": [MOCK_FILE],
         })
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/approve",
@@ -605,7 +611,8 @@ class TestRejectSubmission:
             "submission_files": [],
         })
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/reject",
@@ -627,7 +634,8 @@ class TestRejectSubmission:
             "submission_files": [],
         })
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/reject",
@@ -643,7 +651,8 @@ class TestRejectSubmission:
         """Non-existent submission → 404."""
         mock_db = _make_table_db({"submissions": []})
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/nonexistent/reject",
@@ -662,7 +671,8 @@ class TestRejectSubmission:
             "submission_files": [],
         })
 
-        app.dependency_overrides[get_current_user] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/reject",

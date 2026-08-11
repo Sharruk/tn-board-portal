@@ -67,6 +67,7 @@ class SubmissionsService:
         self,
         publisher_name: str,
         email: str,
+        firebase_uid: str,
         details: str | None,
         files: list[UploadFile],
     ) -> SubmissionCreateResponse:
@@ -125,6 +126,7 @@ class SubmissionsService:
             sub = self._repo.create_submission(
                 publisher_name=publisher_name.strip(),
                 email=email.strip().lower(),
+                firebase_uid=firebase_uid,
                 details=details.strip() if details else None,
             )
             print(f"[DIAGNOSTIC] Submission created. ID: {sub['id']}", flush=True)
