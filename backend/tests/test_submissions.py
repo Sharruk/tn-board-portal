@@ -13,7 +13,7 @@ No real database connection or storage is required.
 
 Auth:
   Admin routes require Authorization: Bearer <token>.
-  We mock the get_admin_db dependency to return a mock client,
+  We mock the get_current_user dependency to return a mock client,
   bypassing Supabase JWT verification in tests.
 """
 
@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 
 from app.dependencies.supabase import get_db
 from app.db.supabase_client import get_supabase_admin_client
-from app.api.v1.endpoints.submissions import get_admin_db
+from app.dependencies.auth import get_current_user
 from app.main import app
 
 # ── Shared fixtures ───────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ def _make_admin_db_mock() -> MagicMock:
 
 
 def _override_admin_db():
-    """Dependency override for get_admin_db — returns a mock client."""
+    """Dependency override for get_current_user — returns a mock client."""
     return _make_admin_db_mock()
 
 
@@ -357,7 +357,7 @@ class TestListSubmissions:
             "submission_files": [MOCK_FILE],
         })
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.get("/api/v1/submissions", headers=ADMIN_HEADERS)
         app.dependency_overrides.clear()
@@ -375,7 +375,7 @@ class TestListSubmissions:
             "submission_files": [],
         })
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.get(
             "/api/v1/submissions?status=pending", headers=ADMIN_HEADERS
@@ -390,7 +390,7 @@ class TestListSubmissions:
 
     def test_list_invalid_status_filter(self):
         """Invalid status filter → 422."""
-        app.dependency_overrides[get_admin_db] = lambda: _make_table_db({})
+        app.dependency_overrides[get_current_user] = lambda: _make_table_db({})
         client = TestClient(app)
         response = client.get(
             "/api/v1/submissions?status=invalid", headers=ADMIN_HEADERS
@@ -420,7 +420,7 @@ class TestGetSubmission:
             "submission_files": [MOCK_FILE],
         })
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.get(
             f"/api/v1/submissions/{_SUB_ID}", headers=ADMIN_HEADERS
@@ -436,7 +436,7 @@ class TestGetSubmission:
         """Non-existent submission → 404."""
         mock_db = _make_table_db({"submissions": [], "submission_files": []})
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.get(
             f"/api/v1/submissions/nonexistent-id", headers=ADMIN_HEADERS
@@ -493,7 +493,7 @@ class TestApproveSubmission:
             
         mock_db.storage.from_.side_effect = from_side_effect
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/approve",
@@ -512,7 +512,7 @@ class TestApproveSubmission:
         """Non-existent submission → 404."""
         mock_db = _make_table_db({"submissions": [], "submission_files": []})
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/nonexistent/approve",
@@ -531,7 +531,7 @@ class TestApproveSubmission:
             "submission_files": [MOCK_FILE],
         })
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/approve",
@@ -551,7 +551,7 @@ class TestApproveSubmission:
             "submission_files": [MOCK_FILE],
         })
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/approve",
@@ -605,7 +605,7 @@ class TestRejectSubmission:
             "submission_files": [],
         })
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/reject",
@@ -627,7 +627,7 @@ class TestRejectSubmission:
             "submission_files": [],
         })
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/reject",
@@ -643,7 +643,7 @@ class TestRejectSubmission:
         """Non-existent submission → 404."""
         mock_db = _make_table_db({"submissions": []})
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/nonexistent/reject",
@@ -662,7 +662,7 @@ class TestRejectSubmission:
             "submission_files": [],
         })
 
-        app.dependency_overrides[get_admin_db] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             f"/api/v1/submissions/{_SUB_ID}/reject",
