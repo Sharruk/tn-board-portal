@@ -124,13 +124,15 @@ async def create_submission(
         str | None,
         Form(description="Optional description or additional details"),
     ] = None,
-    db: Client = Depends(get_db),
+    admin_db: Client = Depends(get_supabase_admin_client),
 ) -> SubmissionCreateResponse:
     """
     Create a new material submission.
-    Uses the anon Supabase client — RLS restricts anon to INSERT only.
+    Uses the admin Supabase client because file uploads to the private
+    submissions bucket require service-role permissions, and inserting
+    then returning the row (select) bypasses the anon read restriction.
     """
-    service = SubmissionsService(db)
+    service = SubmissionsService(admin_db)
     return await service.create_submission(
         publisher_name=publisher_name,
         email=email,

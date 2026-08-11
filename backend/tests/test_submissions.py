@@ -26,6 +26,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies.supabase import get_db
+from app.db.supabase_client import get_supabase_admin_client
 from app.api.v1.endpoints.submissions import get_admin_db
 from app.main import app
 
@@ -153,7 +154,7 @@ class TestCreateSubmission:
         bucket_mock.upload.return_value = MagicMock()
         mock_db.storage.from_.return_value = bucket_mock
 
-        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -174,22 +175,26 @@ class TestCreateSubmission:
 
     def test_create_submission_missing_publisher_name(self):
         """Missing publisher_name → 422."""
+        app.dependency_overrides[get_supabase_admin_client] = lambda: MagicMock()
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
             data={"email": "test@example.com"},
             files=[self._make_upload_file()],
         )
+        app.dependency_overrides.clear()
         assert response.status_code == 422
 
     def test_create_submission_missing_email(self):
         """Missing email → 422."""
+        app.dependency_overrides[get_supabase_admin_client] = lambda: MagicMock()
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
             data={"publisher_name": "Test"},
             files=[self._make_upload_file()],
         )
+        app.dependency_overrides.clear()
         assert response.status_code == 422
 
     def test_create_submission_no_files(self):
@@ -197,7 +202,7 @@ class TestCreateSubmission:
         mock_db = _make_table_db({"submissions": []})
         mock_db.storage = MagicMock()
 
-        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -216,7 +221,7 @@ class TestCreateSubmission:
         mock_db = _make_table_db({"submissions": []})
         mock_db.storage = MagicMock()
 
-        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -237,7 +242,7 @@ class TestCreateSubmission:
         mock_db = _make_table_db({"submissions": []})
         mock_db.storage = MagicMock()
 
-        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -262,7 +267,7 @@ class TestCreateSubmission:
             for i in range(6)
         ]
 
-        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -288,7 +293,7 @@ class TestCreateSubmission:
         bucket_mock.upload.return_value = MagicMock()
         mock_db.storage.from_.return_value = bucket_mock
 
-        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
@@ -314,7 +319,7 @@ class TestCreateSubmission:
         bucket_mock.upload.return_value = MagicMock()
         mock_db.storage.from_.return_value = bucket_mock
 
-        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         client = TestClient(app)
         response = client.post(
             "/api/v1/submissions",
