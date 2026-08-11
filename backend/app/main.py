@@ -111,10 +111,9 @@ def create_app() -> FastAPI:
         traceback.print_exc(file=sys.stdout)
         sys.stdout.flush()
         
-        
         origin = request.headers.get("origin")
         headers = {}
-        if origin in settings.CORS_ORIGINS:
+        if origin and origin in settings.cors_origins_list:
             headers["Access-Control-Allow-Origin"] = origin
             headers["Access-Control-Allow-Credentials"] = "true"
 

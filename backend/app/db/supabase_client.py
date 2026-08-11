@@ -54,24 +54,26 @@ def get_supabase_admin_client() -> Client:
     print(f"[DIAGNOSTIC] SUPABASE_URL configured: {url_present}", flush=True)
     print(f"[DIAGNOSTIC] SUPABASE_SERVICE_ROLE_KEY configured: {key_present}", flush=True)
     
-    if not settings.SUPABASE_SERVICE_ROLE_KEY:
+    if not settings.SUPABASE_SERVICE_ROLE_KEY or not settings.SUPABASE_SERVICE_ROLE_KEY.strip():
         print("[DIAGNOSTIC] Admin Supabase client initialization: FAILURE (Missing key)", flush=True)
         raise RuntimeError(
-            "SUPABASE_SERVICE_ROLE_KEY is not set. "
+            "SUPABASE_SERVICE_ROLE_KEY is not set or is empty. "
             "Admin client cannot be created without it."
         )
-    logger.info("Initialising Supabase admin client (url=%s)", settings.SUPABASE_URL)
-    
+
+    # Safe diagnostic check on the key structure (JWT validation)
+    key_val = settings.SUPABASE_SERVICE_ROLE_KEY.strip()
+    is_jwt = key_val.startswith("eyJ") and len(key_val.split(".")) == 3
+    print(f"[DIAGNOSTIC] SUPABASE_SERVICE_ROLE_KEY structurally valid JWT: {is_jwt}", flush=True)
+
     try:
         client: Client = create_client(
-            settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY
+            settings.SUPABASE_URL.strip(), key_val
         )
         print("[DIAGNOSTIC] Admin Supabase client initialization: SUCCESS", flush=True)
+        return client
     except Exception as exc:
         print(f"[DIAGNOSTIC] Admin Supabase client initialization: FAILURE", flush=True)
         print(f"[DIAGNOSTIC] Exception type: {type(exc).__name__}", flush=True)
         print(f"[DIAGNOSTIC] Exception message: {str(exc)}", flush=True)
-        raise
-
-    logger.info("Supabase admin client initialised successfully")
-    return client
+        raise RuntimeError(f"Failed to initialize Supabase Admin client: {str(exc)}") from exc
