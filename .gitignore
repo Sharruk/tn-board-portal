@@ -48,3 +48,4 @@ backend/**/*.pyc
 backend/**/*.pyo
 backend/.pytest_cache/
 backend/*.egg-info/
+backend/secrets/
