@@ -16,6 +16,7 @@
 
 import { apiFetch } from '../lib/api'
 
+
 // =============================================================================
 // Paper metadata constants — single source of truth for the entire app.
 // Import these in admin pages and search — do NOT duplicate locally.
@@ -185,5 +186,12 @@ export const getExamTypes = () =>
  * @returns {Promise<void>}
  */
 export const recordDownload = async (id) => {
-  await apiFetch(`/api/v1/papers/${id}/download`, { method: 'POST' })
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required to download')
+  await apiFetch(`/api/v1/papers/${id}/download`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  })
 }

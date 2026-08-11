@@ -1,8 +1,15 @@
 import { supabase } from '../lib/supabase'
+import { getFirebaseToken, auth } from '../lib/firebase'
 
 async function getAuthUser() {
-  const { data: { user } } = await supabase.auth.getUser()
-  return user
+  const user = auth.currentUser
+  if (user) {
+    return {
+      id: user.uid,
+      email: user.email
+    }
+  }
+  return null
 }
 
 async function insertAuditLog(action, targetPaperId, targetDetails) {
@@ -17,11 +24,9 @@ async function insertAuditLog(action, targetPaperId, targetDetails) {
   })
 }
 
-export const adminLogin = async (email, password) => {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) throw error
-  await insertAuditLog('login_success', null, { identifier: email })
-  return { data }
+// adminLogin is now handled directly via Google Sign-In in LoginPage.jsx
+export const adminLogin = async () => {
+  throw new Error('Use Google Sign-In via LoginPage')
 }
 
 export const getAdminPapers = async () => {
@@ -150,11 +155,11 @@ export const getContentStatus = async () => {
 }
 
 export const getAdminMe = async () => {
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error) throw error
+  const user = auth.currentUser
+  if (!user) throw new Error('Not authenticated')
   return {
     data: {
-      id:       user.id,
+      id:       user.uid,
       email:    user.email,
       username: user.email,
     },

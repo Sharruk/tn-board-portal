@@ -15,22 +15,28 @@
 
 import { API_BASE_URL, apiFetch } from '../lib/api'
 
-// ── Public ────────────────────────────────────────────────────────────────────
+import { getFirebaseToken } from '../lib/firebase'
 
 /**
- * Submit educational material (public — no auth required).
+ * Submit educational material (requires auth).
  *
- * @param {FormData} formData  Must include: publisher_name, email, files[].
+ * @param {FormData} formData  Must include: publisher_name, files[].
  *                             Optional: details.
  * @returns {Promise<{ id: string, status: string, message: string }>}
  */
 export async function createSubmission(formData) {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required to submit material')
+
   // We use raw fetch here (not apiFetch) because we need multipart/form-data
   // without setting Content-Type manually — the browser sets boundary automatically.
   const url = `${API_BASE_URL}/api/v1/submissions`
   const response = await fetch(url, {
     method: 'POST',
     body: formData,
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
     // DO NOT set Content-Type — browser sets it with correct boundary
   })
 
