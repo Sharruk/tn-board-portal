@@ -1,31 +1,37 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { auth } from '../lib/firebase'
+import { onAuthStateChanged } from 'firebase/auth'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined)
+  const [firebaseUser, setFirebaseUser] = useState(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user)
+      if (user) {
+        // We'll store a placeholder "session" for now so downstream components don't break
+        // We will fetch the actual token when making API calls.
+        setSession({ user })
+      } else {
+        setSession(null)
+      }
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-    })
-
-    return () => subscription.unsubscribe()
+    return () => unsubscribe()
   }, [])
 
   const logout = async () => {
-    await supabase.auth.signOut()
+    await auth.signOut()
   }
 
   return (
     <AuthContext.Provider value={{
       session,
-      isAuthenticated: !!session,
+      firebaseUser,
+      isAuthenticated: !!firebaseUser,
       isLoading: session === undefined,
       logout,
     }}>
