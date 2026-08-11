@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../../lib/supabase'
+import { getFirebaseToken } from '../../lib/firebase'
 import { getSubmissions, getSubmission, approveSubmission, rejectSubmission } from '../../services/submissions'
 import { getClasses, getSubjectsForClass } from '../../services/classes'
 import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../../services/papers'
@@ -397,9 +397,7 @@ export default function SubmissionsPage() {
 
   // Get auth token
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setToken(session?.access_token || null)
-    })
+    getFirebaseToken().then(token => setToken(token))
   }, [])
 
   // Load classes for approve form

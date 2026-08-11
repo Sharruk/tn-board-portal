@@ -7,6 +7,7 @@ import PaperCard from '../components/PaperCard'
 import { getPaper, getPaperBySlug, recordDownload } from '../services/papers'
 import { getPapersForSubject } from '../services/subjects'
 import { downloadPaper, viewPdf } from '../utils/download'
+import { signInWithGoogle } from '../lib/firebase'
 
 function YoutubeEmbed({ url }) {
   const getVideoId = (url) => {
@@ -98,15 +99,33 @@ export default function PaperDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!paper) return
-    recordDownload(paper.id)
-      .then(() => setDownloadCount(c => c + 1))
-      .catch(() => {})
-    // Pass original_filename so the blob-download uses the correct filename.
-    // Falls back to paper.title + ".pdf" for pre-migration papers (original_filename = null).
-    downloadPaper(paper.public_url, paper.title, paper.original_filename)
-  }, [paper])
+
+    try {
+      await recordDownload(paper.id)
+      setDownloadCount(c => c + 1)
+      downloadPaper(paper.public_url, paper.title, paper.original_filename)
+    } catch (err) {
+      if (err.message === 'Authentication required to download') {
+        showToast('Please sign in to download. Opening Google Sign-In...')
+        try {
+          const { user, error: authError } = await signInWithGoogle()
+          if (authError) throw authError
+          if (user) {
+            showToast('Signed in successfully! Downloading...')
+            await recordDownload(paper.id)
+            setDownloadCount(c => c + 1)
+            downloadPaper(paper.public_url, paper.title, paper.original_filename)
+          }
+        } catch (signInErr) {
+          showToast(signInErr.message || 'Sign-In failed. Cannot download.')
+        }
+      } else {
+        showToast(err.message || 'Failed to record download')
+      }
+    }
+  }, [paper, showToast])
 
 
   const handleShare = useCallback(async () => {
