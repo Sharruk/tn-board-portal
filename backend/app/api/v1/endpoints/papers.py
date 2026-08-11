@@ -33,6 +33,8 @@ from fastapi import APIRouter, Depends, Query, status
 from supabase import Client
 
 from app.dependencies.supabase import get_db
+from app.dependencies.auth import require_role
+from app.db.supabase_client import get_supabase_admin_client
 from app.schemas.paper import (
     PaperListResponse,
     PaperResponse,
@@ -208,8 +210,10 @@ async def get_paper(
 )
 async def record_download(
     paper_id: int,
+    current_user: dict = Depends(require_role(["USER", "CONTRIBUTOR", "ADMIN", "SUPER_ADMIN"])),
     db: Client = Depends(get_db),
+    admin_db: Client = Depends(get_supabase_admin_client),
 ) -> None:
     """Increment download counter for a published paper."""
     service = PapersService(db)
-    service.record_download(paper_id)
+    service.record_download(paper_id, admin_db, current_user.get("firebase_uid"), current_user.get("email"))

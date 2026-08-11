@@ -226,7 +226,7 @@ class PapersService:
     # POST /api/v1/papers/{id}/download
     # ------------------------------------------------------------------ #
 
-    def record_download(self, paper_id: int) -> None:
+    def record_download(self, paper_id: int, admin_db: Client, user_id: str, user_email: str) -> None:
         """
         Increment the download counter for a published paper.
         Delegates to increment_download_count() RPC.
@@ -237,6 +237,12 @@ class PapersService:
         logger.info("PapersService.record_download(paper_id=%s)", paper_id)
         try:
             self._repo.record_download(paper_id)
+            # Log the download event
+            admin_db.table("download_logs").insert({
+                "firebase_uid": user_id,
+                "email": user_email,
+                "paper_id": paper_id
+            }).execute()
         except Exception as exc:
             # Supabase raises when paper_id is not found or not published
             logger.warning("record_download failed for paper_id=%s: %s", paper_id, exc)
