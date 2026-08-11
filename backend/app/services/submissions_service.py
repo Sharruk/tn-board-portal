@@ -121,12 +121,15 @@ class SubmissionsService:
 
         # ── Create submission row ────────────────────────────────────────
         try:
+            print("[DIAGNOSTIC] Calling repo.create_submission...", flush=True)
             sub = self._repo.create_submission(
                 publisher_name=publisher_name.strip(),
                 email=email.strip().lower(),
                 details=details.strip() if details else None,
             )
+            print(f"[DIAGNOSTIC] Submission created. ID: {sub['id']}", flush=True)
         except Exception as exc:
+            print(f"[DIAGNOSTIC] Exception in create_submission: {type(exc).__name__}: {str(exc)}", flush=True)
             logger.error("Failed to create submission: %s", exc)
             raise DatabaseError("Failed to create submission. Please try again.") from exc
 
@@ -135,6 +138,7 @@ class SubmissionsService:
         # ── Upload files ──────────────────────────────────────────────────
         try:
             for safe_name, content, content_type, ext, size in validated:
+                print(f"[DIAGNOSTIC] Starting upload for file: {safe_name} ({size} bytes)", flush=True)
                 self._repo.upload_file(
                     submission_id=submission_id,
                     filename=safe_name,
@@ -143,7 +147,9 @@ class SubmissionsService:
                     file_size=size,
                     ext=ext,
                 )
+                print(f"[DIAGNOSTIC] File uploaded and DB row inserted successfully.", flush=True)
         except Exception as exc:
+            print(f"[DIAGNOSTIC] Exception in upload_file: {type(exc).__name__}: {str(exc)}", flush=True)
             logger.error(
                 "File upload failed for submission %s: %s", submission_id, exc
             )

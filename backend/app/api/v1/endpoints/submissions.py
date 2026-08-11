@@ -132,6 +132,10 @@ async def create_submission(
     submissions bucket require service-role permissions, and inserting
     then returning the row (select) bypasses the anon read restriction.
     """
+    print("[DIAGNOSTIC] Endpoint entered: POST /api/v1/submissions", flush=True)
+    print(f"[DIAGNOSTIC] File count received: {len(files)}", flush=True)
+    print("[DIAGNOSTIC] Admin client dependency resolved", flush=True)
+    
     service = SubmissionsService(admin_db)
     return await service.create_submission(
         publisher_name=publisher_name,

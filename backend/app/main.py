@@ -103,10 +103,26 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------------ #
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        import traceback
+        import sys
+        print(f"[DIAGNOSTIC] UNHANDLED EXCEPTION IN FASTAPI:", flush=True)
+        print(f"[DIAGNOSTIC] Type: {type(exc).__name__}", flush=True)
+        print(f"[DIAGNOSTIC] Message: {str(exc)}", flush=True)
+        traceback.print_exc(file=sys.stdout)
+        sys.stdout.flush()
+        
+        
+        origin = request.headers.get("origin")
+        headers = {}
+        if origin in settings.CORS_ORIGINS:
+            headers["Access-Control-Allow-Origin"] = origin
+            headers["Access-Control-Allow-Credentials"] = "true"
+
         logger.error("Unhandled exception: %s", exc, exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"detail": "An unexpected server error occurred."},
+            headers=headers
         )
 
     # ------------------------------------------------------------------ #
