@@ -61,6 +61,7 @@ class SubmissionsRepository:
         self,
         publisher_name: str,
         email: str,
+        firebase_uid: str,
         details: str | None,
     ) -> dict[str, Any]:
         """
@@ -69,7 +70,7 @@ class SubmissionsRepository:
         Returns the created row dict including the generated UUID.
         """
         logger.debug(
-            "SubmissionsRepository.create_submission(email=%s)", email
+            "SubmissionsRepository.create_submission(email=%s, firebase_uid=%s)", email, firebase_uid
         )
         response = (
             self._db.table("submissions")
@@ -77,6 +78,7 @@ class SubmissionsRepository:
                 {
                     "publisher_name": publisher_name,
                     "email": email,
+                    "firebase_uid": firebase_uid,
                     "details": details,
                     "status": "pending",
                 }
@@ -180,7 +182,7 @@ class SubmissionsRepository:
         )
         query = (
             self._db.table("submissions")
-            .select("id,publisher_name,email,details,status,rejection_reason,reviewed_at,created_at")
+            .select("id,publisher_name,email,firebase_uid,details,status,rejection_reason,reviewed_at,created_at")
             .order("created_at", desc=True)
             .limit(limit)
         )
@@ -225,7 +227,7 @@ class SubmissionsRepository:
         )
         response = (
             self._db.table("submissions")
-            .select("id,publisher_name,email,details,status,rejection_reason,reviewed_at,created_at")
+            .select("id,publisher_name,email,firebase_uid,details,status,rejection_reason,reviewed_at,created_at")
             .eq("id", submission_id)
             .execute()
         )

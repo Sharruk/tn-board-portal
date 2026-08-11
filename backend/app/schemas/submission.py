@@ -53,6 +53,7 @@ class SubmissionListItem(BaseModel):
     id: str
     publisher_name: str
     email: str
+    firebase_uid: str | None = None
     details: str | None = None
     status: SubmissionStatus
     file_count: int = Field(default=0, description="Number of files attached")
@@ -70,6 +71,7 @@ class SubmissionOut(BaseModel):
     id: str
     publisher_name: str
     email: str
+    firebase_uid: str | None = None
     details: str | None = None
     status: SubmissionStatus
     rejection_reason: str | None = None

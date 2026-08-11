@@ -36,6 +36,7 @@ from supabase import Client
 
 from app.db.supabase_client import get_supabase_admin_client
 from app.dependencies.supabase import get_db
+from app.dependencies.auth import require_admin, require_role
 from app.schemas.submission import (
     ApproveRequest,
     RejectRequest,
@@ -51,47 +52,7 @@ router = APIRouter(prefix="/submissions", tags=["Submissions"])
 
 
 
-async def get_admin_db(
-    authorization: Annotated[str | None, Header()] = None,
-) -> Client:
-    """
-    Verify a Supabase JWT from the Authorization: Bearer header.
-
-    Raises HTTP 401 if no token is provided.
-    Raises HTTP 403 if the token is invalid or the user is not authenticated.
-
-    Returns the SERVICE ROLE client so admin operations bypass RLS.
-    This is safe because we have already verified the caller is authenticated.
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin authentication required. Provide Authorization: Bearer <token>.",
-        )
-
-    token = authorization.removeprefix("Bearer ").strip()
-
-    # Verify the token using the anon client's auth module
-    # (get_user validates the JWT against Supabase Auth)
-    try:
-        anon_client = get_supabase_admin_client()
-        user_response = anon_client.auth.get_user(token)
-        if not user_response or not user_response.user:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid or expired admin token.",
-            )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("Admin token verification failed: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid or expired admin token.",
-        ) from exc
-
-    # Return the service role client for full DB access
-    return get_supabase_admin_client()
+# (get_admin_db has been replaced by require_admin from app.dependencies.auth)
 
 
 # ── POST /api/v1/submissions — public ────────────────────────────────────────
@@ -106,7 +67,7 @@ async def get_admin_db(
         "Public endpoint. Accepts a multipart form with contributor details and "
         "up to 5 files (PDF, Word, or image). "
         "The submission is stored with status='pending' for admin review.\\n\\n"
-        "**No auth required.** Submissions do NOT immediately appear on the public site."
+        "**Auth required.** Submissions do NOT immediately appear on the public site."
     ),
     responses={
         201: {"description": "Submission created, pending admin review"},
@@ -115,7 +76,6 @@ async def get_admin_db(
 )
 async def create_submission(
     publisher_name: Annotated[str, Form(description="Contributor or publisher name")],
-    email: Annotated[str, Form(description="Contact email address")],
     files: Annotated[
         list[UploadFile],
         File(description="One or more files (PDF, DOC, DOCX, JPG, PNG). Max 5 files, 25 MB each."),
@@ -124,6 +84,7 @@ async def create_submission(
         str | None,
         Form(description="Optional description or additional details"),
     ] = None,
+    current_user: dict = Depends(require_role(["USER", "CONTRIBUTOR", "ADMIN", "SUPER_ADMIN"])),
     admin_db: Client = Depends(get_supabase_admin_client),
 ) -> SubmissionCreateResponse:
     """
@@ -139,7 +100,8 @@ async def create_submission(
     service = SubmissionsService(admin_db)
     return await service.create_submission(
         publisher_name=publisher_name,
-        email=email,
+        email=current_user.get("email"),
+        firebase_uid=current_user.get("firebase_uid"),
         details=details,
         files=files,
     )
@@ -171,7 +133,8 @@ async def list_submissions(
         int,
         Query(description="Max submissions to return", ge=1, le=200),
     ] = 50,
-    admin_db: Client = Depends(get_admin_db),
+    current_user: dict = Depends(require_admin),
+    admin_db: Client = Depends(get_supabase_admin_client),
 ) -> SubmissionListResponse:
     """Return all submissions for the admin review UI."""
     service = SubmissionsService(admin_db)
@@ -198,7 +161,8 @@ async def list_submissions(
 )
 async def get_submission(
     submission_id: str,
-    admin_db: Client = Depends(get_admin_db),
+    current_user: dict = Depends(require_admin),
+    admin_db: Client = Depends(get_supabase_admin_client),
 ) -> SubmissionOut:
     """Return one submission with its file list."""
     service = SubmissionsService(admin_db)
@@ -231,7 +195,8 @@ async def get_submission(
 async def approve_submission(
     submission_id: str,
     req: ApproveRequest,
-    admin_db: Client = Depends(get_admin_db),
+    current_user: dict = Depends(require_admin),
+    admin_db: Client = Depends(get_supabase_admin_client),
 ) -> dict:
     """Approve a pending submission and create paper records."""
     service = SubmissionsService(admin_db)
@@ -262,7 +227,8 @@ async def approve_submission(
 async def reject_submission(
     submission_id: str,
     req: RejectRequest,
-    admin_db: Client = Depends(get_admin_db),
+    current_user: dict = Depends(require_admin),
+    admin_db: Client = Depends(get_supabase_admin_client),
 ) -> dict:
     """Reject a pending submission."""
     service = SubmissionsService(admin_db)
