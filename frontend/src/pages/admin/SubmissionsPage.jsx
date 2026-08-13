@@ -60,6 +60,187 @@ function Toast({ message, type, onDismiss }) {
   )
 }
 
+// ── File type helpers ──────────────────────────────────────────────────────────
+
+const IMAGE_TYPES = new Set(['jpg', 'jpeg', 'png'])
+const PDF_TYPES   = new Set(['pdf'])
+const DOC_TYPES   = new Set(['doc', 'docx'])
+
+function fileIcon(type) {
+  if (IMAGE_TYPES.has(type)) return '🖼️'
+  if (PDF_TYPES.has(type))   return '📄'
+  if (DOC_TYPES.has(type))   return '📝'
+  return '📎'
+}
+
+function canPreview(type) {
+  return IMAGE_TYPES.has(type) || PDF_TYPES.has(type)
+}
+
+// ── File Preview Modal ────────────────────────────────────────────────────────
+
+function FilePreviewModal({ file, onClose }) {
+  const [loadError, setLoadError] = useState(false)
+  const [pdfLoaded, setPdfLoaded] = useState(false)
+  const type = file.file_type?.toLowerCase() || ''
+  const url  = file.signed_url
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl flex flex-col w-full max-w-4xl max-h-[92vh] overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="text-xl">{fileIcon(type)}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">{file.original_filename}</p>
+              <p className="text-xs text-gray-400">{type.toUpperCase()} · {formatSize(file.file_size)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            {url && (
+              <a href={url} target="_blank" rel="noopener noreferrer" download={file.original_filename} className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+                ⬇ Download
+              </a>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition text-lg leading-none" aria-label="Close preview">✕</button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto flex items-center justify-center bg-gray-50 min-h-0 relative">
+          {!url && (
+            <div className="text-center p-10">
+              <p className="text-4xl mb-3">🔒</p>
+              <p className="text-sm font-semibold text-gray-700 mb-1">Preview unavailable</p>
+              <p className="text-xs text-gray-400">No signed URL was generated for this file. Try refreshing the submission detail.</p>
+            </div>
+          )}
+          {url && IMAGE_TYPES.has(type) && (
+            <div className="p-4 flex items-center justify-center w-full h-full">
+              {loadError ? (
+                <div className="text-center">
+                  <p className="text-4xl mb-3">⚠️</p>
+                  <p className="text-sm font-semibold text-gray-700 mb-1">Unable to load image</p>
+                  <p className="text-xs text-gray-400 mb-4">The signed URL may have expired, or the file could not be retrieved.</p>
+                  <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
+                    Try opening in new tab
+                  </a>
+                </div>
+              ) : (
+                <img src={url} alt={file.original_filename} className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-md" onError={() => setLoadError(true)} />
+              )}
+            </div>
+          )}
+          {url && PDF_TYPES.has(type) && (
+            <div className="w-full h-full flex flex-col min-h-[60vh]">
+              {loadError ? (
+                <div className="flex-1 flex items-center justify-center p-10 text-center">
+                  <div>
+                    <p className="text-4xl mb-3">⚠️</p>
+                    <p className="text-sm font-semibold text-gray-700 mb-1">Unable to embed PDF</p>
+                    <p className="text-xs text-gray-400 mb-4">Your browser could not display this PDF inline.</p>
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
+                      Open PDF in new tab ↗
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {!pdfLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <span className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                    </div>
+                  )}
+                  <iframe src={url} title={file.original_filename} className="w-full flex-1 min-h-[60vh] border-0" onLoad={() => setPdfLoaded(true)} onError={() => setLoadError(true)} />
+                  <div className="px-4 py-2 bg-white border-t border-gray-100 shrink-0">
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                      Open in new tab ↗
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {url && DOC_TYPES.has(type) && (
+            <div className="text-center p-10">
+              <p className="text-5xl mb-4">📝</p>
+              <p className="text-sm font-semibold text-gray-800 mb-1">
+                Preview unavailable for {type.toUpperCase()} files
+              </p>
+              <p className="text-xs text-gray-400 mb-6">
+                Word documents cannot be previewed directly in the browser.<br />
+                Download the file to inspect it in Microsoft Word or a compatible viewer.
+              </p>
+              <a href={url} target="_blank" rel="noopener noreferrer" download={file.original_filename} className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl transition-colors">
+                ⬇ Download / Open Document
+              </a>
+            </div>
+          )}
+          {url && !IMAGE_TYPES.has(type) && !PDF_TYPES.has(type) && !DOC_TYPES.has(type) && (
+            <div className="text-center p-10">
+              <p className="text-4xl mb-3">📎</p>
+              <p className="text-sm font-semibold text-gray-700 mb-1">Preview unavailable for this file type</p>
+              <p className="text-xs text-gray-400 mb-4">
+                <strong>{type.toUpperCase()}</strong> files cannot be previewed in the browser.
+              </p>
+              <a href={url} target="_blank" rel="noopener noreferrer" download={file.original_filename} className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
+                Download / Open
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── File Card ──────────────────────────────────────────────────────────────────
+
+function SubmissionFileCard({ file }) {
+  const [previewing, setPreviewing] = useState(false)
+  const type = file.file_type?.toLowerCase() || ''
+  const url  = file.signed_url
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-xl shrink-0" aria-hidden="true">{fileIcon(type)}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-800 truncate">{file.original_filename}</p>
+            <p className="text-xs text-gray-400">{type.toUpperCase()} · {formatSize(file.file_size)}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {url && canPreview(type) && (
+            <button id={`preview-file-${file.id}`} onClick={() => setPreviewing(true)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+              👁 Preview
+            </button>
+          )}
+          {url && DOC_TYPES.has(type) && (
+            <button id={`preview-file-${file.id}`} onClick={() => setPreviewing(true)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+              📝 View
+            </button>
+          )}
+          {url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer" download={file.original_filename} className="text-xs font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+              ⬇ Download
+            </a>
+          ) : (
+            <span className="text-xs text-gray-400 italic px-2">Link unavailable</span>
+          )}
+        </div>
+      </div>
+      {previewing && <FilePreviewModal file={file} onClose={() => setPreviewing(false)} />}
+    </>
+  )
+}
+
 // ── Submission Detail Modal ────────────────────────────────────────────────────
 
 function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed }) {
@@ -73,7 +254,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState(null)
 
-  // Load subjects when class changes
   useEffect(() => {
     if (!approveForm.classId) { setSubjects([]); return }
     getSubjectsForClass(approveForm.classId).then(r => setSubjects(r.data || []))
@@ -125,8 +305,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-
-        {/* Header */}
         <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Submission Detail</h2>
@@ -137,10 +315,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
             <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition">✕</button>
           </div>
         </div>
-
         <div className="px-6 py-5 space-y-5">
-
-          {/* Contributor info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Contributor</p>
@@ -151,32 +326,24 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
               <p className="text-sm text-gray-800">{submission.email}</p>
             </div>
           </div>
-
-          {/* Details */}
           {submission.details && (
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Description</p>
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{submission.details}</p>
             </div>
           )}
-
-          {/* Submitted date */}
           <div className="flex items-center gap-4 text-xs text-gray-400">
             <span>Submitted: {fmtDatetime(submission.created_at)}</span>
             {submission.reviewed_at && (
               <span>Reviewed: {fmtDatetime(submission.reviewed_at)}</span>
             )}
           </div>
-
-          {/* Rejection reason (if rejected) */}
           {submission.status === 'rejected' && submission.rejection_reason && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4">
               <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Rejection Reason</p>
               <p className="text-sm text-red-700">{submission.rejection_reason}</p>
             </div>
           )}
-
-          {/* Files */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
               Files ({submission.files?.length || 0})
@@ -186,36 +353,11 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
             ) : (
               <div className="space-y-2">
                 {submission.files.map(file => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-lg shrink-0">
-                        {file.file_type === 'pdf' ? '📄' : file.file_type?.includes('doc') ? '📝' : '🖼️'}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{file.original_filename}</p>
-                        <p className="text-xs text-gray-400">{file.file_type?.toUpperCase()} · {formatSize(file.file_size)}</p>
-                      </div>
-                    </div>
-                    {file.public_url && (
-                      <a
-                        href={file.public_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        View / Download
-                      </a>
-                    )}
-                  </div>
+                  <SubmissionFileCard key={file.id} file={file} />
                 ))}
               </div>
             )}
           </div>
-
-          {/* Approve form (pending only) */}
           {isPending && !showRejectForm && (
             <div className="border border-emerald-200 bg-emerald-50 rounded-2xl p-5">
               <p className="text-sm font-bold text-emerald-800 mb-4 flex items-center gap-2">
@@ -225,7 +367,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                 Select the class, subject, and exam details to publish this material.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                {/* Class */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
                   <select
@@ -239,7 +380,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                     ))}
                   </select>
                 </div>
-                {/* Subject */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Subject <span className="text-red-500">*</span></label>
                   <select
@@ -254,7 +394,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                     ))}
                   </select>
                 </div>
-                {/* Exam Type */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Exam Type <span className="text-red-500">*</span></label>
                   <select
@@ -266,7 +405,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                     {EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-                {/* Year */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Year <span className="text-red-500">*</span></label>
                   <select
@@ -277,7 +415,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                     {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
-                {/* Paper Type */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Paper Type <span className="text-red-500">*</span></label>
                   <select
@@ -289,7 +426,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                     <option value="answer_key">Answer Key</option>
                   </select>
                 </div>
-                {/* Month */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Month <span className="text-gray-400 font-normal">(optional)</span></label>
                   <select
@@ -301,7 +437,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                     {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
-                {/* District */}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-gray-700 mb-1">District <span className="text-gray-400 font-normal">(optional)</span></label>
                   <select
@@ -314,11 +449,9 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                   </select>
                 </div>
               </div>
-
               {error && (
                 <p className="text-xs text-red-600 mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
               )}
-
               <div className="flex gap-2">
                 <button
                   id="approve-submission-btn"
@@ -339,8 +472,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
               </div>
             </div>
           )}
-
-          {/* Reject form */}
           {isPending && showRejectForm && (
             <div className="border border-red-200 bg-red-50 rounded-2xl p-5">
               <p className="text-sm font-bold text-red-800 mb-3 flex items-center gap-2"><span>❌</span> Reject Submission</p>
@@ -376,7 +507,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>
@@ -391,21 +521,18 @@ export default function SubmissionsPage() {
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
   const [statusFilter, setStatusFilter] = useState('pending')
-  const [selected, setSelected]         = useState(null)  // detailed submission
+  const [selected, setSelected]         = useState(null)
   const [classes, setClasses]           = useState([])
   const [toast, setToast]               = useState(null)
 
-  // Get auth token
   useEffect(() => {
     getFirebaseToken().then(token => setToken(token))
   }, [])
 
-  // Load classes for approve form
   useEffect(() => {
     getClasses().then(r => setClasses(r.data || []))
   }, [])
 
-  // Load submissions
   const loadSubmissions = useCallback(async (filter) => {
     if (!token) return
     setLoading(true)
@@ -424,7 +551,6 @@ export default function SubmissionsPage() {
     if (token) loadSubmissions(statusFilter)
   }, [token, statusFilter, loadSubmissions])
 
-  // Open detail modal (fetches full data including files)
   const openDetail = async (sub) => {
     try {
       const detail = await getSubmission(token, sub.id)
@@ -444,8 +570,6 @@ export default function SubmissionsPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto">
-
-      {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-extrabold text-gray-900">Material Submissions</h1>
@@ -458,8 +582,6 @@ export default function SubmissionsPage() {
           </div>
         )}
       </div>
-
-      {/* Filter tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
         {['pending', 'approved', 'rejected', null].map(s => {
           const label = s ? (s.charAt(0).toUpperCase() + s.slice(1)) : 'All'
@@ -477,15 +599,11 @@ export default function SubmissionsPage() {
           )
         })}
       </div>
-
-      {/* Error */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-6 text-sm text-red-600">
           {error}
         </div>
       )}
-
-      {/* Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -550,8 +668,6 @@ export default function SubmissionsPage() {
           </div>
         )}
       </div>
-
-      {/* Detail modal */}
       {selected && (
         <SubmissionDetailModal
           submission={selected}
@@ -561,8 +677,6 @@ export default function SubmissionsPage() {
           onReviewed={handleReviewed}
         />
       )}
-
-      {/* Toast */}
       {toast && (
         <Toast
           message={toast.message}
