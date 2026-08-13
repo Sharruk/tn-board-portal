@@ -74,20 +74,53 @@ async def get_current_user(
     if not response.data:
         # Check if they are the designated super admin
         role = "SUPER_ADMIN" if email == "hungrylearner786@gmail.com" else "USER"
-        
+
         # Auto-create the profile
         new_user = {
             "firebase_uid": firebase_uid,
             "email": email,
             "display_name": decoded_token.get("name"),
             "role": role,
-            "is_active": True
+            "is_active": True,
         }
-        res = admin_db.table("users").insert(new_user).select("*").execute()
-        if res.data:
-            return res.data[0]
-        else:
-            raise HTTPException(status_code=500, detail="Failed to create user profile")
+
+        # supabase-py 2.x: .insert() returns a SyncQueryRequestBuilder that does
+        # NOT support chaining .select() — call .execute() immediately, then do a
+        # separate SELECT to retrieve the full row.
+        try:
+            insert_res = admin_db.table("users").insert(new_user).execute()
+        except Exception as exc:
+            # A duplicate firebase_uid means a concurrent request already created
+            # this user (race condition).  Fall through to the SELECT below.
+            logger.warning(
+                "User insert raised an exception for firebase_uid=%s (may be duplicate): %s",
+                firebase_uid,
+                exc,
+            )
+            insert_res = None
+
+        # If insert returned data we can use it directly; otherwise (empty data
+        # or exception) do a fresh SELECT to handle the race-condition case.
+        if insert_res is not None and insert_res.data:
+            return insert_res.data[0]
+
+        # Fallback: retrieve the user that now exists (either just inserted by
+        # us or by a concurrent request that won the race).
+        logger.info(
+            "Insert returned no data for firebase_uid=%s; fetching via SELECT.",
+            firebase_uid,
+        )
+        fetch_res = (
+            admin_db.table("users")
+            .select("*")
+            .eq("firebase_uid", firebase_uid)
+            .execute()
+        )
+        if fetch_res.data:
+            return fetch_res.data[0]
+
+        logger.error("Failed to create or retrieve user profile for firebase_uid=%s", firebase_uid)
+        raise HTTPException(status_code=500, detail="Failed to create user profile")
 
     user = response.data[0]
     
