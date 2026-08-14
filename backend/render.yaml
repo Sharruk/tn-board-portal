@@ -25,7 +25,7 @@ services:
 
     # ── Auto-deploy ──────────────────────────────────────────────────
     autoDeploy: true
-    branch: dev         # Deploy from dev branch; change to main for production
+    branch: main       # Production branch
 
     # ── Environment variables ────────────────────────────────────────
     # Set ACTUAL values in Render Dashboard → Environment.
@@ -54,3 +54,14 @@ services:
 
       - key: BACKEND_URL
         sync: false       # Set to your Render service URL after first deploy
+
+      # ── Firebase Admin SDK ───────────────────────────────────────────────
+      # Paste the ENTIRE content of firebase-service-account.json here.
+      # This is the preferred method for Docker deployments where the file
+      # cannot be included in the image.
+      # NEVER commit the actual value to version control.
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false       # Must be set manually in Render Dashboard
+
+      # FIREBASE_SERVICE_ACCOUNT_PATH is only needed for local dev.
+      # Leave unset on Render (use FIREBASE_SERVICE_ACCOUNT_JSON instead).
