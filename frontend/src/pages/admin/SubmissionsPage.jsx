@@ -1,6 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getFirebaseToken } from '../../lib/firebase'
-import { getSubmissions, getSubmission, approveSubmission, rejectSubmission } from '../../services/submissions'
+import {
+  getSubmissions,
+  getSubmission,
+  approveSubmission,
+  rejectSubmission,
+  restoreSubmission,
+  downloadSubmissionFile,
+} from '../../services/submissions'
 import { getClasses, getSubjectsForClass } from '../../services/classes'
 import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../../services/papers'
 
@@ -79,9 +86,11 @@ function canPreview(type) {
 
 // ── File Preview Modal ────────────────────────────────────────────────────────
 
-function FilePreviewModal({ file, onClose }) {
+function FilePreviewModal({ file, token, onClose }) {
   const [loadError, setLoadError] = useState(false)
   const [pdfLoaded, setPdfLoaded] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [dlError, setDlError] = useState(null)
   const type = file.file_type?.toLowerCase() || ''
   const url  = file.signed_url
 
@@ -90,6 +99,18 @@ function FilePreviewModal({ file, onClose }) {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  const handleDownload = async () => {
+    setDlError(null)
+    setDownloading(true)
+    try {
+      await downloadSubmissionFile(token, file.id, file.original_filename)
+    } catch (err) {
+      setDlError(err.message || 'Download failed. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
@@ -104,11 +125,20 @@ function FilePreviewModal({ file, onClose }) {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-4">
-            {url && (
-              <a href={url} target="_blank" rel="noopener noreferrer" download={file.original_filename} className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
-                ⬇ Download
-              </a>
+            {dlError && (
+              <p className="text-xs text-red-600 max-w-[180px] truncate">{dlError}</p>
             )}
+            <button
+              id={`download-file-modal-${file.id}`}
+              onClick={handleDownload}
+              disabled={downloading}
+              className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 disabled:opacity-60 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+            >
+              {downloading
+                ? <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                : '⬇'}
+              Download
+            </button>
             <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition text-lg leading-none" aria-label="Close preview">✕</button>
           </div>
         </div>
@@ -176,9 +206,6 @@ function FilePreviewModal({ file, onClose }) {
                 Word documents cannot be previewed directly in the browser.<br />
                 Download the file to inspect it in Microsoft Word or a compatible viewer.
               </p>
-              <a href={url} target="_blank" rel="noopener noreferrer" download={file.original_filename} className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl transition-colors">
-                ⬇ Download / Open Document
-              </a>
             </div>
           )}
           {url && !IMAGE_TYPES.has(type) && !PDF_TYPES.has(type) && !DOC_TYPES.has(type) && (
@@ -188,9 +215,6 @@ function FilePreviewModal({ file, onClose }) {
               <p className="text-xs text-gray-400 mb-4">
                 <strong>{type.toUpperCase()}</strong> files cannot be previewed in the browser.
               </p>
-              <a href={url} target="_blank" rel="noopener noreferrer" download={file.original_filename} className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
-                Download / Open
-              </a>
             </div>
           )}
         </div>
@@ -201,10 +225,24 @@ function FilePreviewModal({ file, onClose }) {
 
 // ── File Card ──────────────────────────────────────────────────────────────────
 
-function SubmissionFileCard({ file }) {
+function SubmissionFileCard({ file, token }) {
   const [previewing, setPreviewing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [dlError, setDlError] = useState(null)
   const type = file.file_type?.toLowerCase() || ''
   const url  = file.signed_url
+
+  const handleDownload = async () => {
+    setDlError(null)
+    setDownloading(true)
+    try {
+      await downloadSubmissionFile(token, file.id, file.original_filename)
+    } catch (err) {
+      setDlError(err.message || 'Download failed. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <>
@@ -216,27 +254,36 @@ function SubmissionFileCard({ file }) {
             <p className="text-xs text-gray-400">{type.toUpperCase()} · {formatSize(file.file_size)}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {url && canPreview(type) && (
-            <button id={`preview-file-${file.id}`} onClick={() => setPreviewing(true)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
-              👁 Preview
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex items-center gap-2">
+            {url && canPreview(type) && (
+              <button id={`preview-file-${file.id}`} onClick={() => setPreviewing(true)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+                👁 Preview
+              </button>
+            )}
+            {url && DOC_TYPES.has(type) && (
+              <button id={`view-file-${file.id}`} onClick={() => setPreviewing(true)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+                📝 View
+              </button>
+            )}
+            <button
+              id={`download-file-${file.id}`}
+              onClick={handleDownload}
+              disabled={downloading}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100 disabled:opacity-60 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+            >
+              {downloading
+                ? <span className="w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                : '⬇'}
+              Download
             </button>
-          )}
-          {url && DOC_TYPES.has(type) && (
-            <button id={`preview-file-${file.id}`} onClick={() => setPreviewing(true)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
-              📝 View
-            </button>
-          )}
-          {url ? (
-            <a href={url} target="_blank" rel="noopener noreferrer" download={file.original_filename} className="text-xs font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
-              ⬇ Download
-            </a>
-          ) : (
-            <span className="text-xs text-gray-400 italic px-2">Link unavailable</span>
+          </div>
+          {dlError && (
+            <p className="text-xs text-red-500">{dlError}</p>
           )}
         </div>
       </div>
-      {previewing && <FilePreviewModal file={file} onClose={() => setPreviewing(false)} />}
+      {previewing && <FilePreviewModal file={file} token={token} onClose={() => setPreviewing(false)} />}
     </>
   )
 }
@@ -248,11 +295,12 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     classId: '', subjectId: '', examType: '', year: String(CURRENT_YEAR),
     paperType: 'question', month: '', district: '',
   })
-  const [subjects, setSubjects]           = useState([])
-  const [rejectReason, setRejectReason]   = useState('')
-  const [showRejectForm, setShowRejectForm] = useState(false)
-  const [loading, setLoading]             = useState(false)
-  const [error, setError]                 = useState(null)
+  const [subjects, setSubjects]               = useState([])
+  const [rejectReason, setRejectReason]       = useState('')
+  const [showRejectForm, setShowRejectForm]   = useState(false)
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false)
+  const [loading, setLoading]                 = useState(false)
+  const [error, setError]                     = useState(null)
 
   useEffect(() => {
     if (!approveForm.classId) { setSubjects([]); return }
@@ -283,6 +331,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     }
   }
 
+  // Called after the user confirms the rejection dialog
   const handleReject = async () => {
     setError(null)
     setLoading(true)
@@ -299,7 +348,22 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     }
   }
 
-  const isPending = submission.status === 'pending'
+  const handleRestore = async () => {
+    setError(null)
+    setLoading(true)
+    try {
+      await restoreSubmission(token, submission.id)
+      onReviewed('restored', submission.id)
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Failed to restore submission.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const isPending  = submission.status === 'pending'
+  const isRejected = submission.status === 'rejected'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -353,12 +417,38 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
             ) : (
               <div className="space-y-2">
                 {submission.files.map(file => (
-                  <SubmissionFileCard key={file.id} file={file} />
+                  <SubmissionFileCard key={file.id} file={file} token={token} />
                 ))}
               </div>
             )}
           </div>
-          {isPending && !showRejectForm && (
+
+          {/* ── REJECTED: Restore to Pending ───────────────────────────── */}
+          {isRejected && (
+            <div className="border border-amber-200 bg-amber-50 rounded-2xl p-5">
+              <p className="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
+                <span>↩</span> Restore Submission
+              </p>
+              <p className="text-xs text-amber-700 mb-4">
+                This submission was rejected. You can move it back to <strong>Pending</strong> to review and approve it.
+              </p>
+              {error && (
+                <p className="text-xs text-red-600 mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+              )}
+              <button
+                id="restore-submission-btn"
+                onClick={handleRestore}
+                disabled={loading}
+                className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-sm font-semibold py-2.5 px-6 rounded-xl transition-colors flex items-center gap-2"
+              >
+                {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '↩'}
+                Move to Pending
+              </button>
+            </div>
+          )}
+
+          {/* ── PENDING: Approve form ───────────────────────────────────── */}
+          {isPending && !showRejectForm && !showRejectConfirm && (
             <div className="border border-emerald-200 bg-emerald-50 rounded-2xl p-5">
               <p className="text-sm font-bold text-emerald-800 mb-4 flex items-center gap-2">
                 <span>✅</span> Approve Submission
@@ -460,7 +550,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
                   {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '✅'}
-                  Approve & Publish
+                  Approve &amp; Publish
                 </button>
                 <button
                   onClick={() => { setShowRejectForm(true); setError(null) }}
@@ -472,7 +562,9 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
               </div>
             </div>
           )}
-          {isPending && showRejectForm && (
+
+          {/* ── PENDING: Rejection reason form ──────────────────────────── */}
+          {isPending && showRejectForm && !showRejectConfirm && (
             <div className="border border-red-200 bg-red-50 rounded-2xl p-5">
               <p className="text-sm font-bold text-red-800 mb-3 flex items-center gap-2"><span>❌</span> Reject Submission</p>
               <label className="block text-xs font-semibold text-gray-700 mb-1.5">
@@ -485,6 +577,40 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                 placeholder="Explain why the submission was rejected (for internal reference)…"
                 className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-red-500 outline-none resize-none mb-3"
               />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowRejectConfirm(true); setError(null) }}
+                  disabled={loading}
+                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+                >
+                  Continue →
+                </button>
+                <button
+                  onClick={() => { setShowRejectForm(false); setError(null) }}
+                  className="px-4 py-2.5 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-semibold rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── PENDING: Rejection confirmation ─────────────────────────── */}
+          {isPending && showRejectConfirm && (
+            <div className="border border-red-300 bg-red-50 rounded-2xl p-5">
+              <p className="text-sm font-bold text-red-800 mb-2 flex items-center gap-2"><span>⚠️</span> Confirm Rejection</p>
+              <p className="text-sm text-red-700 mb-1">
+                Are you sure you want to reject this submission?
+              </p>
+              <p className="text-xs text-red-600 mb-4">
+                It will be moved to <strong>Rejected</strong>. You can restore it back to Pending later if needed.
+              </p>
+              {rejectReason && (
+                <div className="bg-red-100 border border-red-200 rounded-lg px-3 py-2 mb-4">
+                  <p className="text-xs font-semibold text-red-700 mb-0.5">Reason recorded:</p>
+                  <p className="text-xs text-red-700 italic">"{rejectReason}"</p>
+                </div>
+              )}
               {error && (
                 <p className="text-xs text-red-600 mb-3 bg-red-100 border border-red-200 rounded-lg px-3 py-2">{error}</p>
               )}
@@ -496,13 +622,14 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                   className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
                   {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '❌'}
-                  Confirm Rejection
+                  Yes, Reject Submission
                 </button>
                 <button
-                  onClick={() => { setShowRejectForm(false); setError(null) }}
+                  onClick={() => { setShowRejectConfirm(false); setError(null) }}
+                  disabled={loading}
                   className="px-4 py-2.5 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-semibold rounded-xl transition-colors"
                 >
-                  Cancel
+                  Go Back
                 </button>
               </div>
             </div>
@@ -561,7 +688,12 @@ export default function SubmissionsPage() {
   }
 
   const handleReviewed = (action, id) => {
-    const label = action === 'approved' ? 'approved and published' : 'rejected'
+    const labels = {
+      approved: 'approved and published',
+      rejected: 'rejected',
+      restored: 'moved back to Pending',
+    }
+    const label = labels[action] || action
     setToast({ type: 'success', message: `Submission ${label} successfully.` })
     loadSubmissions(statusFilter)
   }

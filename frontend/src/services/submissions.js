@@ -6,11 +6,13 @@
 // Public:
 //   createSubmission(formData)  — POST /api/v1/submissions  (multipart)
 //
-// Admin (requires Supabase session token in Authorization header):
-//   getSubmissions(token, status)          — GET /api/v1/submissions
-//   getSubmission(token, id)               — GET /api/v1/submissions/{id}
-//   approveSubmission(token, id, body)     — POST /api/v1/submissions/{id}/approve
-//   rejectSubmission(token, id, body)      — POST /api/v1/submissions/{id}/reject
+// Admin (requires Firebase token in Authorization header):
+//   getSubmissions(token, status)               — GET  /api/v1/submissions
+//   getSubmission(token, id)                    — GET  /api/v1/submissions/{id}
+//   approveSubmission(token, id, body)           — POST /api/v1/submissions/{id}/approve
+//   rejectSubmission(token, id, body)            — POST /api/v1/submissions/{id}/reject
+//   restoreSubmission(token, id)                 — POST /api/v1/submissions/{id}/restore
+//   downloadSubmissionFile(token, fileId)        — GET  /api/v1/submissions/files/{fileId}/download
 // =============================================================================
 
 import { API_BASE_URL, apiFetch } from '../lib/api'
@@ -68,7 +70,7 @@ function adminHeaders(token) {
 /**
  * List all submissions (admin only).
  *
- * @param {string} token    Supabase session access_token
+ * @param {string} token    Firebase access_token
  * @param {string|null} [statusFilter]  'pending' | 'approved' | 'rejected' | null
  * @param {number} [limit]  Max results (default 50)
  * @returns {Promise<{ data: SubmissionListItem[], count: number, status_filter: string|null }>}
@@ -86,7 +88,7 @@ export async function getSubmissions(token, statusFilter = null, limit = 50) {
 /**
  * Get a single submission with its file list (admin only).
  *
- * @param {string} token  Supabase session access_token
+ * @param {string} token  Firebase access_token
  * @param {string} id     Submission UUID
  * @returns {Promise<SubmissionOut>}
  */
@@ -101,7 +103,7 @@ export async function getSubmission(token, id) {
 /**
  * Approve a pending submission and create paper record(s).
  *
- * @param {string} token  Supabase session access_token
+ * @param {string} token  Firebase access_token
  * @param {string} id     Submission UUID
  * @param {{ subject_id: number, exam_type: string, year: number, paper_type: string, month?: string, district?: string }} body
  * @returns {Promise<{ submission_id: string, status: string, paper_ids: number[] }>}
@@ -133,7 +135,7 @@ export async function approveSubmission(token, id, body) {
 /**
  * Reject a pending submission.
  *
- * @param {string} token  Supabase session access_token
+ * @param {string} token  Firebase access_token
  * @param {string} id     Submission UUID
  * @param {{ rejection_reason?: string }} body
  * @returns {Promise<{ submission_id: string, status: string, rejection_reason: string|null }>}
@@ -158,4 +160,83 @@ export async function rejectSubmission(token, id, body) {
   }
 
   return response.json()
+}
+
+// ── Admin: Restore rejected submission to pending ─────────────────────────────
+
+/**
+ * Restore a rejected submission back to pending.
+ *
+ * @param {string} token  Firebase access_token
+ * @param {string} id     Submission UUID
+ * @returns {Promise<{ submission_id: string, status: string }>}
+ */
+export async function restoreSubmission(token, id) {
+  const url = `${API_BASE_URL}/api/v1/submissions/${id}/restore`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: adminHeaders(token),
+    body: JSON.stringify({}),
+  })
+
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`
+    try {
+      const resBody = await response.json()
+      detail = resBody?.detail || resBody?.message || detail
+    } catch {
+      // ignore
+    }
+    throw new Error(detail)
+  }
+
+  return response.json()
+}
+
+// ── Admin: Download a private submission file via backend proxy ───────────────
+
+/**
+ * Download a private submission file through the backend proxy endpoint.
+ *
+ * The HTML `download` attribute is silently ignored by browsers for
+ * cross-origin URLs (the Supabase signed URL is cross-origin). This
+ * function calls our backend proxy which returns the file with
+ * Content-Disposition: attachment, so the browser saves it locally.
+ *
+ * @param {string} token    Firebase access_token
+ * @param {string} fileId   UUID from submission_files table
+ * @param {string} filename Original filename for the saved file
+ * @returns {Promise<void>}  Triggers browser file save
+ */
+export async function downloadSubmissionFile(token, fileId, filename) {
+  const url = `${API_BASE_URL}/api/v1/submissions/files/${fileId}/download`
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`
+    try {
+      const resBody = await response.json()
+      detail = resBody?.detail || resBody?.message || detail
+    } catch {
+      // ignore — response may not be JSON for binary errors
+    }
+    throw new Error(detail)
+  }
+
+  // Convert the binary response to a blob, create a temporary object URL,
+  // and trigger a programmatic click. This is the only reliable cross-browser
+  // approach for downloading a file fetched via XMLHttpRequest/fetch.
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename || 'download'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  // Revoke the object URL after a short delay to free memory
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
 }

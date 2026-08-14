@@ -53,6 +53,7 @@ MOCK_FILE = {
     "original_filename": "math_paper.pdf",
     "storage_path": f"{_SUB_ID}/aaaa-bbbb.pdf",
     "public_url": f"https://example.supabase.co/storage/v1/object/public/submissions/{_SUB_ID}/aaaa-bbbb.pdf",
+    "signed_url": f"https://example.supabase.co/storage/v1/object/sign/submissions/{_SUB_ID}/aaaa-bbbb.pdf?token=xyz",
     "file_type": "pdf",
     "file_size": 102400,
     "created_at": _NOW,
@@ -697,6 +698,269 @@ class TestRejectSubmission:
 
         assert response.status_code == 200
         assert response.json()["count"] == 0
+
+
+# ============================================================================
+# Tests: POST /api/v1/submissions/{id}/restore (admin)
+# ============================================================================
+
+class TestRestoreSubmission:
+    """Tests for the admin restore-to-pending endpoint."""
+
+    def test_restore_requires_auth(self):
+        """No auth header → 401."""
+        client = TestClient(app)
+        response = client.post(f"/api/v1/submissions/{_SUB_ID}/restore")
+        assert response.status_code == 401
+
+    def test_restore_rejected_to_pending(self):
+        """Rejected submission → restore → 200, status = pending."""
+        rejected_sub = {**MOCK_SUBMISSION, "status": "rejected", "rejection_reason": "Duplicate"}
+        restored_sub = {**MOCK_SUBMISSION, "status": "pending", "rejection_reason": None, "reviewed_at": None}
+
+        mock_db = _make_table_db({
+            "submissions": [rejected_sub, restored_sub],  # first for get_by_id, second for restore update
+            "submission_files": [],
+        })
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/restore",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "pending"
+        assert body["submission_id"] == _SUB_ID
+
+    def test_restore_pending_submission_fails(self):
+        """Cannot restore a pending submission — it's already pending."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],  # status = pending
+            "submission_files": [],
+        })
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/restore",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+        assert "only rejected" in response.json()["detail"].lower()
+
+    def test_restore_approved_submission_fails(self):
+        """Cannot restore an approved submission — it is already published."""
+        approved_sub = {**MOCK_SUBMISSION, "status": "approved"}
+        mock_db = _make_table_db({
+            "submissions": [approved_sub],
+            "submission_files": [],
+        })
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/restore",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+        assert "only rejected" in response.json()["detail"].lower()
+
+    def test_restore_not_found(self):
+        """Non-existent submission → 404."""
+        mock_db = _make_table_db({"submissions": []})
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/nonexistent/restore",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 404
+
+    def test_restore_then_approve_workflow(self):
+        """
+        Full REJECTED → PENDING → APPROVED workflow (service-level unit test).
+        Verifies that after restoring to pending, the approve endpoint accepts it.
+        """
+        # Phase 1: restore — submission starts as rejected
+        rejected_sub = {**MOCK_SUBMISSION, "status": "rejected", "rejection_reason": "Needs work"}
+        restored_sub = {**MOCK_SUBMISSION, "status": "pending", "rejection_reason": None, "reviewed_at": None}
+
+        restore_db = _make_table_db({
+            "submissions": [rejected_sub, restored_sub],
+            "submission_files": [],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: restore_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        r1 = client.post(f"/api/v1/submissions/{_SUB_ID}/restore", headers=ADMIN_HEADERS)
+        app.dependency_overrides.clear()
+
+        assert r1.status_code == 200
+        assert r1.json()["status"] == "pending"
+
+        # Phase 2: approve — submission is now pending
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],  # pending
+            "submission_files": [MOCK_FILE],
+            "papers": [MOCK_PAPER],
+        })
+        mock_db.storage = MagicMock()
+        submissions_bucket_mock = MagicMock()
+        submissions_bucket_mock.download.return_value = b"file content"
+        papers_bucket_mock = MagicMock()
+        papers_bucket_mock.upload.return_value = MagicMock()
+        papers_bucket_mock.get_public_url.return_value = MOCK_PAPER["public_url"]
+
+        def from_side_effect(bucket_name):
+            if bucket_name == "submissions":
+                return submissions_bucket_mock
+            elif bucket_name == "papers":
+                return papers_bucket_mock
+            return MagicMock()
+
+        mock_db.storage.from_.side_effect = from_side_effect
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        r2 = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json={"subject_id": 1, "exam_type": "Annual Exam", "year": 2024, "paper_type": "question"},
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert r2.status_code == 200
+        assert r2.json()["status"] == "approved"
+
+
+# ============================================================================
+# Tests: GET /api/v1/submissions/files/{file_id}/download (admin)
+# ============================================================================
+
+class TestDownloadSubmissionFile:
+    """Tests for the admin secure file download proxy endpoint."""
+
+    def test_download_requires_auth(self):
+        """No auth header → 401."""
+        client = TestClient(app)
+        response = client.get(f"/api/v1/submissions/files/{_FILE_ID}/download")
+        assert response.status_code == 401
+
+    def test_download_admin_can_download(self):
+        """Admin with valid token can download a file → 200 with binary content."""
+        file_bytes = b"%PDF-1.4 fake pdf content here"
+
+        mock_db = _make_table_db({
+            "submission_files": [MOCK_FILE],
+        })
+        mock_db.storage = MagicMock()
+        bucket_mock = MagicMock()
+        bucket_mock.download.return_value = file_bytes
+        mock_db.storage.from_.return_value = bucket_mock
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.get(
+            f"/api/v1/submissions/files/{_FILE_ID}/download",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        assert response.content == file_bytes
+        assert "attachment" in response.headers.get("content-disposition", "")
+        assert "math_paper.pdf" in response.headers.get("content-disposition", "")
+        assert response.headers.get("content-type", "").startswith("application/pdf")
+
+    def test_download_file_not_found(self):
+        """Non-existent file_id → 404."""
+        mock_db = _make_table_db({"submission_files": []})
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.get(
+            f"/api/v1/submissions/files/nonexistent-file-id/download",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 404
+
+    def test_download_storage_failure_returns_500(self):
+        """Storage download error → 500 (safe error — no internals exposed)."""
+        mock_db = _make_table_db({"submission_files": [MOCK_FILE]})
+        mock_db.storage = MagicMock()
+        bucket_mock = MagicMock()
+        bucket_mock.download.side_effect = RuntimeError("Storage unavailable")
+        mock_db.storage.from_.return_value = bucket_mock
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.get(
+            f"/api/v1/submissions/files/{_FILE_ID}/download",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 500
+        # Ensure no storage internals are leaked
+        body = response.json()
+        assert "Storage unavailable" not in str(body)
+
+    def test_download_non_admin_cannot_access(self):
+        """USER role (non-admin) cannot download submission files."""
+        client = TestClient(app)
+        # No auth at all → 401
+        response = client.get(f"/api/v1/submissions/files/{_FILE_ID}/download")
+        assert response.status_code == 401
+
+    def test_download_returns_correct_content_type_for_image(self):
+        """PNG file → Content-Type: image/png."""
+        png_file = {
+            **MOCK_FILE,
+            "id": "33333333-3333-3333-3333-333333333333",
+            "original_filename": "diagram.png",
+            "storage_path": f"{_SUB_ID}/cccc-dddd.png",
+            "file_type": "png",
+        }
+        file_bytes = b"\x89PNG\r\n\x1a\n fake png bytes"
+
+        mock_db = _make_table_db({"submission_files": [png_file]})
+        mock_db.storage = MagicMock()
+        bucket_mock = MagicMock()
+        bucket_mock.download.return_value = file_bytes
+        mock_db.storage.from_.return_value = bucket_mock
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.get(
+            f"/api/v1/submissions/files/{png_file['id']}/download",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        assert response.headers.get("content-type", "").startswith("image/png")
+        assert response.content == file_bytes
 
 
 # ============================================================================

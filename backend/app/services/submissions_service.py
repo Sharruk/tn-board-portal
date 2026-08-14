@@ -44,6 +44,16 @@ logger = logging.getLogger(__name__)
 # Characters allowed in the stored original filename (for display only)
 _SAFE_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._\- ]")
 
+# MIME type map for file extension → Content-Type header
+_EXT_TO_MIME: dict[str, str] = {
+    "pdf":  "application/pdf",
+    "doc":  "application/msword",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "jpg":  "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png":  "image/png",
+}
+
 
 def _sanitise_filename(name: str) -> str:
     """Strip unsafe characters from an original filename for safe display/storage."""
@@ -122,16 +132,13 @@ class SubmissionsService:
 
         # ── Create submission row ────────────────────────────────────────
         try:
-            print("[DIAGNOSTIC] Calling repo.create_submission...", flush=True)
             sub = self._repo.create_submission(
                 publisher_name=publisher_name.strip(),
                 email=email.strip().lower(),
                 firebase_uid=firebase_uid,
                 details=details.strip() if details else None,
             )
-            print(f"[DIAGNOSTIC] Submission created. ID: {sub['id']}", flush=True)
         except Exception as exc:
-            print(f"[DIAGNOSTIC] Exception in create_submission: {type(exc).__name__}: {str(exc)}", flush=True)
             logger.error("Failed to create submission: %s", exc)
             raise DatabaseError("Failed to create submission. Please try again.") from exc
 
@@ -140,7 +147,6 @@ class SubmissionsService:
         # ── Upload files ──────────────────────────────────────────────────
         try:
             for safe_name, content, content_type, ext, size in validated:
-                print(f"[DIAGNOSTIC] Starting upload for file: {safe_name} ({size} bytes)", flush=True)
                 self._repo.upload_file(
                     submission_id=submission_id,
                     filename=safe_name,
@@ -149,9 +155,7 @@ class SubmissionsService:
                     file_size=size,
                     ext=ext,
                 )
-                print(f"[DIAGNOSTIC] File uploaded and DB row inserted successfully.", flush=True)
         except Exception as exc:
-            print(f"[DIAGNOSTIC] Exception in upload_file: {type(exc).__name__}: {str(exc)}", flush=True)
             logger.error(
                 "File upload failed for submission %s: %s", submission_id, exc
             )
@@ -354,3 +358,91 @@ class SubmissionsService:
             "status": "rejected",
             "rejection_reason": req.rejection_reason,
         }
+
+    # ------------------------------------------------------------------ #
+    # ADMIN: Restore a rejected submission to pending
+    # POST /api/v1/submissions/{id}/restore
+    # ------------------------------------------------------------------ #
+
+    def restore_submission(
+        self,
+        submission_id: str,
+    ) -> dict[str, Any]:
+        """
+        Restore a rejected submission back to pending so it can be
+        reviewed again:
+          1. Load submission — raise 404 if not found
+          2. Verify status == 'rejected' (only rejected can be restored)
+          3. Clear rejection_reason and reviewed_at, set status → 'pending'
+
+        Returns a dict with the new status.
+        Raises ValidationError if submission is not rejected.
+        """
+        logger.info(
+            "SubmissionsService.restore_submission(submission_id=%s)", submission_id
+        )
+
+        sub = self._repo.get_by_id(submission_id)
+        if sub is None:
+            raise NotFoundError(resource="Submission", identifier=submission_id)
+
+        if sub["status"] != "rejected":
+            raise ValidationError(
+                f"Submission is '{sub['status']}' — only rejected submissions can be restored to pending."
+            )
+
+        self._repo.restore_to_pending(submission_id)
+
+        logger.info("Submission %s restored to pending", submission_id)
+        return {
+            "submission_id": submission_id,
+            "status": "pending",
+        }
+
+    # ------------------------------------------------------------------ #
+    # ADMIN: Secure file download (proxy)
+    # GET /api/v1/submissions/files/{file_id}/download
+    # ------------------------------------------------------------------ #
+
+    def download_file(
+        self,
+        file_id: str,
+    ) -> tuple[bytes, str, str]:
+        """
+        Securely download a submission file for the admin.
+
+        Verifies the file exists (implicitly verifying it belongs to
+        a real submission), then streams the bytes from the private
+        Supabase bucket.
+
+        Args:
+            file_id: UUID of the submission_files row.
+
+        Returns:
+            Tuple of (file_bytes, content_type, original_filename).
+
+        Raises:
+            NotFoundError if the file_id does not exist.
+            DatabaseError if the storage download fails.
+        """
+        logger.info(
+            "SubmissionsService.download_file(file_id=%s)", file_id
+        )
+
+        file_row = self._repo.get_file_by_id(file_id)
+        if file_row is None:
+            raise NotFoundError(resource="SubmissionFile", identifier=file_id)
+
+        storage_path = file_row["storage_path"]
+        original_filename = file_row["original_filename"]
+        ext = file_row.get("file_type", "").lower()
+        content_type = _EXT_TO_MIME.get(ext, "application/octet-stream")
+
+        try:
+            file_bytes = self._repo.download_file_bytes(storage_path)
+        except RuntimeError as exc:
+            raise DatabaseError(
+                "Failed to retrieve the file from storage. Please try again."
+            ) from exc
+
+        return file_bytes, content_type, original_filename

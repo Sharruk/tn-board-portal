@@ -235,6 +235,86 @@ class SubmissionsRepository:
             return None
         return response.data[0]
 
+    def get_file_by_id(self, file_id: str) -> dict[str, Any] | None:
+        """
+        Return one submission_files row by its primary key, or None if not found.
+        Used by the download endpoint to verify the file exists and get its path.
+        """
+        logger.debug(
+            "SubmissionsRepository.get_file_by_id(file_id=%s)", file_id
+        )
+        response = (
+            self._db.table("submission_files")
+            .select(
+                "id,submission_id,original_filename,storage_path,"
+                "file_type,file_size,created_at"
+            )
+            .eq("id", file_id)
+            .execute()
+        )
+        if not response.data:
+            return None
+        return response.data[0]
+
+    def download_file_bytes(self, storage_path: str) -> bytes:
+        """
+        Download a file from the private submissions bucket using the
+        service-role client and return the raw bytes.
+
+        Args:
+            storage_path: The storage object key (e.g. ``{sub_id}/{uuid}.pdf``).
+
+        Returns:
+            Raw file bytes.
+
+        Raises:
+            RuntimeError if the download fails.
+        """
+        logger.debug(
+            "SubmissionsRepository.download_file_bytes(path=%s)", storage_path
+        )
+        try:
+            data = self._db.storage.from_(SUBMISSIONS_BUCKET).download(storage_path)
+        except Exception as exc:
+            logger.error(
+                "Failed to download file from storage path %s: %s",
+                storage_path,
+                exc,
+            )
+            raise RuntimeError(f"Storage download failed: {exc}") from exc
+        return data
+
+    def restore_to_pending(
+        self, submission_id: str
+    ) -> dict[str, Any]:
+        """
+        Reset a rejected submission back to 'pending', clearing
+        rejection_reason and reviewed_at so it can be reviewed again.
+
+        Returns the updated row.
+        """
+        logger.debug(
+            "SubmissionsRepository.restore_to_pending(submission_id=%s)",
+            submission_id,
+        )
+        response = (
+            self._db.table("submissions")
+            .update(
+                {
+                    "status": "pending",
+                    "rejection_reason": None,
+                    "reviewed_at": None,
+                }
+            )
+            .eq("id", submission_id)
+            .execute()
+        )
+        if not response.data:
+            raise RuntimeError(
+                f"Failed to restore submission {submission_id} — no data returned"
+            )
+        return response.data[0]
+
     def get_files(self, submission_id: str) -> list[dict[str, Any]]:
         """
         Return all submission_files rows for a given submission.
