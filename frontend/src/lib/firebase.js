@@ -13,11 +13,22 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// ─── Admin Sign-In ──────────────────────────────────────────────────────────
+// A fresh GoogleAuthProvider is constructed per sign-in call so that the
+// 'select_account' prompt is always honoured. Reusing a single provider
+// instance can lead to the prompt being silently skipped on subsequent calls.
 export const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = async () => {
   try {
-    const result = await signInWithPopup(auth, googleProvider);
+    // Force the Google account chooser to appear on every admin login attempt.
+    // This prevents a cached (non-admin) Google session from silently passing
+    // through the login page without the user explicitly choosing an account.
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    const result = await signInWithPopup(auth, provider);
     return { user: result.user, error: null };
   } catch (error) {
     console.error('Google sign-in error:', error);

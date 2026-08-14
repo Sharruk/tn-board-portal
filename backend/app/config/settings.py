@@ -61,8 +61,23 @@ class Settings(BaseSettings):
 
     # ------------------------------------------------------------------ #
     # Firebase Auth
+    # Two mutually exclusive ways to provide the service account:
+    #   1. FIREBASE_SERVICE_ACCOUNT_JSON — full JSON string of the SA key
+    #      (preferred for Docker/Render: set the entire file content as an env var)
+    #   2. FIREBASE_SERVICE_ACCOUNT_PATH — filesystem path to the JSON file
+    #      (useful for local dev where the file exists on disk)
+    # auth.py tries (1) first, then falls back to (2).
     # ------------------------------------------------------------------ #
-    FIREBASE_SERVICE_ACCOUNT_PATH: str = ""
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = ""   # full SA JSON as a string
+    FIREBASE_SERVICE_ACCOUNT_PATH: str = ""   # path to SA JSON file
+
+    # ------------------------------------------------------------------ #
+    # Admin Authorization
+    # The single Google account that is authorized to access the admin panel.
+    # This is NOT a secret. Authorization is enforced server-side by verifying
+    # the Firebase ID token and comparing the decoded email to this value.
+    # ------------------------------------------------------------------ #
+    ADMIN_EMAIL: str = "hungrylearner786@gmail.com"
 
     @property
     def cors_origins_list(self) -> List[str]:
