@@ -308,6 +308,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
   }, [approveForm.classId])
 
   const handleApprove = async () => {
+    if (loading) return
     setError(null)
     if (!approveForm.subjectId) return setError('Please select a subject.')
     if (!approveForm.examType)  return setError('Please select an exam type.')
@@ -333,6 +334,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
 
   // Called after the user confirms the rejection dialog
   const handleReject = async () => {
+    if (loading) return
     setError(null)
     setLoading(true)
     try {

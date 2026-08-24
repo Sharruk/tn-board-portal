@@ -299,9 +299,9 @@ class SubmissionsService:
                     submission_id,
                     exc,
                 )
+                filename = file_row.get("original_filename") or file_row.get("id")
                 raise DatabaseError(
-                    f"Failed to create paper from file '{file_row.get('original_filename')}'. "
-                    "Please check the subject/class configuration and try again."
+                    f"Failed to create paper from file '{filename}': {str(exc)}"
                 ) from exc
 
         # Mark submission as approved

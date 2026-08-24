@@ -15,6 +15,9 @@ import NewsDetailPage from '../pages/NewsDetailPage'
 import SearchPage from '../pages/SearchPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import SubmitMaterialPage from '../pages/SubmitMaterialPage'
+import LeaderboardPage from '../pages/LeaderboardPage'
+import CommunityPage from '../pages/CommunityPage'
+import CommunityPostDetailPage from '../pages/CommunityPostDetailPage'
 
 import LoginPage from '../pages/admin/LoginPage'
 import DashboardPage from '../pages/admin/DashboardPage'
@@ -40,6 +43,9 @@ const router = createBrowserRouter([
       { path: 'news', element: <NewsPage /> },
       { path: 'news/:slug', element: <NewsDetailPage /> },
       { path: 'search', element: <SearchPage /> },
+      { path: 'leaderboard', element: <LeaderboardPage /> },
+      { path: 'community', element: <CommunityPage /> },
+      { path: 'community/post/:id', element: <CommunityPostDetailPage /> },
       { path: 'submit-material', element: <SubmitMaterialPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],

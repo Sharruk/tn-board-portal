@@ -415,9 +415,13 @@ class SubmissionsRepository:
 
         Returns the inserted papers row.
         """
-        # Copy the file to the public papers bucket
         original_path = file_row.get("storage_path")
-        ext = file_row.get("file_type")
+        if not original_path:
+            raise ValueError(f"Submission file {file_row.get('id')} has no storage path.")
+
+        ext = file_row.get("file_type") or "pdf"
+        # Strip any leading dot
+        ext = ext.lstrip(".").lower()
         new_path = f"{uuid.uuid4()}.{ext}"
 
         logger.debug(
@@ -427,24 +431,32 @@ class SubmissionsRepository:
         )
 
         try:
-            # Download from submissions and upload to papers, or use copy/move.
-            # Supabase Python client doesn't have cross-bucket copy, so we download then upload
+            # Download from submissions bucket
             file_data = self._db.storage.from_(SUBMISSIONS_BUCKET).download(original_path)
-            # Mime type guessing based on extension
-            content_type = "application/octet-stream"
-            if ext == "pdf": content_type = "application/pdf"
-            elif ext in ["jpg", "jpeg"]: content_type = "image/jpeg"
-            elif ext == "png": content_type = "image/png"
-            elif ext in ["doc", "docx"]: content_type = "application/msword"
-            
+        except Exception as e:
+            logger.error("Failed to download file from submissions bucket (%s): %s", original_path, e)
+            raise RuntimeError(f"Storage download failed for '{original_path}': {e}") from e
+
+        # MIME type guessing based on extension
+        content_type = "application/octet-stream"
+        if ext == "pdf":
+            content_type = "application/pdf"
+        elif ext in ["jpg", "jpeg"]:
+            content_type = "image/jpeg"
+        elif ext == "png":
+            content_type = "image/png"
+        elif ext in ["doc", "docx"]:
+            content_type = "application/msword"
+
+        try:
             self._db.storage.from_("papers").upload(
                 path=new_path,
                 file=file_data,
                 file_options={"content-type": content_type, "upsert": "false"},
             )
         except Exception as e:
-            logger.error("Failed to copy file to papers bucket: %s", e)
-            raise RuntimeError(f"Failed to copy file to public bucket: {e}")
+            logger.error("Failed to upload file to papers bucket (%s): %s", new_path, e)
+            raise RuntimeError(f"Public storage upload failed for '{new_path}': {e}") from e
 
         # Get the new public URL from papers bucket
         url_response = self._db.storage.from_("papers").get_public_url(new_path)
@@ -452,11 +464,28 @@ class SubmissionsRepository:
 
         # Build a sensible title
         raw_name = file_row.get("original_filename", "")
-        # Strip extension for title
         base_name = raw_name.rsplit(".", 1)[0] if "." in raw_name else raw_name
         title = base_name.replace("_", " ").replace("-", " ").strip()
         if not title:
             title = submission.get("details") or f"Submitted Paper {submission['id'][:8]}"
+
+        # Prevent duplicate (subject_id, title, year, exam_type) unique constraint violation
+        try:
+            existing = (
+                self._db.table("papers")
+                .select("id")
+                .eq("subject_id", subject_id)
+                .eq("title", title)
+                .eq("year", year)
+                .eq("exam_type", exam_type)
+                .execute()
+            )
+            if existing.data:
+                title = f"{title} ({submission['id'][:6]})"
+        except Exception as e:
+            logger.warning("Uniqueness check for paper title query failed, proceeding with title: %s", e)
+
+        original_filename = file_row.get("original_filename") or raw_name or f"{title}.{ext}"
 
         logger.debug(
             "SubmissionsRepository.create_paper_from_file(title=%r, subject_id=%s)",
@@ -477,7 +506,7 @@ class SubmissionsRepository:
                     "district": district,
                     "file_path": new_path,
                     "public_url": public_url,
-                    "original_filename": file_row.get("original_filename"),
+                    "original_filename": original_filename,
                     "is_visible": True,
                     "download_count": 0,
                 }
@@ -485,5 +514,5 @@ class SubmissionsRepository:
             .execute()
         )
         if not response.data:
-            raise RuntimeError("Failed to create paper from submission file")
+            raise RuntimeError("Failed to create paper from submission file — no data returned")
         return response.data[0]
