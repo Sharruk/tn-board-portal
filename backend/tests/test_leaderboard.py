@@ -6,8 +6,34 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.supabase_client import get_supabase_admin_client
+from app.dependencies.supabase import get_db
 from app.main import app
+
+
+class MockRow:
+    def __init__(self, data: dict):
+        self._mapping = data
+        self._data = list(data.values())
+
+    def __getitem__(self, idx):
+        if isinstance(idx, int):
+            return self._data[idx]
+        return self._mapping[idx]
+
+
+class MockResult:
+    def __init__(self, rows: list[dict] | None = None, scalar_val=None):
+        self._rows = [MockRow(r) for r in (rows or [])]
+        self._scalar = scalar_val
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def scalar(self):
+        return self._scalar
 
 
 @pytest.fixture
@@ -29,15 +55,9 @@ def _make_submissions_data():
 def test_leaderboard_empty(client):
     """Test leaderboard returns empty list when no submissions exist."""
     mock_db = MagicMock()
-    mock_res = MagicMock()
-    mock_res.data = []
-    
-    mock_query = MagicMock()
-    mock_query.select.return_value = mock_query
-    mock_query.execute.return_value = mock_res
-    mock_db.table.return_value = mock_query
+    mock_db.execute.return_value = MockResult([])
 
-    app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+    app.dependency_overrides[get_db] = lambda: mock_db
     try:
         response = client.get("/api/v1/leaderboard")
         assert response.status_code == 200
@@ -51,15 +71,9 @@ def test_leaderboard_empty(client):
 def test_leaderboard_rankings_and_calculations(client):
     """Test ranking order and acceptance rate calculations."""
     mock_db = MagicMock()
-    mock_res = MagicMock()
-    mock_res.data = _make_submissions_data()
+    mock_db.execute.return_value = MockResult(_make_submissions_data())
 
-    mock_query = MagicMock()
-    mock_query.select.return_value = mock_query
-    mock_query.execute.return_value = mock_res
-    mock_db.table.return_value = mock_query
-
-    app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+    app.dependency_overrides[get_db] = lambda: mock_db
     try:
         response = client.get("/api/v1/leaderboard")
         assert response.status_code == 200
@@ -69,12 +83,12 @@ def test_leaderboard_rankings_and_calculations(client):
         entries = data["data"]
         assert len(entries) == 3
 
-        # Rank 1: Sharruk (2 accepted out of 3 = 66.7%)
+        # Rank 1: Sharruk (2 approved, 0 rejected, 1 pending => 2/2 = 100.0% acceptance rate)
         assert entries[0]["rank"] == 1
         assert entries[0]["contributor_name"] == "Sharruk"
         assert entries[0]["total_contributions"] == 3
         assert entries[0]["accepted_contributions"] == 2
-        assert entries[0]["acceptance_rate"] == 66.7
+        assert entries[0]["acceptance_rate"] == 100.0
 
         # Rank 2: Pranav (1 accepted out of 2 = 50.0%)
         assert entries[1]["rank"] == 2

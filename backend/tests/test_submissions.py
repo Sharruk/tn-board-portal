@@ -25,10 +25,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies.supabase import get_db
-from app.db.supabase_client import get_supabase_admin_client
+from app.dependencies.supabase import get_db, get_db as get_supabase_admin_client
 from app.dependencies.auth import get_current_user
 from app.main import app
+
 
 # ── Shared fixtures ───────────────────────────────────────────────────────────
 
@@ -77,63 +77,114 @@ MOCK_PAPER = {
 ADMIN_HEADERS = {"Authorization": "Bearer valid-test-token"}
 
 
-# ── Admin DB mock override ────────────────────────────────────────────────────
+class MockRow:
+    def __init__(self, data: dict | tuple):
+        if isinstance(data, dict):
+            self._mapping = data
+            self._data = list(data.values())
+        else:
+            self._mapping = {f"col_{i}": v for i, v in enumerate(data)}
+            self._data = list(data)
 
-def _make_admin_db_mock() -> MagicMock:
-    """
-    Mock for admin DB: supports all chaining patterns used in the repository.
-    Returns a fully self-chaining MagicMock that returns appropriate data
-    based on the table being accessed.
-    """
-    mock = MagicMock()
-    return mock
-
-
-def _override_admin_db():
-    """Dependency override for get_current_user — returns a mock client."""
-    return _make_admin_db_mock()
+    def __getitem__(self, idx):
+        if isinstance(idx, int):
+            return self._data[idx]
+        return self._mapping[idx]
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+class MockResult:
+    def __init__(self, rows: list[dict | tuple] | None = None, scalar_val=None):
+        self._rows = [MockRow(r) for r in (rows or [])]
+        self._scalar = scalar_val
 
-def _make_query_mock(data: list) -> MagicMock:
-    """Create a self-chaining query mock that returns given data on execute()."""
-    response = MagicMock()
-    response.data = data
+    def fetchall(self):
+        return self._rows
 
-    builder = MagicMock()
-    builder.execute.return_value = response
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
 
-    query = MagicMock()
-    query.select.return_value = query
-    query.insert.return_value = builder
-    query.update.return_value = builder
-    query.eq.return_value = query
-    query.in_.return_value = query
-    query.or_.return_value = query
-    query.order.return_value = query
-    query.limit.return_value = query
-    query.execute.return_value = response
-    
-    # Allow builder methods for chained eq after update
-    builder.eq.return_value = builder
+    def scalar(self):
+        return self._scalar
 
-    return query
+
+@pytest.fixture(autouse=True)
+def auto_override_storage(monkeypatch):
+    def mock_get_storage():
+        if get_db in app.dependency_overrides:
+            db_inst = app.dependency_overrides[get_db]()
+            if hasattr(db_inst, "storage"):
+                return db_inst.storage
+        st = MagicMock()
+        bucket = MagicMock()
+        bucket.upload.return_value = MagicMock()
+        bucket.download.return_value = b"%PDF-1.4 dummy file content"
+        bucket.create_signed_url.return_value = {"signedURL": "https://example.supabase.co/signed/file.pdf"}
+        bucket.get_public_url.return_value = "https://example.supabase.co/papers/uuid.pdf"
+        st.from_.return_value = bucket
+        return st
+
+    monkeypatch.setattr("app.repositories.submissions_repository.get_storage_client", mock_get_storage)
+    monkeypatch.setattr("app.db.storage.get_storage_client", mock_get_storage)
+
 
 
 def _make_table_db(table_data: dict[str, list]) -> MagicMock:
     """
-    Create a mock DB that returns different data depending on the table name.
-    table_data: {'submissions': [...], 'submission_files': [...], 'papers': [...]}
+    Create a mock DB that returns different data depending on table and query parameters.
     """
     mock_db = MagicMock()
+    mock_storage = MagicMock()
+    bucket = MagicMock()
+    bucket.upload.return_value = MagicMock()
+    bucket.download.return_value = b"%PDF-1.4 dummy file content"
+    bucket.create_signed_url.return_value = {"signedURL": "https://example.supabase.co/signed/file.pdf"}
+    bucket.get_public_url.return_value = "https://example.supabase.co/papers/uuid.pdf"
+    mock_storage.from_.return_value = bucket
+    mock_db.storage = mock_storage
 
-    def table_side_effect(name):
-        data = table_data.get(name, [])
-        return _make_query_mock(data)
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        params = params or {}
 
-    mock_db.table.side_effect = table_side_effect
+        if "from submissions" in sql or "into submissions" in sql or "update submissions" in sql:
+            rows = table_data.get("submissions", [])
+            if "where id::text = :submission_id" in sql or "where id = :submission_id" in sql:
+                sid = str(params.get("submission_id"))
+                matches = [r for r in rows if str(r.get("id")) == sid]
+                return MockResult(matches)
+            if "status = :status" in sql:
+                st = params.get("status")
+                matches = [r for r in rows if r.get("status") == st]
+                return MockResult(matches)
+            return MockResult(rows)
+
+        if "from submission_files" in sql or "into submission_files" in sql:
+            rows = table_data.get("submission_files", [])
+            if "count(*)" in sql:
+                counts = {}
+                for r in rows:
+                    sub_id = str(r.get("submission_id", ""))
+                    counts[sub_id] = counts.get(sub_id, 0) + 1
+                return MockResult([(k, v) for k, v in counts.items()])
+            if "where id::text = :file_id" in sql:
+                fid = str(params.get("file_id"))
+                matches = [r for r in rows if str(r.get("id")) == fid]
+                return MockResult(matches)
+            if "where submission_id::text = :submission_id" in sql:
+                sid = str(params.get("submission_id"))
+                matches = [r for r in rows if str(r.get("submission_id")) == sid]
+                return MockResult(matches)
+            return MockResult(rows)
+
+        if "from papers" in sql or "into papers" in sql:
+            rows = table_data.get("papers", [MOCK_PAPER])
+            return MockResult(rows)
+
+        return MockResult([])
+
+    mock_db.execute.side_effect = _execute
     return mock_db
+
 
 
 # ============================================================================
@@ -972,18 +1023,9 @@ class TestExistingPapersNotRegressed:
 
     def _make_papers_db(self, papers_data):
         mock_db = MagicMock()
-        response = MagicMock()
-        response.data = papers_data
-
-        query = MagicMock()
-        query.select.return_value = query
-        query.eq.return_value = query
-        query.order.return_value = query
-        query.limit.return_value = query
-        query.execute.return_value = response
-
-        mock_db.table.return_value = query
+        mock_db.execute.return_value = MockResult(papers_data)
         return mock_db
+
 
     def test_get_papers_still_works(self):
         """GET /api/v1/papers returns 200."""
@@ -1027,3 +1069,91 @@ class TestExistingPapersNotRegressed:
         client = TestClient(app)
         response = client.get("/api/v1/health")
         assert response.status_code == 200
+
+
+class TestCanonicalPaperTitleCreation:
+    """Verify that paper titles created from submission approvals are canonical and preserve original filenames."""
+
+    def test_canonical_title_format_on_approval(self):
+        from app.repositories.submissions_repository import SubmissionsRepository
+
+        mock_db = MagicMock()
+        mock_storage = MagicMock()
+        bucket_mock = MagicMock()
+        bucket_mock.download.return_value = b"%PDF-1.4 test"
+        bucket_mock.get_public_url.return_value = "https://example.supabase.co/storage/v1/object/public/papers/Class10_Social_Science.pdf"
+        mock_storage.from_.return_value = bucket_mock
+
+        # Setup mock db query responses
+        subj_mapping = {"class_name": "Class 10", "subject_name": "Social Science"}
+        inserted_paper = {
+            "id": 14,
+            "subject_id": 5,
+            "exam_type": "Monthly Test",
+            "year": 2026,
+            "month": "July",
+            "district": "Chennai",
+            "title": "Class 10 Social Science Monthly Test July 2026 Chennai Question Paper",
+            "paper_type": "question",
+            "file_path": "Class10_Social_Science.pdf",
+            "public_url": "https://example.supabase.co/storage/v1/object/public/papers/Class10_Social_Science.pdf",
+            "original_filename": "Class 10 Social Science Monthly Test.pdf",
+            "is_visible": True,
+            "download_count": 0,
+            "created_at": _NOW,
+        }
+
+        class MockCursor:
+            def __init__(self, rows):
+                self._rows = rows
+            def fetchone(self):
+                if not self._rows:
+                    return None
+                r = self._rows[0]
+                m = MagicMock()
+                m._mapping = r
+                m.class_name = r.get("class_name")
+                m.subject_name = r.get("subject_name")
+                return m
+            def fetchall(self):
+                return []
+
+        call_count = 0
+        def mock_execute(stmt, params=None):
+            nonlocal call_count
+            call_count += 1
+            stmt_str = str(stmt)
+            if "subjects" in stmt_str:
+                return MockCursor([subj_mapping])
+            elif "SELECT id FROM papers" in stmt_str:
+                return MockCursor([])
+            elif "INSERT INTO papers" in stmt_str:
+                return MockCursor([inserted_paper])
+            return MockCursor([])
+
+        mock_db.execute = mock_execute
+
+        repo = SubmissionsRepository(db=mock_db, storage=mock_storage)
+        file_row = {
+            "id": "file-123",
+            "storage_path": "sub-123/uuid.pdf",
+            "original_filename": "Class 10 Social Science Monthly Test.pdf",
+            "file_type": "pdf",
+        }
+        submission = {"id": "sub-123", "details": "Uploaded test paper"}
+
+        result = repo.create_paper_from_file(
+            file_row=file_row,
+            subject_id=5,
+            exam_type="Monthly Test",
+            year=2026,
+            paper_type="question",
+            month="July",
+            district="Chennai",
+            submission=submission,
+        )
+
+        assert result["title"] == "Class 10 Social Science Monthly Test July 2026 Chennai Question Paper"
+        assert result["original_filename"] == "Class 10 Social Science Monthly Test.pdf"
+        assert "UUID" not in result["title"]
+

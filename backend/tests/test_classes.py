@@ -1,65 +1,63 @@
 """
 Tests for GET /api/v1/classes and GET /api/v1/classes/{id}
 
-These tests use FastAPI's TestClient and mock the Supabase dependency
-so no real database connection is needed.
-
-Test strategy:
-  - Override get_db() dependency with a mock that returns controlled data
-  - Test happy paths (200 responses + correct body shape)
-  - Test error paths (404 for unknown ids)
-  - Test response schema validation
+These tests use FastAPI's TestClient and mock the database session dependency.
 """
 
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import MagicMock
-
+from fastapi.testclient import TestClient
 from app.main import app
 from app.dependencies.supabase import get_db
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
-
-# Raw rows as Supabase would return them (with nested aggregate syntax)
 MOCK_CLASSES_RAW = [
-    {"id": 9,  "name": "Class 9",  "slug": "9",  "subjects": [{"count": 5}]},
-    {"id": 10, "name": "Class 10", "slug": "10", "subjects": [{"count": 5}]},
-    {"id": 11, "name": "Class 11", "slug": "11", "subjects": [{"count": 11}]},
-    {"id": 12, "name": "Class 12", "slug": "12", "subjects": [{"count": 11}]},
+    {"id": 9,  "name": "Class 9",  "slug": "9",  "subject_count": 5},
+    {"id": 10, "name": "Class 10", "slug": "10", "subject_count": 5},
+    {"id": 11, "name": "Class 11", "slug": "11", "subject_count": 11},
+    {"id": 12, "name": "Class 12", "slug": "12", "subject_count": 11},
 ]
 
 
+class MockRow:
+    def __init__(self, data: dict):
+        self._mapping = data
+        self._data = list(data.values())
+
+    def __getitem__(self, idx):
+        if isinstance(idx, int):
+            return self._data[idx]
+        return self._mapping[idx]
+
+
+class MockResult:
+    def __init__(self, rows: list[dict] | None = None, scalar_val=None):
+        self._rows = [MockRow(r) for r in (rows or [])]
+        self._scalar = scalar_val
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def scalar(self):
+        return self._scalar
+
+
 def _make_mock_db(list_data: list, single_data: list | None = None) -> MagicMock:
-    """
-    Build a mock Supabase client.
-
-    The repository uses two distinct call chains:
-      - list_all():   table().select().order().execute()   → list_data
-      - get_by_id():  table().select().eq().execute()      → single_data
-
-    We create separate query objects for each path so the execute()
-    side_effect sequences never interfere with each other.
-    """
     mock_db = MagicMock()
 
-    list_response = MagicMock()
-    list_response.data = list_data
+    def _execute(stmt, params=None):
+        params = params or {}
+        if "class_id" in params:
+            cid = params["class_id"]
+            if single_data is not None:
+                matches = [r for r in single_data if r["id"] == cid]
+                return MockResult(matches)
+            matches = [r for r in list_data if r["id"] == cid]
+            return MockResult(matches)
+        return MockResult(list_data)
 
-    single_response = MagicMock()
-    single_response.data = single_data if single_data is not None else list_data[:1]
-
-    # Query object for get_by_id: .eq().execute() → single_response
-    eq_query = MagicMock()
-    eq_query.execute.return_value = single_response
-
-    # Query object for list_all: .order().execute() → list_response
-    # .eq() on this object returns the eq_query so get_by_id works correctly.
-    list_query = MagicMock()
-    list_query.order.return_value = list_query
-    list_query.execute.return_value = list_response
-    list_query.eq.return_value = eq_query
-
-    mock_db.table.return_value.select.return_value = list_query
+    mock_db.execute.side_effect = _execute
     return mock_db
 
 
@@ -121,13 +119,11 @@ def test_list_classes_subject_count_correct():
 # ── Get single class ──────────────────────────────────────────────────────────
 
 def test_get_class_10_status_200():
-    single = [{"id": 10, "name": "Class 10", "slug": "10", "subjects": [{"count": 5}]}]
+    single = [{"id": 10, "name": "Class 10", "slug": "10", "subject_count": 5}]
     mock_db = _make_mock_db(MOCK_CLASSES_RAW, single_data=single)
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         client = TestClient(app)
-        # First call = list (not used here), second call = eq().execute()
-        # Use a fresh client with only the single mock
         resp = client.get("/api/v1/classes/10")
         assert resp.status_code == 200
         body = resp.json()
@@ -150,7 +146,7 @@ def test_get_class_not_found_returns_404():
 
 
 def test_get_class_response_fields_present():
-    single = [{"id": 9, "name": "Class 9", "slug": "9", "subjects": [{"count": 5}]}]
+    single = [{"id": 9, "name": "Class 9", "slug": "9", "subject_count": 5}]
     mock_db = _make_mock_db(MOCK_CLASSES_RAW, single_data=single)
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
