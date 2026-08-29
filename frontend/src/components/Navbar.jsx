@@ -60,8 +60,8 @@ export default function Navbar() {
               News
             </NavLink>
 
-            <NavLink to="/leaderboard" className={({ isActive }) => `text-sm font-medium transition-colors ${isActive ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}>
-              Leaderboard
+            <NavLink to="/contributors" className={({ isActive }) => `text-sm font-medium transition-colors ${isActive ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}>
+              Contributors
             </NavLink>
 
             <NavLink to="/community" className={({ isActive }) => `text-sm font-medium transition-colors ${isActive ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}>
@@ -103,7 +103,7 @@ export default function Navbar() {
           ))}
           <Link to="/official-notices" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Official Notices</Link>
           <Link to="/news" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">News</Link>
-          <Link to="/leaderboard" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Leaderboard</Link>
+          <Link to="/contributors" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Contributors</Link>
           <Link to="/community" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Community</Link>
           <Link to="/search" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Search</Link>
           <Link to="/submit-material" onClick={() => setMenuOpen(false)} className="block mt-2 mx-3 mb-3 px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 text-center shadow-sm">

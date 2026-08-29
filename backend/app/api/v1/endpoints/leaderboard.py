@@ -5,9 +5,9 @@ Leaderboard endpoint — public rankings for active contributors.
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
-from supabase import Client
+from sqlalchemy.orm import Session
 
-from app.db.supabase_client import get_supabase_admin_client
+from app.dependencies.supabase import get_db
 from app.schemas.leaderboard import LeaderboardResponse
 from app.services.leaderboard_service import LeaderboardService
 
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/leaderboard", tags=["Leaderboard"])
 )
 async def get_leaderboard(
     limit: Annotated[int, Query(description="Max contributors to return", ge=1, le=100)] = 50,
-    db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> LeaderboardResponse:
     """Retrieve public contributor rankings."""
     service = LeaderboardService(db)
