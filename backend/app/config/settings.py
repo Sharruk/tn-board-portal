@@ -41,11 +41,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"  # DEBUG | INFO | WARNING | ERROR | CRITICAL
 
     # ------------------------------------------------------------------ #
-    # Supabase
+    # Supabase & PostgreSQL
     # ------------------------------------------------------------------ #
-    SUPABASE_URL: str
-    SUPABASE_ANON_KEY: str
-    SUPABASE_SERVICE_ROLE_KEY: str = ""  # Optional — only needed for admin ops
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""  # For Supabase Storage operations
+    SUPABASE_DATABASE_URL: str = ""      # Direct PostgreSQL connection URL (port 5432)
+
 
     # ------------------------------------------------------------------ #
     # CORS

@@ -37,3 +37,24 @@ class ValidationError(HTTPException):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=detail,
         )
+
+
+class ForbiddenError(HTTPException):
+    """User lacks permission to perform this action."""
+
+    def __init__(self, detail: str = "Access forbidden.") -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail,
+        )
+
+
+class UnauthorizedError(HTTPException):
+    """Authentication required or invalid."""
+
+    def __init__(self, detail: str = "Authentication required.") -> None:
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=detail,
+        )
+

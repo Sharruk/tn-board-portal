@@ -1,22 +1,16 @@
 """
-FastAPI dependency: Supabase client injection.
+FastAPI dependency: Database Session injection.
 
 Usage in a route:
     from app.dependencies.supabase import get_db
 
     @router.get("/example")
-    async def example(db: Client = Depends(get_db)):
+    async def example(db: Session = Depends(get_db)):
         ...
-
-Using Depends() makes the client mockable in tests — just override
-the dependency in the TestClient without touching production code.
 """
 
-from supabase import Client
+from typing import Generator
+from sqlalchemy.orm import Session
+from app.db.session import get_db
 
-from app.db.supabase_client import get_supabase_client
-
-
-def get_db() -> Client:
-    """Return the application Supabase client singleton."""
-    return get_supabase_client()
+__all__ = ["get_db", "Session"]
