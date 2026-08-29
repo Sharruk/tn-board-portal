@@ -287,12 +287,16 @@ export default function PaperDetailPage() {
   }, [id, loadLikesAndComments])
 
   const handleLikeToggle = async () => {
-    if (!isAuthenticated) {
-      showToast('Please sign in with Google to like this paper.')
-      signInWithGoogle()
-      return
-    }
     if (!paper || liking) return
+
+    if (!isAuthenticated) {
+      showToast('Signing in with Google to like this paper…')
+      const { user: authedUser, error: authError } = await signInWithGoogle()
+      if (authError || !authedUser) {
+        showToast('Sign-in cancelled or failed.')
+        return
+      }
+    }
 
     setLiking(true)
     try {
@@ -315,24 +319,7 @@ export default function PaperDetailPage() {
       setDownloadCount(c => c + 1)
       downloadPaper(paper.public_url, paper.title, paper.original_filename)
     } catch (err) {
-      if (err.message === 'Authentication required to download') {
-        showToast('Please sign in to download. Opening Google Sign-In...')
-        try {
-          const { user: authedUser, error: authError } = await signInWithGoogle()
-          if (authError) throw authError
-          if (authedUser) {
-            showToast('Signed in successfully! Downloading...')
-            await recordDownload(paper.id)
-            trackDownload(paper.id)
-            setDownloadCount(c => c + 1)
-            downloadPaper(paper.public_url, paper.title, paper.original_filename)
-          }
-        } catch (signInErr) {
-          showToast(signInErr.message || 'Sign-In failed. Cannot download.')
-        }
-      } else {
-        showToast(err.message || 'Failed to record download')
-      }
+      showToast(err.message || 'Failed to record download')
     }
   }, [paper, showToast])
 
@@ -361,11 +348,16 @@ export default function PaperDetailPage() {
   }, [paper, showToast])
 
   const handlePostComment = async (parentId = null, text = newCommentText) => {
-    if (!isAuthenticated) {
-      signInWithGoogle()
-      return
-    }
     if (!text.trim() || !paper) return
+
+    if (!isAuthenticated) {
+      showToast('Signing in with Google to post comment…')
+      const { user: authedUser, error: authError } = await signInWithGoogle()
+      if (authError || !authedUser) {
+        showToast('Sign-in cancelled or failed.')
+        return
+      }
+    }
 
     setSubmittingComment(true)
     setCommentError(null)
@@ -559,6 +551,22 @@ export default function PaperDetailPage() {
         {/* Add Comment Input */}
         {isAuthenticated ? (
           <form onSubmit={e => { e.preventDefault(); handlePostComment() }} className="space-y-3">
+            {/* Authenticated Identity Context */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-100">
+              {user?.photoURL ? (
+                <img src={user.photoURL} alt={user?.displayName || 'User'} className="w-8 h-8 rounded-full object-cover border border-gray-200" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
+                  {(user?.displayName || user?.email || 'U')[0].toUpperCase()}
+                </div>
+              )}
+              <div className="text-xs">
+                <span className="font-semibold text-gray-800">{user?.displayName || user?.email?.split('@')[0] || 'Student'}</span>
+                <span className="text-gray-400 mx-1.5">·</span>
+                <span className="text-gray-500">{user?.email}</span>
+              </div>
+            </div>
+
             {commentError && (
               <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-medium border border-red-200">
                 {commentError}

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createSubmission } from '../services/submissions'
 
 const ALLOWED_TYPES = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']
@@ -48,11 +48,19 @@ import { useAuth } from '../contexts/AuthContext'
 import { signInWithGoogle } from '../lib/firebase'
 
 export default function SubmitMaterialPage() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [form, setForm] = useState({
-    publisher_name: '',
+    publisher_name: user?.displayName || user?.email?.split('@')[0] || '',
     details: '',
   })
+
+  // Sync publisher_name when user loads
+  useEffect(() => {
+    if (user && !form.publisher_name) {
+      setForm(f => ({ ...f, publisher_name: user.displayName || user.email?.split('@')[0] || '' }))
+    }
+  }, [user])
+
   const [files, setFiles] = useState([])
   const [fileError, setFileError] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -224,6 +232,27 @@ export default function SubmitMaterialPage() {
         {/* Form */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
           <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+
+            {/* Authenticated User Identity Card */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50/40 border border-blue-100 rounded-2xl p-4 sm:p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3.5">
+                {user?.photoURL ? (
+                  <img src={user.photoURL} alt={user?.displayName || 'User'} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-xs" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-lg shadow-xs">
+                    {(user?.displayName || user?.email || 'U')[0].toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <div className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Authenticated Contributor</div>
+                  <div className="text-base font-bold text-gray-900">{user?.displayName || user?.email?.split('@')[0] || 'Contributor'}</div>
+                  <div className="text-xs text-gray-500 font-medium">{user?.email}</div>
+                </div>
+              </div>
+              <span className="hidden sm:inline-flex items-center gap-1 text-xs px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold">
+                ✓ Google Account
+              </span>
+            </div>
 
             {/* Publisher / Contributor Name */}
             <div>

@@ -90,19 +90,19 @@ export default function CommunityPage() {
     fetchData(activeTab, 1)
   }, [activeTab])
 
-  const handleStartDiscussion = () => {
+  const handleStartDiscussion = async () => {
     if (!isAuthenticated) {
-      signInWithGoogle()
-      return
+      const { user: authedUser } = await signInWithGoogle()
+      if (!authedUser) return
     }
     setModalError(null)
     setIsModalOpen(true)
   }
 
-  const handleOpenPaperRequest = () => {
+  const handleOpenPaperRequest = async () => {
     if (!isAuthenticated) {
-      signInWithGoogle()
-      return
+      const { user: authedUser } = await signInWithGoogle()
+      if (!authedUser) return
     }
     setModalError(null)
     setIsRequestModalOpen(true)

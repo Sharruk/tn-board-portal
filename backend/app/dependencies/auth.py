@@ -156,6 +156,11 @@ async def get_current_user(
 
     user = dict(row._mapping)
 
+    # Ensure display_name and photo_url from verified Firebase token are present
+    if not user.get("display_name") and decoded_token.get("name"):
+        user["display_name"] = decoded_token.get("name")
+    user["photo_url"] = decoded_token.get("picture")
+
     if not user.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

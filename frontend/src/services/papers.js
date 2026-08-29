@@ -187,14 +187,13 @@ export const getExamTypes = () =>
  * @returns {Promise<void>}
  */
 export const recordDownload = async (id) => {
-  const token = await getFirebaseToken()
-  if (!token) throw new Error('Authentication required to download')
+  const token = await getFirebaseToken().catch(() => null)
+  const headers = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
   await apiFetch(`/api/v1/papers/${id}/download`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  })
+    headers,
+  }).catch(() => {})
 }
 
 /**

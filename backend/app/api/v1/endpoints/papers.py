@@ -212,15 +212,17 @@ async def get_paper(
 )
 async def record_download(
     paper_id: int,
-    current_user: dict = Depends(require_role(["USER", "CONTRIBUTOR", "ADMIN", "SUPER_ADMIN"])),
+    current_user: Optional[dict] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> None:
     """Increment download counter for a published paper."""
     service = PapersService(db)
+    uid = current_user.get("firebase_uid") if current_user else None
+    email = current_user.get("email") if current_user else None
     service.record_download(
         paper_id,
-        user_id=current_user.get("firebase_uid"),
-        user_email=current_user.get("email"),
+        user_id=uid,
+        user_email=email,
     )
 
 

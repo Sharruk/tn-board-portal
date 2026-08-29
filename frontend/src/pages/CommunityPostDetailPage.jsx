@@ -198,8 +198,8 @@ export default function CommunityPostDetailPage() {
 
   const handleUpvote = async () => {
     if (!isAuthenticated) {
-      signInWithGoogle()
-      return
+      const { user: authedUser } = await signInWithGoogle()
+      if (!authedUser) return
     }
     if (upvoting) return
     setUpvoting(true)
@@ -214,11 +214,11 @@ export default function CommunityPostDetailPage() {
   }
 
   const handleCommentSubmit = async (parentId = null, text = commentText) => {
-    if (!isAuthenticated) {
-      signInWithGoogle()
-      return
-    }
     if (!text.trim()) return
+    if (!isAuthenticated) {
+      const { user: authedUser } = await signInWithGoogle()
+      if (!authedUser) return
+    }
     setSubmittingComment(true)
     setCommentError(null)
     try {
@@ -418,6 +418,22 @@ export default function CommunityPostDetailPage() {
           <div className="bg-white rounded-3xl border border-gray-200 p-5 shadow-sm">
             {isAuthenticated ? (
               <form onSubmit={e => { e.preventDefault(); handleCommentSubmit() }} className="space-y-3">
+                {/* Authenticated Identity Context */}
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-100">
+                  {user?.photoURL ? (
+                    <img src={user.photoURL} alt={user?.displayName || 'User'} className="w-8 h-8 rounded-full object-cover border border-gray-200" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
+                      {(user?.displayName || user?.email || 'U')[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="text-xs">
+                    <span className="font-semibold text-gray-800">{user?.displayName || user?.email?.split('@')[0] || 'Community Member'}</span>
+                    <span className="text-gray-400 mx-1.5">·</span>
+                    <span className="text-gray-500">{user?.email}</span>
+                  </div>
+                </div>
+
                 {commentError && (
                   <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-xs text-red-600">
                     {commentError}

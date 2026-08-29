@@ -44,6 +44,7 @@ _EXISTING_USER = {
     "firebase_uid": _FIREBASE_UID,
     "email": _EMAIL,
     "display_name": "Test User",
+    "photo_url": None,
     "role": "USER",
     "is_active": True,
 }
@@ -53,6 +54,7 @@ _CREATED_USER = {
     "firebase_uid": _FIREBASE_UID,
     "email": _EMAIL,
     "display_name": "Test User",
+    "photo_url": None,
     "role": "USER",
     "is_active": True,
 }

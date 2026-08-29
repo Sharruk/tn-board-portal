@@ -44,6 +44,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       session,
       firebaseUser,
+      user: firebaseUser,
       isAuthenticated: !!firebaseUser,
       isAdmin,
       isLoading: session === undefined,

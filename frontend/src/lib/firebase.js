@@ -46,10 +46,23 @@ export const logOut = async () => {
   }
 };
 
-export const getFirebaseToken = async () => {
-  const user = auth.currentUser;
-  if (user) {
-    return user.getIdToken();
+export const getFirebaseToken = async (forceRefresh = false) => {
+  if (auth.currentUser) {
+    return auth.currentUser.getIdToken(forceRefresh);
   }
-  return null;
+  return new Promise((resolve) => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      unsubscribe();
+      if (user) {
+        try {
+          resolve(await user.getIdToken(forceRefresh));
+        } catch {
+          resolve(null);
+        }
+      } else {
+        resolve(null);
+      }
+    });
+  });
 };
+
