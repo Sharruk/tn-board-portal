@@ -1,40 +1,23 @@
 """
-Subjects repository — all Supabase data access for the `subjects` table.
+Subjects repository — direct PostgreSQL data access for the `subjects` table.
 
-This is the ONLY layer that knows about Supabase.
-Services call these methods; routes never call Supabase directly.
-
-Query strategy mirrors the frontend services/subjects.js and
-the embedded getSubjectsForClass in services/classes.js:
-  - list:          SELECT enriched columns ORDER BY display_order
-  - list_by_class: SELECT enriched columns WHERE class_id = $1
-  - get_by_id:     SELECT enriched + class info WHERE id = $1 SINGLE
+Uses SQLAlchemy Session with parameterized SQL.
 """
 
 import logging
 from typing import Any
 
-from supabase import Client
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-
-# PostgREST select — joins class info and counts available papers.
-_SELECT_ENRICHED = (
-    "id, name, slug, is_practical, display_order, class_id, "
-    "classes ( id, name, slug ), "
-    "papers ( count )"
-)
 
 
 class SubjectsRepository:
     """Data access layer for the `subjects` table."""
 
-    def __init__(self, db: Client) -> None:
+    def __init__(self, db: Session) -> None:
         self._db = db
-
-    # ------------------------------------------------------------------ #
-    # Public interface
-    # ------------------------------------------------------------------ #
 
     def list_all(self) -> list[dict[str, Any]]:
         """
@@ -42,14 +25,21 @@ class SubjectsRepository:
         ordered by class_id then display_order.
         """
         logger.debug("SubjectsRepository.list_all()")
-        response = (
-            self._db.table("subjects")
-            .select(_SELECT_ENRICHED)
-            .order("class_id")
-            .order("display_order")
-            .execute()
+        stmt = text(
+            """
+            SELECT 
+                s.id, s.name, s.slug, s.is_practical, s.display_order, s.class_id,
+                c.name AS class_name, c.slug AS class_slug,
+                COUNT(p.id)::int AS paper_count
+            FROM subjects s
+            JOIN classes c ON s.class_id = c.id
+            LEFT JOIN papers p ON s.id = p.subject_id AND p.is_visible = true
+            GROUP BY s.id, s.name, s.slug, s.is_practical, s.display_order, s.class_id, c.name, c.slug
+            ORDER BY s.class_id, s.display_order
+            """
         )
-        return self._normalise_list(response.data)
+        result = self._db.execute(stmt)
+        return [dict(row._mapping) for row in result.fetchall()]
 
     def list_by_class(self, class_id: int) -> list[dict[str, Any]]:
         """
@@ -57,67 +47,43 @@ class SubjectsRepository:
         ordered by display_order.
         """
         logger.debug("SubjectsRepository.list_by_class(class_id=%s)", class_id)
-        response = (
-            self._db.table("subjects")
-            .select(_SELECT_ENRICHED)
-            .eq("class_id", class_id)
-            .order("display_order")
-            .execute()
+        stmt = text(
+            """
+            SELECT 
+                s.id, s.name, s.slug, s.is_practical, s.display_order, s.class_id,
+                c.name AS class_name, c.slug AS class_slug,
+                COUNT(p.id)::int AS paper_count
+            FROM subjects s
+            JOIN classes c ON s.class_id = c.id
+            LEFT JOIN papers p ON s.id = p.subject_id AND p.is_visible = true
+            WHERE s.class_id = :class_id
+            GROUP BY s.id, s.name, s.slug, s.is_practical, s.display_order, s.class_id, c.name, c.slug
+            ORDER BY s.display_order
+            """
         )
-        return self._normalise_list(response.data)
+        result = self._db.execute(stmt, {"class_id": class_id})
+        return [dict(row._mapping) for row in result.fetchall()]
 
     def get_by_id(self, subject_id: int) -> dict[str, Any] | None:
         """
         Return a single subject by primary key, or None if not found.
         """
         logger.debug("SubjectsRepository.get_by_id(subject_id=%s)", subject_id)
-        response = (
-            self._db.table("subjects")
-            .select(_SELECT_ENRICHED)
-            .eq("id", subject_id)
-            .execute()
+        stmt = text(
+            """
+            SELECT 
+                s.id, s.name, s.slug, s.is_practical, s.display_order, s.class_id,
+                c.name AS class_name, c.slug AS class_slug,
+                COUNT(p.id)::int AS paper_count
+            FROM subjects s
+            JOIN classes c ON s.class_id = c.id
+            LEFT JOIN papers p ON s.id = p.subject_id AND p.is_visible = true
+            WHERE s.id = :subject_id
+            GROUP BY s.id, s.name, s.slug, s.is_practical, s.display_order, s.class_id, c.name, c.slug
+            """
         )
-        if not response.data:
+        result = self._db.execute(stmt, {"subject_id": subject_id})
+        row = result.fetchone()
+        if not row:
             return None
-        return self._normalise_row(response.data[0])
-
-    # ------------------------------------------------------------------ #
-    # Private helpers
-    # ------------------------------------------------------------------ #
-
-    @staticmethod
-    def _normalise_row(row: dict[str, Any]) -> dict[str, Any]:
-        """
-        Flatten joined class info and paper aggregate count.
-
-        Supabase returns:
-            {
-              "id": 8,
-              "classes": {"id": 10, "name": "Class 10", "slug": "10"},
-              "papers":  [{"count": 12}]
-            }
-        We want:
-            {
-              "id": 8,
-              "class_name": "Class 10",
-              "class_slug": "10",
-              "paper_count": 12
-            }
-        """
-        classes = row.get("classes") or {}
-        papers = row.get("papers") or []
-        return {
-            "id": row["id"],
-            "class_id": row["class_id"],
-            "name": row["name"],
-            "slug": row["slug"],
-            "is_practical": row["is_practical"],
-            "display_order": row["display_order"],
-            "class_name": classes.get("name"),
-            "class_slug": classes.get("slug"),
-            "paper_count": papers[0].get("count", 0) if papers else 0,
-        }
-
-    @classmethod
-    def _normalise_list(cls, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [cls._normalise_row(r) for r in rows]
+        return dict(row._mapping)

@@ -12,7 +12,7 @@ Current rules (Sprint 03):
 
 import logging
 
-from supabase import Client
+from sqlalchemy.orm import Session
 
 from app.repositories.classes_repository import ClassesRepository
 from app.schemas.class_ import ClassListResponse, ClassResponse
@@ -24,8 +24,9 @@ logger = logging.getLogger(__name__)
 class ClassesService:
     """Business logic for the classes domain."""
 
-    def __init__(self, db: Client) -> None:
+    def __init__(self, db: Session) -> None:
         self._repo = ClassesRepository(db)
+
 
     # ------------------------------------------------------------------ #
     # Public interface (called by routes)

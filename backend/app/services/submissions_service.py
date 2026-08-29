@@ -20,7 +20,7 @@ import re
 from typing import Any
 
 from fastapi import UploadFile
-from supabase import Client
+from sqlalchemy.orm import Session
 
 from app.repositories.submissions_repository import (
     ALLOWED_EXTENSIONS,
@@ -65,8 +65,8 @@ def _sanitise_filename(name: str) -> str:
 class SubmissionsService:
     """Business logic for the material submission domain."""
 
-    def __init__(self, db: Client) -> None:
-        self._repo = SubmissionsRepository(db)
+    def __init__(self, db: Session, storage: Any = None) -> None:
+        self._repo = SubmissionsRepository(db, storage=storage)
 
     # ------------------------------------------------------------------ #
     # PUBLIC: Create a new submission

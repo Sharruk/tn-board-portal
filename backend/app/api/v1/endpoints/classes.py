@@ -14,7 +14,7 @@ All database access lives in ClassesRepository.
 import logging
 
 from fastapi import APIRouter, Depends
-from supabase import Client
+from sqlalchemy.orm import Session
 
 from app.dependencies.supabase import get_db
 from app.schemas.class_ import ClassListResponse, ClassResponse
@@ -34,7 +34,7 @@ router = APIRouter(prefix="/classes", tags=["Classes"])
         "with the number of subjects in each class."
     ),
 )
-async def list_classes(db: Client = Depends(get_db)) -> ClassListResponse:
+async def list_classes(db: Session = Depends(get_db)) -> ClassListResponse:
     """Return all school classes ordered by class number."""
     service = ClassesService(db)
     return service.list_classes()
@@ -49,7 +49,8 @@ async def list_classes(db: Client = Depends(get_db)) -> ClassListResponse:
         404: {"description": "Class not found"},
     },
 )
-async def get_class(class_id: int, db: Client = Depends(get_db)) -> ClassResponse:
+async def get_class(class_id: int, db: Session = Depends(get_db)) -> ClassResponse:
     """Return a single class by its primary key."""
     service = ClassesService(db)
+
     return service.get_class(class_id)

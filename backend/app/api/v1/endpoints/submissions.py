@@ -1,27 +1,17 @@
 """
-Submissions endpoints.
+Submissions endpoints — POST /api/v1/submissions (public)
+                     — GET  /api/v1/submissions (admin)
+                     — GET  /api/v1/submissions/{id} (admin)
+                     — GET  /api/v1/submissions/files/{id}/download (admin)
+                     — POST /api/v1/submissions/{id}/approve (admin)
+                     — POST /api/v1/submissions/{id}/reject (admin)
+                     — POST /api/v1/submissions/{id}/restore (admin)
 
-Endpoints:
-  POST /api/v1/submissions                            — public: create submission (multipart)
-  GET  /api/v1/submissions                            — admin: list all submissions
-  GET  /api/v1/submissions/{id}                       — admin: get submission detail
-  POST /api/v1/submissions/{id}/approve               — admin: approve + create paper
-  POST /api/v1/submissions/{id}/reject                — admin: reject submission
-  POST /api/v1/submissions/{id}/restore               — admin: restore rejected → pending
-  GET  /api/v1/submissions/files/{file_id}/download   — admin: proxy-download private file
-
-Auth:
-  POST /api/v1/submissions         → auth required (contributor role or higher)
-  All other endpoints              → Firebase JWT required (admin only)
-
-Admin auth mechanism:
-  The caller must pass a valid Firebase JWT in the
-  Authorization: Bearer <token> header.  The require_admin dependency
-  verifies this token and raises HTTP 401/403 as appropriate.
-
-Route responsibilities:
-  - Accept and pass parameters to the service
-  - Return response models
+Route layer responsibilities:
+  - Validate parameters (FastAPI type hints)
+  - Verify auth (Depends(require_admin))
+  - Call SubmissionsService
+  - Return response
   - Nothing else
 
 All business logic lives in SubmissionsService.
@@ -34,10 +24,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
-from supabase import Client
+from sqlalchemy.orm import Session
 
-from app.db.supabase_client import get_supabase_admin_client
 from app.dependencies.auth import require_admin, require_role
+from app.dependencies.supabase import get_db
 from app.schemas.submission import (
     ApproveRequest,
     RejectRequest,
@@ -46,7 +36,7 @@ from app.schemas.submission import (
     SubmissionOut,
 )
 from app.services.submissions_service import SubmissionsService
-from app.utils.exceptions import NotFoundError, DatabaseError, ValidationError
+from app.utils.exceptions import DatabaseError, NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +54,7 @@ router = APIRouter(prefix="/submissions", tags=["Submissions"])
     description=(
         "Authenticated endpoint. Accepts a multipart form with contributor details and "
         "up to 5 files (PDF, Word, or image). "
-        "The submission is stored with status='pending' for admin review.\\n\\n"
+        "The submission is stored with status='pending' for admin review.\n\n"
         "**Auth required.** Submissions do NOT immediately appear on the public site."
     ),
     responses={
@@ -83,15 +73,12 @@ async def create_submission(
         Form(description="Optional description or additional details"),
     ] = None,
     current_user: dict = Depends(require_role(["USER", "CONTRIBUTOR", "ADMIN", "SUPER_ADMIN"])),
-    admin_db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> SubmissionCreateResponse:
     """
     Create a new material submission.
-    Uses the admin Supabase client because file uploads to the private
-    submissions bucket require service-role permissions, and inserting
-    then returning the row (select) bypasses the anon read restriction.
     """
-    service = SubmissionsService(admin_db)
+    service = SubmissionsService(db)
     return await service.create_submission(
         publisher_name=publisher_name,
         email=current_user.get("email"),
@@ -109,7 +96,7 @@ async def create_submission(
     response_model=SubmissionListResponse,
     summary="List material submissions (admin)",
     description=(
-        "Admin only. Returns submissions ordered by submitted date (newest first).\\n\\n"
+        "Admin only. Returns submissions ordered by submitted date (newest first).\n\n"
         "Use the `status` query param to filter: `pending`, `approved`, or `rejected`."
     ),
     responses={
@@ -128,10 +115,10 @@ async def list_submissions(
         Query(description="Max submissions to return", ge=1, le=200),
     ] = 50,
     current_user: dict = Depends(require_admin),
-    admin_db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> SubmissionListResponse:
     """Return all submissions for the admin review UI."""
-    service = SubmissionsService(admin_db)
+    service = SubmissionsService(db)
     return service.list_submissions(status=status_filter, limit=limit)
 
 
@@ -147,10 +134,10 @@ async def list_submissions(
     summary="Download a private submission file (admin)",
     description=(
         "Admin only. Proxies the private Supabase Storage file through the backend "
-        "so the browser receives a proper Content-Disposition: attachment response.\\n\\n"
+        "so the browser receives a proper Content-Disposition: attachment response.\n\n"
         "The HTML `download` attribute is silently ignored by browsers for cross-origin "
         "URLs, which is why signed URLs cannot be used for downloads directly. "
-        "This endpoint solves that by streaming the file through the backend.\\n\\n"
+        "This endpoint solves that by streaming the file through the backend.\n\n"
         "The service-role key is never exposed to the browser."
     ),
     responses={
@@ -164,7 +151,7 @@ async def list_submissions(
 async def download_submission_file(
     file_id: str,
     current_user: dict = Depends(require_admin),
-    admin_db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> Response:
     """
     Proxy-download a submission file from the private Supabase bucket.
@@ -175,7 +162,7 @@ async def download_submission_file(
 
     The browser will save the file locally regardless of origin.
     """
-    service = SubmissionsService(admin_db)
+    service = SubmissionsService(db)
     try:
         file_bytes, content_type, original_filename = service.download_file(file_id)
     except NotFoundError:
@@ -209,7 +196,7 @@ async def download_submission_file(
     response_model=SubmissionOut,
     summary="Get submission detail (admin)",
     description=(
-        "Admin only. Returns one submission with its full file list.\\n\\n"
+        "Admin only. Returns one submission with its full file list.\n\n"
         "Use this to inspect files before approving or rejecting."
     ),
     responses={
@@ -222,10 +209,10 @@ async def download_submission_file(
 async def get_submission(
     submission_id: str,
     current_user: dict = Depends(require_admin),
-    admin_db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> SubmissionOut:
     """Return one submission with its file list."""
-    service = SubmissionsService(admin_db)
+    service = SubmissionsService(db)
     return service.get_submission(submission_id)
 
 
@@ -238,10 +225,10 @@ async def get_submission(
     summary="Approve a submission (admin)",
     description=(
         "Admin only. Approves a pending submission and creates one published "
-        "paper record in the `papers` table for each submitted file.\\n\\n"
+        "paper record in the `papers` table for each submitted file.\n\n"
         "The request body must supply `subject_id`, `exam_type`, `year`, and "
         "`paper_type` — the admin fills these in at approval time because the "
-        "public form does not collect subject/class information.\\n\\n"
+        "public form does not collect subject/class information.\n\n"
         "The submission status is set to `approved` and `reviewed_at` is set to now."
     ),
     responses={
@@ -256,10 +243,10 @@ async def approve_submission(
     submission_id: str,
     req: ApproveRequest,
     current_user: dict = Depends(require_admin),
-    admin_db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Approve a pending submission and create paper records."""
-    service = SubmissionsService(admin_db)
+    service = SubmissionsService(db)
     return service.approve_submission(submission_id, req)
 
 
@@ -271,10 +258,10 @@ async def approve_submission(
     status_code=status.HTTP_200_OK,
     summary="Reject a submission (admin)",
     description=(
-        "Admin only. Rejects a pending submission.\\n\\n"
+        "Admin only. Rejects a pending submission.\n\n"
         "No paper record is created. The uploaded files remain in storage. "
-        "An optional `rejection_reason` can be stored for admin reference.\\n\\n"
-        "The submission status is set to `rejected` and `reviewed_at` is set to now.\\n\\n"
+        "An optional `rejection_reason` can be stored for admin reference.\n\n"
+        "The submission status is set to `rejected` and `reviewed_at` is set to now.\n\n"
         "A rejected submission can later be restored to `pending` via the "
         "`POST /submissions/{id}/restore` endpoint."
     ),
@@ -290,10 +277,10 @@ async def reject_submission(
     submission_id: str,
     req: RejectRequest,
     current_user: dict = Depends(require_admin),
-    admin_db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Reject a pending submission."""
-    service = SubmissionsService(admin_db)
+    service = SubmissionsService(db)
     return service.reject_submission(submission_id, req)
 
 
@@ -306,10 +293,10 @@ async def reject_submission(
     summary="Restore a rejected submission to pending (admin)",
     description=(
         "Admin only. Moves a `rejected` submission back to `pending` so it can "
-        "be reviewed and approved.\\n\\n"
-        "Clears `rejection_reason` and `reviewed_at`.\\n\\n"
+        "be reviewed and approved.\n\n"
+        "Clears `rejection_reason` and `reviewed_at`.\n\n"
         "Only `rejected` submissions can be restored. "
-        "`approved` submissions cannot be restored (they are already published).\\n\\n"
+        "`approved` submissions cannot be restored (they are already published).\n\n"
         "State machine: REJECTED → PENDING → APPROVED"
     ),
     responses={
@@ -323,8 +310,8 @@ async def reject_submission(
 async def restore_submission(
     submission_id: str,
     current_user: dict = Depends(require_admin),
-    admin_db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> dict:
     """Restore a rejected submission back to pending for re-review."""
-    service = SubmissionsService(admin_db)
+    service = SubmissionsService(db)
     return service.restore_submission(submission_id)

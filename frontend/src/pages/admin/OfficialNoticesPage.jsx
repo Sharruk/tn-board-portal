@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { getAdminNotices, uploadNotice, updateNotice, deleteNotice } from '../../services/admin'
 import { getClasses } from '../../services/classes'
 import { NOTICE_CATEGORIES, CATEGORY_ICONS, isValidYouTubeUrl } from '../../services/notices'
+import { viewPdf } from '../../utils/download'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -407,9 +408,17 @@ export default function AdminOfficialNoticesPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-600">{n.year}</td>
                       <td className="px-4 py-3">
-                        {n.public_url
-                          ? <a href={n.public_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">✓ YES</a>
-                          : <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>}
+                        {n.public_url ? (
+                          <button
+                            onClick={() => viewPdf(n.public_url, n.title, n.title)}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors"
+                            title="Preview file"
+                          >
+                            ✓ YES
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-500 font-mono text-xs">{n.view_count ?? 0}</td>
                       <td className="px-4 py-3 text-gray-500 font-mono text-xs">{n.download_count ?? 0}</td>

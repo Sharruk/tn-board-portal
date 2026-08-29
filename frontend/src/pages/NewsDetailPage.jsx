@@ -128,6 +128,9 @@ export default function NewsDetailPage() {
         const a = res.data
         setArticle(a)
         setViewCount(a.view_count ?? 0)
+        if (a?.title) {
+          document.title = `${a.title} | Education News | TN Board Portal`
+        }
         recordNewsView(a.id)
         setViewCount(c => c + 1)
         if (a.category) {

@@ -10,6 +10,7 @@ import {
 } from '../../services/submissions'
 import { getClasses, getSubjectsForClass } from '../../services/classes'
 import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../../services/papers'
+import { viewPdf } from '../../utils/download'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i)
@@ -174,9 +175,12 @@ function FilePreviewModal({ file, token, onClose }) {
                     <p className="text-4xl mb-3">⚠️</p>
                     <p className="text-sm font-semibold text-gray-700 mb-1">Unable to embed PDF</p>
                     <p className="text-xs text-gray-400 mb-4">Your browser could not display this PDF inline.</p>
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
+                    <button
+                      onClick={() => viewPdf(url, file.original_filename, file.original_filename)}
+                      className="text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors"
+                    >
                       Open PDF in new tab ↗
-                    </a>
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -188,9 +192,12 @@ function FilePreviewModal({ file, token, onClose }) {
                   )}
                   <iframe src={url} title={file.original_filename} className="w-full flex-1 min-h-[60vh] border-0" onLoad={() => setPdfLoaded(true)} onError={() => setLoadError(true)} />
                   <div className="px-4 py-2 bg-white border-t border-gray-100 shrink-0">
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                    <button
+                      onClick={() => viewPdf(url, file.original_filename, file.original_filename)}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
                       Open in new tab ↗
-                    </a>
+                    </button>
                   </div>
                 </>
               )}

@@ -13,6 +13,7 @@ import {
   getOfficeViewerUrl,
   getYouTubeEmbedUrl,
 } from '../services/notices'
+import { downloadPaper } from '../utils/download'
 
 // =============================================================================
 // Sub-components
@@ -202,6 +203,9 @@ export default function NoticeDetailPage() {
         setNotice(n)
         setDownloadCount(n.download_count ?? 0)
         setViewCount(n.view_count ?? 0)
+        if (n?.title) {
+          document.title = `${n.title} | Official Notices | TN Board Portal`
+        }
         // Increment view count (fire-and-forget)
         recordNoticeView(n.id)
         setViewCount(c => c + 1)
@@ -221,11 +225,7 @@ export default function NoticeDetailPage() {
     recordNoticeDownload(notice.id)
       .then(() => setDownloadCount(c => c + 1))
       .catch(() => {})
-    const a = document.createElement('a')
-    a.href = notice.public_url
-    a.download = notice.title || 'notice'
-    a.target = '_blank'
-    a.click()
+    downloadPaper(notice.public_url, notice.title, notice.original_filename)
   }, [notice])
 
   if (loading) return <div className="max-w-4xl mx-auto px-4 py-12"><LoadingSpinner text="Loading notice…" /></div>

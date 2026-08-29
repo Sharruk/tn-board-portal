@@ -15,7 +15,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from supabase import Client
+from sqlalchemy.orm import Session
 
 from app.dependencies.supabase import get_db
 from app.schemas.subject import SubjectListResponse, SubjectResponse
@@ -43,7 +43,7 @@ async def list_subjects(
             examples=[10],
         ),
     ] = None,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> SubjectListResponse:
     """Return all subjects, optionally filtered by class_id."""
     service = SubjectsService(db)
@@ -61,8 +61,9 @@ async def list_subjects(
 )
 async def get_subject(
     subject_id: int,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> SubjectResponse:
     """Return a single subject by its primary key."""
     service = SubjectsService(db)
+
     return service.get_subject(subject_id)

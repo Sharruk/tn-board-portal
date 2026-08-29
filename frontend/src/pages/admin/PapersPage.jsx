@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { getAdminPapers, uploadPaper, deletePaper, updatePaper } from '../../services/admin'
 import { getClasses, getSubjectsForClass } from '../../services/classes'
 import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../../services/papers'
+import { viewPdf, downloadPaper } from '../../utils/download'
 import BulkUploadTab from './BulkUploadTab'
 
 const CURRENT_YEAR = new Date().getFullYear()
@@ -511,8 +512,15 @@ export default function PapersPage() {
                         <tr key={p.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 text-gray-400 font-mono text-xs">{index + 1}</td>
                           <td className="px-4 py-3 max-w-xs">
-                            <div className="font-medium text-gray-800 truncate">{p.title}</div>
-                            <Badge type={p.paper_type} />
+                            <div className="font-medium text-gray-800 truncate" title={p.title}>{p.title}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge type={p.paper_type} />
+                              {p.original_filename && !/^[0-9a-f-]{36}/i.test(p.original_filename) && (
+                                <span className="text-xs text-gray-400 font-mono truncate max-w-[140px]" title={p.original_filename}>
+                                  📎 {p.original_filename}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="text-gray-800 font-medium">{sub?.class_name || 'Class ?'}</div>
@@ -523,9 +531,26 @@ export default function PapersPage() {
                           <td className="px-4 py-3 text-gray-600">{p.year}</td>
                           <td className="px-4 py-3 text-gray-500 text-xs">{p.district || '—'}</td>
                           <td className="px-4 py-3">
-                            {p.public_url
-                              ? <a href={p.public_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors">✓ YES</a>
-                              : <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>}
+                            {p.public_url ? (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => viewPdf(p.public_url, p.title, p.original_filename)}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition-colors"
+                                  title="Preview PDF"
+                                >
+                                  👁 View
+                                </button>
+                                <button
+                                  onClick={() => downloadPaper(p.public_url, p.title, p.original_filename)}
+                                  className="text-gray-400 hover:text-gray-600 p-0.5 rounded"
+                                  title="Download PDF"
+                                >
+                                  ⬇
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">✗ NO</span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             {p.youtube_url

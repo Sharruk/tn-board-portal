@@ -1,25 +1,17 @@
 """
-Submissions repository — all Supabase data access for the
-`submissions` and `submission_files` tables.
-
-This is the ONLY layer that calls Supabase for submissions.
-Services call these methods; routes never touch Supabase directly.
-
-Uses the SERVICE ROLE client (bypasses RLS) for all operations so
-that the backend can read and modify submissions regardless of the
-calling user's auth state.  Auth checking is handled at the service
-and route level, not here.
-
-File upload uses the Supabase Storage Python client with the service
-role key so that files are stored server-side — never exposing the
-service role key to the public browser.
+Submissions repository — direct PostgreSQL data access for `submissions` and `submission_files` tables,
+with Supabase Storage client integration for file binary operations.
 """
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
-from supabase import Client
+from sqlalchemy import bindparam, text
+from sqlalchemy.orm import Session
+
+from app.db.storage import get_storage_client
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +34,11 @@ SUBMISSIONS_BUCKET: str = "submissions"
 
 
 class SubmissionsRepository:
-    """Data access layer for the submissions and submission_files tables."""
+    """Data access layer for the submissions domain."""
 
-    def __init__(self, db: Client) -> None:
-        """
-        Args:
-            db: Supabase client.  Should be the SERVICE ROLE client for
-                all admin operations and file uploads.  The public POST
-                endpoint uses the anon client (limited to INSERT only).
-        """
+    def __init__(self, db: Session, storage: Any = None) -> None:
         self._db = db
+        self._storage = storage if storage is not None else get_storage_client()
 
     # ------------------------------------------------------------------ #
     # Create submission (public endpoint)
@@ -66,28 +53,33 @@ class SubmissionsRepository:
     ) -> dict[str, Any]:
         """
         Insert a new submission row with status = 'pending'.
-
-        Returns the created row dict including the generated UUID.
         """
         logger.debug(
             "SubmissionsRepository.create_submission(email=%s, firebase_uid=%s)", email, firebase_uid
         )
-        response = (
-            self._db.table("submissions")
-            .insert(
-                {
-                    "publisher_name": publisher_name,
-                    "email": email,
-                    "firebase_uid": firebase_uid,
-                    "details": details,
-                    "status": "pending",
-                }
-            )
-            .execute()
+        stmt = text(
+            """
+            INSERT INTO submissions (publisher_name, email, firebase_uid, details, status)
+            VALUES (:publisher_name, :email, :firebase_uid, :details, 'pending')
+            RETURNING id, publisher_name, email, firebase_uid, details, status, created_at
+            """
         )
-        if not response.data:
+        result = self._db.execute(
+            stmt,
+            {
+                "publisher_name": publisher_name,
+                "email": email,
+                "firebase_uid": firebase_uid,
+                "details": details,
+            },
+        )
+        self._db.commit()
+        row = result.fetchone()
+        if not row:
             raise RuntimeError("Failed to create submission — no data returned")
-        return response.data[0]
+        d = dict(row._mapping)
+        d["id"] = str(d["id"])
+        return d
 
     # ------------------------------------------------------------------ #
     # Upload file to storage + insert submission_files row
@@ -104,20 +96,6 @@ class SubmissionsRepository:
     ) -> dict[str, Any]:
         """
         Upload one file to Supabase Storage and insert a submission_files row.
-
-        Storage path: submissions/{submission_id}/{random_uuid}.{ext}
-        The original filename is preserved for display only — never used as key.
-
-        Args:
-            submission_id: UUID of the parent submission.
-            filename:      Original filename (for display/storage in DB).
-            content:       Raw file bytes.
-            content_type:  MIME type of the file.
-            file_size:     Size in bytes.
-            ext:           Lowercase file extension (without dot).
-
-        Returns:
-            The inserted submission_files row dict.
         """
         safe_name = f"{uuid.uuid4()}.{ext}"
         storage_path = f"{submission_id}/{safe_name}"
@@ -129,31 +107,38 @@ class SubmissionsRepository:
         )
 
         # Upload to Supabase Storage
-        self._db.storage.from_(SUBMISSIONS_BUCKET).upload(
+        self._storage.from_(SUBMISSIONS_BUCKET).upload(
             path=storage_path,
             file=content,
             file_options={"content-type": content_type, "upsert": "false"},
         )
 
-        # Insert the file metadata row (public_url is not generated for pending files)
-        row_response = (
-            self._db.table("submission_files")
-            .insert(
-                {
-                    "submission_id": submission_id,
-                    "original_filename": filename,
-                    "storage_path": storage_path,
-                    "file_type": ext,
-                    "file_size": file_size,
-                }
-            )
-            .execute()
+        # Insert metadata row in PostgreSQL
+        stmt = text(
+            """
+            INSERT INTO submission_files (submission_id, original_filename, storage_path, file_type, file_size)
+            VALUES (:submission_id, :original_filename, :storage_path, :file_type, :file_size)
+            RETURNING id, submission_id, original_filename, storage_path, file_type, file_size, created_at
+            """
         )
-        if not row_response.data:
-            raise RuntimeError(
-                f"Failed to insert submission_files row for {storage_path}"
-            )
-        return row_response.data[0]
+        result = self._db.execute(
+            stmt,
+            {
+                "submission_id": submission_id,
+                "original_filename": filename,
+                "storage_path": storage_path,
+                "file_type": ext,
+                "file_size": file_size,
+            },
+        )
+        self._db.commit()
+        row = result.fetchone()
+        if not row:
+            raise RuntimeError(f"Failed to insert submission_files row for {storage_path}")
+        d = dict(row._mapping)
+        d["id"] = str(d["id"])
+        d["submission_id"] = str(d["submission_id"])
+        return d
 
     # ------------------------------------------------------------------ #
     # List submissions (admin)
@@ -166,52 +151,54 @@ class SubmissionsRepository:
     ) -> list[dict[str, Any]]:
         """
         Return submissions ordered by created_at DESC.
-
-        Args:
-            status: Optional filter ('pending' | 'approved' | 'rejected').
-            limit:  Max rows to return.
-
-        Returns:
-            List of submission rows.  file_count is fetched separately
-            and merged in the service layer.
         """
         logger.debug(
             "SubmissionsRepository.list_submissions(status=%s, limit=%s)",
             status,
             limit,
         )
-        query = (
-            self._db.table("submissions")
-            .select("id,publisher_name,email,firebase_uid,details,status,rejection_reason,reviewed_at,created_at")
-            .order("created_at", desc=True)
-            .limit(limit)
-        )
+        sql = """
+            SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+            FROM submissions
+        """
+        params: dict[str, Any] = {"limit": limit}
         if status:
-            query = query.eq("status", status)
+            sql += " WHERE status = :status"
+            params["status"] = status
 
-        response = query.execute()
-        return response.data or []
+        sql += " ORDER BY created_at DESC LIMIT :limit"
+
+        stmt = text(sql)
+        result = self._db.execute(stmt, params)
+        rows = []
+        for r in result.fetchall():
+            d = dict(r._mapping)
+            d["id"] = str(d["id"])
+            rows.append(d)
+        return rows
 
     def count_files_for_submissions(
         self, submission_ids: list[str]
     ) -> dict[str, int]:
         """
         Return {submission_id: file_count} for a list of submission IDs.
-        Used by the service layer to enrich list responses.
         """
         if not submission_ids:
             return {}
 
-        response = (
-            self._db.table("submission_files")
-            .select("submission_id")
-            .in_("submission_id", submission_ids)
-            .execute()
-        )
+        stmt = text(
+            """
+            SELECT submission_id::text, COUNT(*)::int AS file_count
+            FROM submission_files
+            WHERE submission_id::text IN :submission_ids
+            GROUP BY submission_id
+            """
+        ).bindparams(bindparam("submission_ids", expanding=True))
+
+        result = self._db.execute(stmt, {"submission_ids": list(submission_ids)})
         counts: dict[str, int] = {}
-        for row in (response.data or []):
-            sid = row["submission_id"]
-            counts[sid] = counts.get(sid, 0) + 1
+        for r in result.fetchall():
+            counts[r[0]] = r[1]
         return counts
 
     # ------------------------------------------------------------------ #
@@ -225,56 +212,53 @@ class SubmissionsRepository:
         logger.debug(
             "SubmissionsRepository.get_by_id(submission_id=%s)", submission_id
         )
-        response = (
-            self._db.table("submissions")
-            .select("id,publisher_name,email,firebase_uid,details,status,rejection_reason,reviewed_at,created_at")
-            .eq("id", submission_id)
-            .execute()
+        stmt = text(
+            """
+            SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+            FROM submissions
+            WHERE id::text = :submission_id
+            """
         )
-        if not response.data:
+        result = self._db.execute(stmt, {"submission_id": submission_id})
+        row = result.fetchone()
+        if not row:
             return None
-        return response.data[0]
+        d = dict(row._mapping)
+        d["id"] = str(d["id"])
+        return d
 
     def get_file_by_id(self, file_id: str) -> dict[str, Any] | None:
         """
         Return one submission_files row by its primary key, or None if not found.
-        Used by the download endpoint to verify the file exists and get its path.
         """
         logger.debug(
             "SubmissionsRepository.get_file_by_id(file_id=%s)", file_id
         )
-        response = (
-            self._db.table("submission_files")
-            .select(
-                "id,submission_id,original_filename,storage_path,"
-                "file_type,file_size,created_at"
-            )
-            .eq("id", file_id)
-            .execute()
+        stmt = text(
+            """
+            SELECT id, submission_id, original_filename, storage_path, file_type, file_size, created_at
+            FROM submission_files
+            WHERE id::text = :file_id
+            """
         )
-        if not response.data:
+        result = self._db.execute(stmt, {"file_id": file_id})
+        row = result.fetchone()
+        if not row:
             return None
-        return response.data[0]
+        d = dict(row._mapping)
+        d["id"] = str(d["id"])
+        d["submission_id"] = str(d["submission_id"])
+        return d
 
     def download_file_bytes(self, storage_path: str) -> bytes:
         """
-        Download a file from the private submissions bucket using the
-        service-role client and return the raw bytes.
-
-        Args:
-            storage_path: The storage object key (e.g. ``{sub_id}/{uuid}.pdf``).
-
-        Returns:
-            Raw file bytes.
-
-        Raises:
-            RuntimeError if the download fails.
+        Download a file from the private submissions bucket.
         """
         logger.debug(
             "SubmissionsRepository.download_file_bytes(path=%s)", storage_path
         )
         try:
-            data = self._db.storage.from_(SUBMISSIONS_BUCKET).download(storage_path)
+            data = self._storage.from_(SUBMISSIONS_BUCKET).download(storage_path)
         except Exception as exc:
             logger.error(
                 "Failed to download file from storage path %s: %s",
@@ -288,61 +272,61 @@ class SubmissionsRepository:
         self, submission_id: str
     ) -> dict[str, Any]:
         """
-        Reset a rejected submission back to 'pending', clearing
-        rejection_reason and reviewed_at so it can be reviewed again.
-
-        Returns the updated row.
+        Reset a rejected submission back to 'pending'.
         """
         logger.debug(
             "SubmissionsRepository.restore_to_pending(submission_id=%s)",
             submission_id,
         )
-        response = (
-            self._db.table("submissions")
-            .update(
-                {
-                    "status": "pending",
-                    "rejection_reason": None,
-                    "reviewed_at": None,
-                }
-            )
-            .eq("id", submission_id)
-            .execute()
+        stmt = text(
+            """
+            UPDATE submissions
+            SET status = 'pending', rejection_reason = NULL, reviewed_at = NULL
+            WHERE id::text = :submission_id
+            RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+            """
         )
-        if not response.data:
-            raise RuntimeError(
-                f"Failed to restore submission {submission_id} — no data returned"
-            )
-        return response.data[0]
+        result = self._db.execute(stmt, {"submission_id": submission_id})
+        self._db.commit()
+        row = result.fetchone()
+        if not row:
+            raise RuntimeError(f"Failed to restore submission {submission_id} — no data returned")
+        d = dict(row._mapping)
+        d["id"] = str(d["id"])
+        return d
 
     def get_files(self, submission_id: str) -> list[dict[str, Any]]:
         """
-        Return all submission_files rows for a given submission.
-        Generates short-lived signed URLs for admin viewing.
+        Return all submission_files rows for a given submission with signed URLs.
         """
         logger.debug(
             "SubmissionsRepository.get_files(submission_id=%s)", submission_id
         )
-        response = (
-            self._db.table("submission_files")
-            .select(
-                "id,submission_id,original_filename,storage_path,public_url,"
-                "file_type,file_size,created_at"
-            )
-            .eq("submission_id", submission_id)
-            .order("created_at")
-            .execute()
+        stmt = text(
+            """
+            SELECT id, submission_id, original_filename, storage_path, public_url, file_type, file_size, created_at
+            FROM submission_files
+            WHERE submission_id::text = :submission_id
+            ORDER BY created_at
+            """
         )
-        
-        files = response.data or []
+        result = self._db.execute(stmt, {"submission_id": submission_id})
+        files = []
+        for r in result.fetchall():
+            d = dict(r._mapping)
+            d["id"] = str(d["id"])
+            d["submission_id"] = str(d["submission_id"])
+            files.append(d)
+
         for file_row in files:
-            # Generate a 1-hour signed URL for secure viewing
             try:
-                signed_url_response = self._db.storage.from_(SUBMISSIONS_BUCKET).create_signed_url(
+                signed_url_response = self._storage.from_(SUBMISSIONS_BUCKET).create_signed_url(
                     file_row["storage_path"], 3600
                 )
                 if signed_url_response and "signedURL" in signed_url_response:
                     file_row["signed_url"] = signed_url_response["signedURL"]
+                elif isinstance(signed_url_response, dict) and "signedUrl" in signed_url_response:
+                    file_row["signed_url"] = signed_url_response["signedUrl"]
             except Exception as e:
                 logger.error("Failed to generate signed URL for %s: %s", file_row["storage_path"], e)
                 file_row["signed_url"] = None
@@ -361,35 +345,37 @@ class SubmissionsRepository:
     ) -> dict[str, Any]:
         """
         Update the status + reviewed_at of a submission.
-        Optionally sets rejection_reason for rejected submissions.
-
-        Returns the updated row.
         """
         logger.debug(
             "SubmissionsRepository.update_status(submission_id=%s, status=%s)",
             submission_id,
             status,
         )
-        from datetime import datetime, timezone
-
-        payload: dict[str, Any] = {
-            "status": status,
-            "reviewed_at": datetime.now(timezone.utc).isoformat(),
-        }
-        if rejection_reason is not None:
-            payload["rejection_reason"] = rejection_reason
-
-        response = (
-            self._db.table("submissions")
-            .update(payload)
-            .eq("id", submission_id)
-            .execute()
+        now = datetime.now(timezone.utc)
+        stmt = text(
+            """
+            UPDATE submissions
+            SET status = :status, reviewed_at = :reviewed_at, rejection_reason = :rejection_reason
+            WHERE id::text = :submission_id
+            RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+            """
         )
-        if not response.data:
-            raise RuntimeError(
-                f"Failed to update submission {submission_id} — no data returned"
-            )
-        return response.data[0]
+        result = self._db.execute(
+            stmt,
+            {
+                "submission_id": submission_id,
+                "status": status,
+                "reviewed_at": now,
+                "rejection_reason": rejection_reason,
+            },
+        )
+        self._db.commit()
+        row = result.fetchone()
+        if not row:
+            raise RuntimeError(f"Failed to update submission {submission_id} — no data returned")
+        d = dict(row._mapping)
+        d["id"] = str(d["id"])
+        return d
 
     # ------------------------------------------------------------------ #
     # Create paper from approved submission (admin)
@@ -408,19 +394,13 @@ class SubmissionsRepository:
     ) -> dict[str, Any]:
         """
         Insert one paper row derived from an approved submission file.
-        Copies the file from the private submissions bucket to the public papers bucket.
-
-        The title is built from the original filename or submission details.
-        is_visible is set to True so the paper is immediately public.
-
-        Returns the inserted papers row.
+        Copies the file from private submissions bucket to public papers bucket.
         """
         original_path = file_row.get("storage_path")
         if not original_path:
             raise ValueError(f"Submission file {file_row.get('id')} has no storage path.")
 
         ext = file_row.get("file_type") or "pdf"
-        # Strip any leading dot
         ext = ext.lstrip(".").lower()
         new_path = f"{uuid.uuid4()}.{ext}"
 
@@ -431,13 +411,11 @@ class SubmissionsRepository:
         )
 
         try:
-            # Download from submissions bucket
-            file_data = self._db.storage.from_(SUBMISSIONS_BUCKET).download(original_path)
+            file_data = self._storage.from_(SUBMISSIONS_BUCKET).download(original_path)
         except Exception as e:
             logger.error("Failed to download file from submissions bucket (%s): %s", original_path, e)
             raise RuntimeError(f"Storage download failed for '{original_path}': {e}") from e
 
-        # MIME type guessing based on extension
         content_type = "application/octet-stream"
         if ext == "pdf":
             content_type = "application/pdf"
@@ -449,7 +427,7 @@ class SubmissionsRepository:
             content_type = "application/msword"
 
         try:
-            self._db.storage.from_("papers").upload(
+            self._storage.from_("papers").upload(
                 path=new_path,
                 file=file_data,
                 file_options={"content-type": content_type, "upsert": "false"},
@@ -458,61 +436,98 @@ class SubmissionsRepository:
             logger.error("Failed to upload file to papers bucket (%s): %s", new_path, e)
             raise RuntimeError(f"Public storage upload failed for '{new_path}': {e}") from e
 
-        # Get the new public URL from papers bucket
-        url_response = self._db.storage.from_("papers").get_public_url(new_path)
+        url_response = self._storage.from_("papers").get_public_url(new_path)
         public_url = url_response if isinstance(url_response, str) else None
 
-        # Build a sensible title
         raw_name = file_row.get("original_filename", "")
         base_name = raw_name.rsplit(".", 1)[0] if "." in raw_name else raw_name
-        title = base_name.replace("_", " ").replace("-", " ").strip()
-        if not title:
-            title = submission.get("details") or f"Submitted Paper {submission['id'][:8]}"
 
-        # Prevent duplicate (subject_id, title, year, exam_type) unique constraint violation
+        # Query subject and class name to build canonical paper title
+        class_name = ""
+        subject_name = ""
         try:
-            existing = (
-                self._db.table("papers")
-                .select("id")
-                .eq("subject_id", subject_id)
-                .eq("title", title)
-                .eq("year", year)
-                .eq("exam_type", exam_type)
-                .execute()
+            subj_stmt = text(
+                """
+                SELECT s.name AS subject_name, c.name AS class_name
+                FROM subjects s
+                JOIN classes c ON s.class_id = c.id
+                WHERE s.id = :subject_id
+                """
             )
-            if existing.data:
-                title = f"{title} ({submission['id'][:6]})"
+            subj_row = self._db.execute(subj_stmt, {"subject_id": subject_id}).fetchone()
+            if subj_row:
+                class_name = subj_row.class_name or ""
+                subject_name = subj_row.subject_name or ""
         except Exception as e:
-            logger.warning("Uniqueness check for paper title query failed, proceeding with title: %s", e)
+            logger.warning("Failed to lookup subject/class for canonical title: %s", e)
+
+        type_str = "Question Paper" if paper_type == "question" else "Answer Key"
+        title_parts = [
+            class_name,
+            subject_name,
+            exam_type,
+            month or "",
+            str(year) if year else "",
+            district or "",
+            type_str,
+        ]
+        title = " ".join(p for p in title_parts if p).strip()
+        if not title:
+            title = base_name.replace("_", " ").replace("-", " ").strip()
+        if not title:
+            title = submission.get("details") or f"Submitted Paper {str(submission['id'])[:8]}"
+
+        # Prevent duplicate title collisions
+        try:
+            chk_stmt = text(
+                """
+                SELECT id FROM papers
+                WHERE subject_id = :subject_id AND title = :title AND year = :year AND exam_type = :exam_type
+                """
+            )
+            existing = self._db.execute(
+                chk_stmt,
+                {"subject_id": subject_id, "title": title, "year": year, "exam_type": exam_type},
+            ).fetchall()
+            if existing:
+                title = f"{title} ({str(submission['id'])[:6]})"
+        except Exception as e:
+            logger.warning("Uniqueness check for paper title query failed: %s", e)
 
         original_filename = file_row.get("original_filename") or raw_name or f"{title}.{ext}"
 
-        logger.debug(
-            "SubmissionsRepository.create_paper_from_file(title=%r, subject_id=%s)",
-            title,
-            subject_id,
-        )
-
-        response = (
-            self._db.table("papers")
-            .insert(
-                {
-                    "subject_id": subject_id,
-                    "exam_type": exam_type,
-                    "year": year,
-                    "title": title,
-                    "paper_type": paper_type,
-                    "month": month,
-                    "district": district,
-                    "file_path": new_path,
-                    "public_url": public_url,
-                    "original_filename": original_filename,
-                    "is_visible": True,
-                    "download_count": 0,
-                }
+        stmt = text(
+            """
+            INSERT INTO papers (
+                subject_id, exam_type, year, title, paper_type,
+                month, district, file_path, public_url, original_filename,
+                is_visible, download_count
             )
-            .execute()
+            VALUES (
+                :subject_id, :exam_type, :year, :title, :paper_type,
+                :month, :district, :file_path, :public_url, :original_filename,
+                true, 0
+            )
+            RETURNING id, subject_id, exam_type, year, title, paper_type, month, district, file_path, public_url, original_filename, is_visible, download_count, created_at
+            """
         )
-        if not response.data:
+        result = self._db.execute(
+            stmt,
+            {
+                "subject_id": subject_id,
+                "exam_type": exam_type,
+                "year": year,
+                "title": title,
+                "paper_type": paper_type,
+                "month": month,
+                "district": district,
+                "file_path": new_path,
+                "public_url": public_url,
+                "original_filename": original_filename,
+            },
+        )
+        self._db.commit()
+        row = result.fetchone()
+        if not row:
             raise RuntimeError("Failed to create paper from submission file — no data returned")
-        return response.data[0]
+        return dict(row._mapping)
