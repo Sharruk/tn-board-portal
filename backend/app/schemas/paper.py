@@ -23,7 +23,7 @@ Schema hierarchy:
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -100,6 +100,9 @@ class PaperResponse(PaperBase):
             ]
         }
     }
+
+
+PaperDetail = PaperResponse
 
 
 class PaperSummary(BaseModel):
@@ -198,3 +201,38 @@ class SearchResponse(BaseModel):
             ]
         }
     }
+
+
+# ── Paper Likes & Comments Schemas ────────────────────────────────────────────
+
+class PaperCommentCreate(BaseModel):
+    """Payload for submitting a comment on a paper."""
+
+    content: str = Field(..., min_length=1, max_length=2000, description="Comment text")
+    parent_id: Optional[str] = Field(None, description="Parent comment ID for replies")
+    author_avatar: Optional[str] = Field(None, description="Author avatar URL")
+
+
+class PaperCommentOut(BaseModel):
+    """Single paper comment schema."""
+
+    id: str
+    paper_id: int
+    firebase_uid: str
+    author_name: str
+    author_avatar: Optional[str] = None
+    parent_id: Optional[str] = None
+    content: str
+    is_deleted: bool = False
+    created_at: datetime
+    updated_at: datetime
+    replies: list["PaperCommentOut"] = Field(default_factory=list)
+
+
+class PaperLikeResponse(BaseModel):
+    """Paper like status response."""
+
+    paper_id: int
+    likes_count: int
+    has_liked: bool
+

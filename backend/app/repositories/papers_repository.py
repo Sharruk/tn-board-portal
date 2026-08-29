@@ -1,93 +1,22 @@
 """
-Papers repository — all Supabase data access for the `papers` table
-and associated RPCs.
+Papers repository — direct PostgreSQL data access for the `papers` table.
 
-This is the ONLY layer that calls Supabase for papers.
-Services call these methods; routes never touch Supabase directly.
-
-=============================================================================
-COMPATIBILITY NOTE — migration 007 not applied to live DB
-=============================================================================
-The live Supabase database was created from migration 001 (schema) and
-subsequent ADD COLUMN migrations, but migration 007 (paper_status.sql) was
-NOT applied. As a result:
-
-  • papers.status  column → DOES NOT EXIST in live DB
-  • search_papers() RPC   → broken (function body references p.status)
-  • increment_download_count() RPC → broken (references status column)
-
-The workaround applied in this file:
-
-  1. All published-paper filters use   is_visible = true
-     instead of                        status = 'published'
-
-  2. A synthesised   status = "published"   field is injected into every
-     returned row so that the Pydantic schemas (which include status) are
-     satisfied without any schema changes.
-
-  3. The search_papers() RPC is replaced by a direct PostgREST query
-     with OR filters on papers columns (title, exam_type, month, district)
-     plus Python-level filtering on the joined subject/class names.
-
-  4. The increment_download_count() RPC is replaced by a direct UPDATE
-     via PostgREST patch (supabase-py .update()).
-
-Direct table queries (PostgREST):
-  get_by_id       → papers + subjects(*) + classes(*)   WHERE id = $1
-  list_recent     → papers WHERE is_visible = true ORDER BY created_at DESC LIMIT N
-  list_popular    → papers WHERE is_visible = true ORDER BY download_count DESC LIMIT N
-  list_by_subject → papers WHERE subject_id = $1 AND is_visible = true
-
-Query strategy mirrors frontend/src/services/papers.js and subjects.js exactly.
-=============================================================================
+Uses SQLAlchemy Session with parameterized SQL.
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
-from supabase import Client
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# PostgREST select strings
-# ---------------------------------------------------------------------------
-
-# Select for list endpoints — excludes internal file_path and the missing
-# status column.  A synthesised status="published" is added in _add_status().
-_LIST_COLUMNS = (
-    "id,subject_id,exam_type,year,month,district,title,paper_type,"
-    "public_url,youtube_url,original_filename,is_visible,"
-    "download_count,created_at"
-)
-
-# Select for the full paper detail — includes the subjects/classes join.
-_DETAIL_SELECT = (
-    "id,subject_id,exam_type,year,month,district,title,paper_type,"
-    "public_url,youtube_url,original_filename,is_visible,"
-    "download_count,created_at,"
-    "subjects(id,name,slug,is_practical,classes(id,name,slug))"
-)
-
-# Select for search — includes the subjects/classes join so we can return
-# subject_name and class_name without calling the broken search_papers() RPC.
-_SEARCH_SELECT = (
-    "id,subject_id,exam_type,year,month,district,title,paper_type,"
-    "public_url,original_filename,is_visible,download_count,created_at,"
-    "subjects(id,name,slug,classes(id,name))"
-)
 
 
 def _add_status(row: dict[str, Any]) -> dict[str, Any]:
     """
     Inject a synthesised status field so Pydantic schemas are satisfied.
-
-    The live database does not have a 'status' column (migration 007 was
-    not applied).  All publicly visible papers have is_visible = true,
-    which corresponds to status = 'published'.  Hidden papers are
-    treated as 'archived'.
-
-    This helper is called on every row before it is returned to the service.
+    Visible papers have is_visible = true (published), hidden have is_visible = false (archived).
     """
     is_visible = row.get("is_visible", True)
     row.setdefault("status", "published" if is_visible else "archived")
@@ -95,73 +24,77 @@ def _add_status(row: dict[str, Any]) -> dict[str, Any]:
 
 
 class PapersRepository:
-    """Data access layer for the `papers` table and papers RPCs."""
+    """Data access layer for the `papers` table."""
 
-    def __init__(self, db: Client) -> None:
+    def __init__(self, db: Session) -> None:
         self._db = db
-
-    # ------------------------------------------------------------------ #
-    # Single paper
-    # ------------------------------------------------------------------ #
 
     def get_by_id(self, paper_id: int, published_only: bool = True) -> dict[str, Any] | None:
         """
         Return one paper with full subject + class join, or None.
-
-        Args:
-            paper_id:       Primary key.
-            published_only: When True, only return is_visible=true papers.
-                            (Mirrors the old status='published' filter.)
         """
-        logger.debug("PapersRepository.get_by_id(paper_id=%s)", paper_id)
-        query = (
-            self._db.table("papers")
-            .select(_DETAIL_SELECT)
-            .eq("id", paper_id)
-        )
+        logger.debug("PapersRepository.get_by_id(paper_id=%s, published_only=%s)", paper_id, published_only)
+        sql = """
+            SELECT 
+                p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
+                p.public_url, p.youtube_url, p.original_filename, p.is_visible,
+                p.download_count, p.created_at,
+                s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
+                c.id AS class_id, c.name AS class_name, c.slug AS class_slug
+            FROM papers p
+            JOIN subjects s ON p.subject_id = s.id
+            JOIN classes c ON s.class_id = c.id
+            WHERE p.id = :paper_id
+        """
         if published_only:
-            query = query.eq("is_visible", True)
+            sql += " AND p.is_visible = true"
 
-        response = query.execute()
-        if not response.data:
+        stmt = text(sql)
+        result = self._db.execute(stmt, {"paper_id": paper_id})
+        row = result.fetchone()
+        if not row:
             return None
-        return self._normalise_detail(response.data[0])
-
-    # ------------------------------------------------------------------ #
-    # List endpoints
-    # ------------------------------------------------------------------ #
+        return _add_status(dict(row._mapping))
 
     def list_recent(self, limit: int = 10) -> list[dict[str, Any]]:
         """
         Return the N most recently uploaded visible papers.
-        Mirrors getRecentPapers() in frontend/src/services/papers.js.
         """
         logger.debug("PapersRepository.list_recent(limit=%s)", limit)
-        response = (
-            self._db.table("papers")
-            .select(_LIST_COLUMNS)
-            .eq("is_visible", True)
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
+        stmt = text(
+            """
+            SELECT 
+                id, subject_id, exam_type, year, month, district, title, paper_type,
+                public_url, youtube_url, original_filename, is_visible,
+                download_count, created_at
+            FROM papers
+            WHERE is_visible = true
+            ORDER BY created_at DESC
+            LIMIT :limit
+            """
         )
-        return [_add_status(row) for row in (response.data or [])]
+        result = self._db.execute(stmt, {"limit": limit})
+        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def list_popular(self, limit: int = 10) -> list[dict[str, Any]]:
         """
         Return the N most downloaded visible papers.
-        Mirrors getPopularPapers() in frontend/src/services/papers.js.
         """
         logger.debug("PapersRepository.list_popular(limit=%s)", limit)
-        response = (
-            self._db.table("papers")
-            .select(_LIST_COLUMNS)
-            .eq("is_visible", True)
-            .order("download_count", desc=True)
-            .limit(limit)
-            .execute()
+        stmt = text(
+            """
+            SELECT 
+                id, subject_id, exam_type, year, month, district, title, paper_type,
+                public_url, youtube_url, original_filename, is_visible,
+                download_count, created_at
+            FROM papers
+            WHERE is_visible = true
+            ORDER BY download_count DESC
+            LIMIT :limit
+            """
         )
-        return [_add_status(row) for row in (response.data or [])]
+        result = self._db.execute(stmt, {"limit": limit})
+        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def list_by_subject(
         self,
@@ -171,35 +104,34 @@ class PapersRepository:
     ) -> list[dict[str, Any]]:
         """
         Return all visible papers for a given subject.
-        Mirrors getPapersForSubject() in frontend/src/services/subjects.js.
-
-        Args:
-            subject_id:  Filter by subject.
-            exam_type:   Optional exam type filter.
-            paper_type:  Optional paper type filter ('question' | 'answer_key').
         """
         logger.debug(
             "PapersRepository.list_by_subject(subject_id=%s, exam_type=%s, paper_type=%s)",
             subject_id, exam_type, paper_type,
         )
-        query = (
-            self._db.table("papers")
-            .select(_LIST_COLUMNS)
-            .eq("subject_id", subject_id)
-            .eq("is_visible", True)
-            .order("year", desc=True)
-        )
+        conditions = ["subject_id = :subject_id", "is_visible = true"]
+        params: dict[str, Any] = {"subject_id": subject_id}
+
         if exam_type:
-            query = query.eq("exam_type", exam_type)
+            conditions.append("exam_type = :exam_type")
+            params["exam_type"] = exam_type
         if paper_type:
-            query = query.eq("paper_type", paper_type)
+            conditions.append("paper_type = :paper_type")
+            params["paper_type"] = paper_type
 
-        response = query.execute()
-        return [_add_status(row) for row in (response.data or [])]
-
-    # ------------------------------------------------------------------ #
-    # Search
-    # ------------------------------------------------------------------ #
+        where_clause = " AND ".join(conditions)
+        sql = f"""
+            SELECT 
+                id, subject_id, exam_type, year, month, district, title, paper_type,
+                public_url, youtube_url, original_filename, is_visible,
+                download_count, created_at
+            FROM papers
+            WHERE {where_clause}
+            ORDER BY year DESC
+        """
+        stmt = text(sql)
+        result = self._db.execute(stmt, params)
+        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def search(
         self,
@@ -211,239 +143,212 @@ class PapersRepository:
         district: str | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Search visible papers.
-
-        REPLACES the broken search_papers() RPC (which references the
-        missing 'status' column).
-
-        Strategy:
-          1. Query the papers table directly via PostgREST with OR filters
-             across title, exam_type, month, district (all on papers table).
-          2. Apply optional equality filters (class_id, exam_type, paper_type,
-             month, district) as AND conditions.
-          3. Join subjects + classes so subject_name/class_name are available.
-          4. Post-filter in Python to include rows where the subject name or
-             class name also matches the search term (mirrors the RPC's ILIKE
-             on s.name and c.name).
-
-        This approach produces results equivalent to the search_papers() RPC
-        defined in migrations 006–016.
+        Search visible papers using direct SQL joining papers, subjects, and classes.
         """
         logger.debug(
-            "PapersRepository.search(q=%r, class_id=%s, exam_type=%s, "
-            "paper_type=%s, month=%s, district=%s)",
+            "PapersRepository.search(q=%r, class_id=%s, exam_type=%s, paper_type=%s, month=%s, district=%s)",
             q, class_id, exam_type, paper_type, month, district,
         )
-        q_lower = q.lower()
+        conditions = ["p.is_visible = true"]
+        params: dict[str, Any] = {"like": f"%{q}%"}
 
-        # ── Build base query ──────────────────────────────────────────────
-        # The OR filter covers: title, exam_type, month, district (papers table)
-        # subject name and class name are handled via Python post-filter below.
-        like = f"%{q}%"
-        or_filter = (
-            f"title.ilike.{like},"
-            f"exam_type.ilike.{like},"
-            f"month.ilike.{like},"
-            f"district.ilike.{like}"
+        # Search matching condition across paper fields + subject + class
+        conditions.append(
+            """(
+                p.title ILIKE :like OR
+                p.exam_type ILIKE :like OR
+                COALESCE(p.month, '') ILIKE :like OR
+                COALESCE(p.district, '') ILIKE :like OR
+                s.name ILIKE :like OR
+                c.name ILIKE :like
+            )"""
         )
 
-        query = (
-            self._db.table("papers")
-            .select(_SEARCH_SELECT)
-            .eq("is_visible", True)
-            .or_(or_filter)
-            .order("created_at", desc=True)
-            .limit(200)  # Fetch more; we'll post-filter for subject/class names
-        )
-
-        # Optional equality filters
+        if class_id is not None:
+            conditions.append("c.id = :class_id")
+            params["class_id"] = class_id
         if exam_type:
-            query = query.eq("exam_type", exam_type)
+            conditions.append("p.exam_type = :exam_type")
+            params["exam_type"] = exam_type
         if paper_type:
-            query = query.eq("paper_type", paper_type)
+            conditions.append("p.paper_type = :paper_type")
+            params["paper_type"] = paper_type
         if month:
-            query = query.eq("month", month)
+            conditions.append("p.month = :month")
+            params["month"] = month
         if district:
-            query = query.ilike("district", f"%{district}%")
+            conditions.append("p.district ILIKE :district_filter")
+            params["district_filter"] = f"%{district}%"
 
-        response = query.execute()
-        rows = response.data or []
+        where_clause = " AND ".join(conditions)
+        sql = f"""
+            SELECT 
+                p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
+                p.public_url, p.original_filename, p.is_visible, p.download_count, p.created_at,
+                s.name AS subject_name,
+                c.id AS class_id, c.name AS class_name
+            FROM papers p
+            JOIN subjects s ON p.subject_id = s.id
+            JOIN classes c ON s.class_id = c.id
+            WHERE {where_clause}
+            ORDER BY p.created_at DESC
+            LIMIT 50
+        """
+        stmt = text(sql)
+        result = self._db.execute(stmt, params)
+        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
-        # ── Also fetch rows matching by subject name or class name ─────────
-        # PostgREST can't OR across embedded resource columns, so we do a
-        # second query filtered by subject/class match and merge results.
-        subject_rows = self._search_by_subject_or_class(
-            q=q, class_id=class_id, exam_type=exam_type,
-            paper_type=paper_type, month=month, district=district,
-        )
-
-        # ── Merge & de-duplicate by paper id ─────────────────────────────
-        seen: dict[int, dict] = {}
-        for row in rows + subject_rows:
-            row_id = row.get("id")
-            if row_id not in seen:
-                seen[row_id] = row
-
-        # ── Apply class_id filter (post-fetch for primary query) ──────────
-        results = []
-        for row in seen.values():
-            subj = row.get("subjects") or {}
-            cls  = subj.get("classes") or {}
-            row_class_id = cls.get("id")
-            if class_id is not None and row_class_id != class_id:
-                continue
-            results.append(self._normalise_search_row(row))
-
-        # Sort by created_at descending and cap at 50 (mirrors RPC LIMIT 50)
-        results.sort(key=lambda r: r.get("created_at") or "", reverse=True)
-        return results[:50]
-
-    def _search_by_subject_or_class(
+    def record_download(
         self,
-        q: str,
-        class_id: int | None,
-        exam_type: str | None,
-        paper_type: str | None,
-        month: str | None,
-        district: str | None,
-    ) -> list[dict[str, Any]]:
+        paper_id: int,
+        user_id: str | None = None,
+        user_email: str | None = None,
+    ) -> None:
         """
-        Fetch papers whose subject name or class name matches q.
-        Called internally by search() to complement the PostgREST OR query.
-        """
-        # Fetch all subjects and filter them in Python. There are < 50 subjects.
-        # This avoids PostgREST PGRST100 syntax errors when trying to use or_
-        # across embedded foreign tables (classes.name).
-        subj_resp = (
-            self._db.table("subjects")
-            .select("id, name, class_id, classes(id, name)")
-            .execute()
-        )
-        
-        q_lower = q.lower()
-        matching_subject_ids = []
-        for s in (subj_resp.data or []):
-            s_name = (s.get("name") or "").lower()
-            c_name = (s.get("classes") or {}).get("name", "").lower()
-            if q_lower in s_name or q_lower in c_name:
-                matching_subject_ids.append(s["id"])
-
-        if not matching_subject_ids:
-            return []
-
-        # Fetch papers for those subjects
-        query = (
-            self._db.table("papers")
-            .select(_SEARCH_SELECT)
-            .eq("is_visible", True)
-            .in_("subject_id", matching_subject_ids)
-            .order("created_at", desc=True)
-            .limit(200)
-        )
-        if exam_type:
-            query = query.eq("exam_type", exam_type)
-        if paper_type:
-            query = query.eq("paper_type", paper_type)
-        if month:
-            query = query.eq("month", month)
-        if district:
-            query = query.ilike("district", f"%{district}%")
-
-        response = query.execute()
-        return response.data or []
-
-    # ------------------------------------------------------------------ #
-    # Download tracking
-    # ------------------------------------------------------------------ #
-
-    def record_download(self, paper_id: int) -> None:
-        """
-        Atomically increment download_count for a visible paper.
-
-        REPLACES the broken increment_download_count() RPC (which references
-        the missing 'status' column).
-
-        Uses a direct UPDATE via PostgREST. Raises if the paper does not
-        exist or is not visible (is_visible = false).
+        Atomically increment download_count for a visible paper and record log event.
         """
         logger.debug("PapersRepository.record_download(paper_id=%s)", paper_id)
-        # Verify the paper exists and is visible before counting
-        check = (
-            self._db.table("papers")
-            .select("id, download_count")
-            .eq("id", paper_id)
-            .eq("is_visible", True)
-            .execute()
+        stmt = text(
+            """
+            UPDATE papers
+            SET download_count = download_count + 1
+            WHERE id = :paper_id AND is_visible = true
+            RETURNING id, download_count
+            """
         )
-        if not check.data:
+        result = self._db.execute(stmt, {"paper_id": paper_id})
+        row = result.fetchone()
+        if not row:
+            self._db.rollback()
             raise ValueError(f"Paper {paper_id} not found or not visible")
 
-        # PostgREST does not support SET col = col + 1 expressions directly.
-        # We read the current count then write current + 1.
-        # This is slightly non-atomic but acceptable for a download counter
-        # (high-frequency exact precision is not a requirement here).
-        current_count = check.data[0].get("download_count", 0) or 0
-        (
-            self._db.table("papers")
-            .update({"download_count": current_count + 1})
-            .eq("id", paper_id)
-            .execute()
+        if user_id or user_email:
+            try:
+                log_stmt = text(
+                    """
+                    INSERT INTO download_logs (firebase_uid, email, paper_id)
+                    VALUES (:uid, :email, :paper_id)
+                    """
+                )
+                self._db.execute(
+                    log_stmt,
+                    {"uid": user_id, "email": user_email, "paper_id": paper_id},
+                )
+            except Exception as e:
+                logger.warning("Failed to insert download_log: %s", e)
+
+        self._db.commit()
+
+    # ── Paper Likes ───────────────────────────────────────────────────────────
+
+    def toggle_like(self, paper_id: int, firebase_uid: str) -> dict[str, Any]:
+        """Toggle like for user on paper in an atomic transaction."""
+        chk_stmt = text(
+            "SELECT id FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"
         )
+        existing = self._db.execute(chk_stmt, {"paper_id": paper_id, "firebase_uid": firebase_uid}).fetchone()
 
-    # ------------------------------------------------------------------ #
-    # Private helpers
-    # ------------------------------------------------------------------ #
+        if existing:
+            self._db.execute(
+                text("DELETE FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"),
+                {"paper_id": paper_id, "firebase_uid": firebase_uid},
+            )
+            has_liked = False
+        else:
+            self._db.execute(
+                text("INSERT INTO paper_likes (paper_id, firebase_uid, created_at) VALUES (:paper_id, :firebase_uid, NOW())"),
+                {"paper_id": paper_id, "firebase_uid": firebase_uid},
+            )
+            has_liked = True
 
-    @staticmethod
-    def _normalise_detail(row: dict[str, Any]) -> dict[str, Any]:
-        """
-        Flatten the nested subjects → classes join into flat fields,
-        and inject a synthesised status field.
+        cnt_stmt = text("SELECT COUNT(*)::int FROM paper_likes WHERE paper_id = :paper_id")
+        likes_count = self._db.execute(cnt_stmt, {"paper_id": paper_id}).scalar() or 0
+        self._db.commit()
 
-        Supabase returns:
+        return {"paper_id": paper_id, "likes_count": likes_count, "has_liked": has_liked}
+
+    def get_likes_info(self, paper_id: int, firebase_uid: Optional[str] = None) -> dict[str, Any]:
+        """Get total like count and whether current user has liked."""
+        cnt_stmt = text("SELECT COUNT(*)::int FROM paper_likes WHERE paper_id = :paper_id")
+        likes_count = self._db.execute(cnt_stmt, {"paper_id": paper_id}).scalar() or 0
+
+        has_liked = False
+        if firebase_uid:
+            chk_stmt = text(
+                "SELECT id FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"
+            )
+            has_liked = bool(self._db.execute(chk_stmt, {"paper_id": paper_id, "firebase_uid": firebase_uid}).fetchone())
+
+        return {"paper_id": paper_id, "likes_count": likes_count, "has_liked": has_liked}
+
+    # ── Paper Comments ────────────────────────────────────────────────────────
+
+    def get_comments_for_paper(self, paper_id: int) -> list[dict[str, Any]]:
+        """Fetch all non-deleted comments for a paper."""
+        stmt = text(
+            """
+            SELECT id, paper_id, firebase_uid, author_name, author_avatar, parent_id, content, is_deleted, created_at, updated_at
+            FROM paper_comments
+            WHERE paper_id = :paper_id AND is_deleted = false
+            ORDER BY created_at ASC
+            """
+        )
+        result = self._db.execute(stmt, {"paper_id": paper_id})
+        comments = []
+        for r in result.fetchall():
+            d = dict(r._mapping)
+            d["id"] = str(d["id"])
+            if d.get("parent_id"):
+                d["parent_id"] = str(d["parent_id"])
+            comments.append(d)
+        return comments
+
+    def add_paper_comment(
+        self,
+        paper_id: int,
+        firebase_uid: str,
+        author_name: str,
+        content: str,
+        parent_id: Optional[str] = None,
+        author_avatar: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Insert a comment or reply on a paper."""
+        stmt = text(
+            """
+            INSERT INTO paper_comments (paper_id, firebase_uid, author_name, author_avatar, parent_id, content, is_deleted, created_at, updated_at)
+            VALUES (:paper_id, :firebase_uid, :author_name, :author_avatar, :parent_id, :content, false, NOW(), NOW())
+            RETURNING id, paper_id, firebase_uid, author_name, author_avatar, parent_id, content, is_deleted, created_at, updated_at
+            """
+        )
+        result = self._db.execute(
+            stmt,
             {
-              "id": 42,
-              "is_visible": true,
-              "subjects": {
-                "id": 8, "name": "Mathematics", "slug": "maths",
-                "is_practical": false,
-                "classes": { "id": 10, "name": "Class 10", "slug": "10" }
-              }
-            }
-        We want:
-            {
-              "id": 42,
-              "status": "published",
-              "subject_name": "Mathematics", "subject_slug": "maths",
-              "is_practical": false,
-              "class_id": 10, "class_name": "Class 10", "class_slug": "10"
-            }
-        """
-        subjects = row.pop("subjects", None) or {}
-        classes  = subjects.pop("classes", None) or {}
-        result = {
-            **row,
-            "subject_name": subjects.get("name"),
-            "subject_slug": subjects.get("slug"),
-            "is_practical": subjects.get("is_practical"),
-            "class_id":     classes.get("id"),
-            "class_name":   classes.get("name"),
-            "class_slug":   classes.get("slug"),
-        }
-        return _add_status(result)
+                "paper_id": paper_id,
+                "firebase_uid": firebase_uid,
+                "author_name": author_name,
+                "author_avatar": author_avatar,
+                "parent_id": parent_id,
+                "content": content,
+            },
+        )
+        self._db.commit()
+        row = result.fetchone()
+        if not row:
+            raise RuntimeError("Failed to add paper comment")
+        d = dict(row._mapping)
+        d["id"] = str(d["id"])
+        if d.get("parent_id"):
+            d["parent_id"] = str(d["parent_id"])
+        return d
 
-    @staticmethod
-    def _normalise_search_row(row: dict[str, Any]) -> dict[str, Any]:
-        """
-        Flatten the subjects → classes join for search results and inject status.
-        Returns the flat shape expected by PaperSearchResult.
-        """
-        subjects = row.pop("subjects", None) or {}
-        classes  = subjects.pop("classes", None) or {}
-        result = {
-            **row,
-            "subject_name": subjects.get("name") or "",
-            "class_name":   classes.get("name") or "",
-            "class_id":     classes.get("id") or 0,
-        }
-        return _add_status(result)
+    def delete_paper_comment(self, comment_id: str, hard_delete: bool = False) -> bool:
+        """Delete or soft-delete a paper comment."""
+        if hard_delete:
+            stmt = text("DELETE FROM paper_comments WHERE id::text = :comment_id")
+        else:
+            stmt = text("UPDATE paper_comments SET is_deleted = true, updated_at = NOW() WHERE id::text = :comment_id")
+        result = self._db.execute(stmt, {"comment_id": comment_id})
+        self._db.commit()
+        return result.rowcount > 0
+
+

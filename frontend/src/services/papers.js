@@ -196,3 +196,70 @@ export const recordDownload = async (id) => {
     }
   })
 }
+
+/**
+ * Toggle paper like (auth required).
+ */
+export const togglePaperLike = async (paperId) => {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required to like')
+
+  const res = await apiFetch(`/api/v1/papers/${paperId}/like`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  })
+  return res
+}
+
+/**
+ * Get paper likes status and count.
+ */
+export const getPaperLikes = async (paperId) => {
+  const token = await getFirebaseToken()
+  const headers = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  return apiFetch(`/api/v1/papers/${paperId}/likes`, { headers })
+}
+
+/**
+ * Get paper threaded comments.
+ */
+export const getPaperComments = async (paperId) => {
+  return apiFetch(`/api/v1/papers/${paperId}/comments`)
+}
+
+/**
+ * Add a comment/reply to a paper.
+ */
+export const addPaperComment = async (paperId, payload) => {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required to comment')
+
+  return apiFetch(`/api/v1/papers/${paperId}/comments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+}
+
+/**
+ * Delete a paper comment.
+ */
+export const deletePaperComment = async (commentId) => {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required to delete comment')
+
+  return apiFetch(`/api/v1/papers/comments/${commentId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  })
+}
+

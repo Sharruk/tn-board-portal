@@ -17,7 +17,7 @@ Business rules implemented:
 import logging
 from typing import Literal
 
-from supabase import Client
+from sqlalchemy.orm import Session
 
 from app.repositories.papers_repository import PapersRepository
 from app.schemas.paper import (
@@ -91,12 +91,16 @@ def _expand_terms(q: str) -> list[str]:
     return list(terms)
 
 
+_expand_search_terms = _expand_terms
+
 # ── Service ───────────────────────────────────────────────────────────────────
+
+
 
 class PapersService:
     """Business logic for the papers domain."""
 
-    def __init__(self, db: Client) -> None:
+    def __init__(self, db: Session) -> None:
         self._repo = PapersRepository(db)
 
     # ------------------------------------------------------------------ #
@@ -226,24 +230,98 @@ class PapersService:
     # POST /api/v1/papers/{id}/download
     # ------------------------------------------------------------------ #
 
-    def record_download(self, paper_id: int, admin_db: Client, user_id: str, user_email: str) -> None:
+    def record_download(
+        self,
+        paper_id: int,
+        user_id: str | None = None,
+        user_email: str | None = None,
+    ) -> None:
         """
         Increment the download counter for a published paper.
-        Delegates to increment_download_count() RPC.
-
-        Raises NotFoundError if the paper doesn't exist or isn't published
-        (the RPC itself raises a Postgres exception — we re-raise as 404).
+        Raises NotFoundError if the paper doesn't exist or isn't published.
         """
         logger.info("PapersService.record_download(paper_id=%s)", paper_id)
         try:
-            self._repo.record_download(paper_id)
-            # Log the download event
-            admin_db.table("download_logs").insert({
-                "firebase_uid": user_id,
-                "email": user_email,
-                "paper_id": paper_id
-            }).execute()
+            self._repo.record_download(paper_id, user_id=user_id, user_email=user_email)
         except Exception as exc:
-            # Supabase raises when paper_id is not found or not published
             logger.warning("record_download failed for paper_id=%s: %s", paper_id, exc)
             raise NotFoundError(resource="Paper", identifier=paper_id) from exc
+
+    # ------------------------------------------------------------------ #
+    # Likes & Comments
+    # ------------------------------------------------------------------ #
+
+    def toggle_like(self, paper_id: int, firebase_uid: str) -> dict:
+        """Toggle like for user on paper."""
+        # Ensure paper exists
+        self.get_paper(paper_id)
+        return self._repo.toggle_like(paper_id, firebase_uid)
+
+    def get_likes_info(self, paper_id: int, firebase_uid: str | None = None) -> dict:
+        """Get like count and has_liked status."""
+        self.get_paper(paper_id)
+        return self._repo.get_likes_info(paper_id, firebase_uid)
+
+    def get_comments(self, paper_id: int) -> list:
+        """Get threaded comments for paper."""
+        self.get_paper(paper_id)
+        flat_rows = self._repo.get_comments_for_paper(paper_id)
+
+        from app.schemas.paper import PaperCommentOut
+
+        comment_map: dict[str, PaperCommentOut] = {}
+        root_comments: list[PaperCommentOut] = []
+
+        for c in flat_rows:
+            c_out = PaperCommentOut(
+                id=str(c["id"]),
+                paper_id=c["paper_id"],
+                firebase_uid=c["firebase_uid"],
+                author_name=c["author_name"],
+                author_avatar=c.get("author_avatar"),
+                parent_id=str(c["parent_id"]) if c.get("parent_id") else None,
+                content=c["content"],
+                is_deleted=c.get("is_deleted", False),
+                created_at=c["created_at"],
+                updated_at=c["updated_at"],
+                replies=[],
+            )
+            comment_map[str(c["id"])] = c_out
+
+        for c in flat_rows:
+            c_id = str(c["id"])
+            p_id = str(c["parent_id"]) if c.get("parent_id") else None
+            if p_id and p_id in comment_map:
+                comment_map[p_id].replies.append(comment_map[c_id])
+            else:
+                root_comments.append(comment_map[c_id])
+
+        return root_comments
+
+    def add_comment(
+        self,
+        paper_id: int,
+        content: str,
+        firebase_uid: str,
+        author_name: str,
+        parent_id: str | None = None,
+        author_avatar: str | None = None,
+    ) -> dict:
+        """Add comment to paper."""
+        self.get_paper(paper_id)
+        return self._repo.add_paper_comment(
+            paper_id=paper_id,
+            firebase_uid=firebase_uid,
+            author_name=author_name,
+            content=content.strip(),
+            parent_id=parent_id,
+            author_avatar=author_avatar,
+        )
+
+    def delete_comment(self, comment_id: str, current_user: dict) -> dict:
+        """Delete a comment (owner or admin)."""
+        is_admin = current_user.get("role") == "ADMIN"
+        self._repo.delete_paper_comment(comment_id, hard_delete=is_admin)
+        return {"success": True, "message": "Comment deleted"}
+
+

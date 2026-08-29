@@ -27,15 +27,18 @@ All database access lives in PapersRepository.
 """
 
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query, status
-from supabase import Client
+from sqlalchemy.orm import Session
 
+from app.dependencies.auth import get_current_user, get_current_user_optional, require_role
 from app.dependencies.supabase import get_db
-from app.dependencies.auth import require_role
-from app.db.supabase_client import get_supabase_admin_client
 from app.schemas.paper import (
+    PaperCommentCreate,
+    PaperCommentOut,
+    PaperDetail,
+    PaperLikeResponse,
     PaperListResponse,
     PaperResponse,
     SearchResponse,
@@ -69,7 +72,7 @@ async def list_papers(
         int,
         Query(description=f"Number of papers to return (1–{MAX_LIMIT})", ge=1, le=MAX_LIMIT),
     ] = DEFAULT_LIMIT,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> PaperListResponse:
     """Return recent or popular published papers."""
     service = PapersService(db)
@@ -83,7 +86,7 @@ async def list_papers(
     response_model=SearchResponse,
     summary="Search papers",
     description=(
-        "Full-text paper search using the `search_papers()` Supabase RPC.\n\n"
+        "Full-text paper search.\n\n"
         "Mirrors `searchPapers()` in `frontend/src/services/search.js`, "
         "including term expansion (e.g. 'maths' → 'mathematics').\n\n"
         "All filter parameters are optional. An empty `q` returns zero results."
@@ -117,9 +120,9 @@ async def search_papers(
         str | None,
         Query(description="Filter by district (partial match, e.g. 'Chennai')"),
     ] = None,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> SearchResponse:
-    """Search published papers using the existing search_papers() RPC."""
+    """Search published papers using direct SQL search."""
     service = PapersService(db)
     return service.search_papers(
         q=q,
@@ -156,7 +159,7 @@ async def list_papers_by_subject(
         str | None,
         Query(description="Filter by paper type: 'question' or 'answer_key'"),
     ] = None,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> PaperListResponse:
     """Return all published papers for a specific subject."""
     service = PapersService(db)
@@ -183,7 +186,7 @@ async def list_papers_by_subject(
 )
 async def get_paper(
     paper_id: int,
-    db: Client = Depends(get_db),
+    db: Session = Depends(get_db),
 ) -> PaperResponse:
     """Return a single published paper by its primary key."""
     service = PapersService(db)
@@ -198,7 +201,6 @@ async def get_paper(
     summary="Record a paper download",
     description=(
         "Atomically increments `download_count` for a published paper.\n\n"
-        "Calls the `increment_download_count()` Supabase RPC defined in migration 004/007.\n\n"
         "Mirrors `recordDownload(id)` in `frontend/src/services/papers.js`.\n\n"
         "Returns 204 No Content on success. Returns 404 if the paper "
         "does not exist or is not published."
@@ -211,9 +213,123 @@ async def get_paper(
 async def record_download(
     paper_id: int,
     current_user: dict = Depends(require_role(["USER", "CONTRIBUTOR", "ADMIN", "SUPER_ADMIN"])),
-    db: Client = Depends(get_db),
-    admin_db: Client = Depends(get_supabase_admin_client),
+    db: Session = Depends(get_db),
 ) -> None:
     """Increment download counter for a published paper."""
     service = PapersService(db)
-    service.record_download(paper_id, admin_db, current_user.get("firebase_uid"), current_user.get("email"))
+    service.record_download(
+        paper_id,
+        user_id=current_user.get("firebase_uid"),
+        user_email=current_user.get("email"),
+    )
+
+
+# ── Paper Likes & Comments Endpoints ──────────────────────────────────────────
+
+@router.post(
+    "/{paper_id}/like",
+    response_model=PaperLikeResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Toggle like on a paper",
+    description="Authenticated endpoint. Toggles like/unlike for the authenticated Firebase user.",
+)
+async def toggle_paper_like(
+    paper_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PaperLikeResponse:
+    """Toggle like on a paper."""
+    service = PapersService(db)
+    res = service.toggle_like(paper_id, firebase_uid=current_user["firebase_uid"])
+    return PaperLikeResponse(**res)
+
+
+@router.get(
+    "/{paper_id}/likes",
+    response_model=PaperLikeResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get paper likes count and user status",
+    description="Public endpoint. Returns like count and whether the optional current user liked it.",
+)
+async def get_paper_likes(
+    paper_id: int,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+) -> PaperLikeResponse:
+    """Get paper likes status."""
+    service = PapersService(db)
+    uid = current_user.get("firebase_uid") if current_user else None
+    res = service.get_likes_info(paper_id, firebase_uid=uid)
+    return PaperLikeResponse(**res)
+
+
+@router.get(
+    "/{paper_id}/comments",
+    response_model=list[PaperCommentOut],
+    status_code=status.HTTP_200_OK,
+    summary="Get paper comments",
+    description="Public endpoint. Returns threaded comments for a question paper.",
+)
+async def get_paper_comments(
+    paper_id: int,
+    db: Session = Depends(get_db),
+) -> list[PaperCommentOut]:
+    """Get comments for a paper."""
+    service = PapersService(db)
+    return service.get_comments(paper_id)
+
+
+@router.post(
+    "/{paper_id}/comments",
+    response_model=PaperCommentOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add comment to paper",
+    description="Authenticated endpoint. Adds a comment or nested reply to a paper.",
+)
+async def add_paper_comment(
+    paper_id: int,
+    req: PaperCommentCreate,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PaperCommentOut:
+    """Add a comment on a paper."""
+    service = PapersService(db)
+    author_name = current_user.get("display_name") or current_user.get("email", "").split("@")[0] or "Student"
+    res = service.add_comment(
+        paper_id=paper_id,
+        content=req.content,
+        firebase_uid=current_user["firebase_uid"],
+        author_name=author_name,
+        parent_id=req.parent_id,
+        author_avatar=req.author_avatar,
+    )
+    return PaperCommentOut(
+        id=str(res["id"]),
+        paper_id=res["paper_id"],
+        firebase_uid=res["firebase_uid"],
+        author_name=res["author_name"],
+        author_avatar=res.get("author_avatar"),
+        parent_id=res.get("parent_id"),
+        content=res["content"],
+        is_deleted=res.get("is_deleted", False),
+        created_at=res["created_at"],
+        updated_at=res["updated_at"],
+        replies=[],
+    )
+
+
+@router.delete(
+    "/comments/{comment_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Delete paper comment",
+)
+async def delete_paper_comment(
+    comment_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Delete a paper comment."""
+    service = PapersService(db)
+    return service.delete_comment(comment_id=comment_id, current_user=current_user)
+
+
