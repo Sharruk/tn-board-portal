@@ -38,14 +38,17 @@ uv.lock
 # Debug / session artifacts
 attached_assets/
 
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+*.egg-info/
+
 # Backend — Python
 backend/.env
 backend/.venv/
 backend/venv/
-backend/__pycache__/
-backend/**/__pycache__/
-backend/**/*.pyc
-backend/**/*.pyo
-backend/.pytest_cache/
-backend/*.egg-info/
 backend/secrets/
+
