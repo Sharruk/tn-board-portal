@@ -8,6 +8,7 @@ To add a new resource:
 
 from fastapi import APIRouter
 
+from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.classes import router as classes_router
 from app.api.v1.endpoints.community import router as community_router
 from app.api.v1.endpoints.health import router as health_router
@@ -28,3 +29,5 @@ router.include_router(papers_router)
 router.include_router(submissions_router)
 router.include_router(leaderboard_router)
 router.include_router(community_router)
+router.include_router(analytics_router)
+
