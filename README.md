@@ -282,38 +282,43 @@ Admin access is managed entirely through Supabase Auth — there is no public re
 
 ## Deploying to Vercel
 
-### Initial setup
+The portal is deployed as a **unified application** on Vercel:
+- **Frontend:** React/Vite SPA built to `frontend/dist`
+- **Backend:** FastAPI REST API served via Vercel Serverless Functions (`api/index.py`)
 
-1. Push the repository to GitHub
-2. Go to [vercel.com](https://vercel.com) → **Add New Project**
-3. Import `tn-board-portal` from GitHub
-4. Configure the project settings:
+### Project Settings on Vercel
 
 | Setting | Value |
-|---------|-------|
-| **Root Directory** | `frontend` |
-| **Framework Preset** | Vite _(auto-detected)_ |
-| **Build Command** | `npm run build` |
-| **Output Directory** | `dist` |
+|---|---|
+| **Root Directory** | `./` (Repository root) |
+| **Framework Preset** | Other / Vite |
+| **Build Command** | `cd frontend && npm install && npm run build` (or root `npm run build`) |
+| **Output Directory** | `frontend/dist` |
 
-5. Add environment variables under **Settings → Environment Variables**:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-6. Click **Deploy**
+### Environment Variables
 
-### SPA routing
+Configure these under **Vercel Dashboard → Project Settings → Environment Variables**:
 
-The `vercel.json` at the repository root configures a catch-all rewrite so React Router routes (`/search`, `/admin`, `/class/10`, etc.) work correctly on direct navigation and page refresh:
+#### Frontend Variables (Client-side)
+- `VITE_SUPABASE_URL` — Supabase Project URL
+- `VITE_SUPABASE_ANON_KEY` — Supabase Anon Key
+- `VITE_FIREBASE_API_KEY` — Firebase Web API Key
+- `VITE_FIREBASE_AUTH_DOMAIN` — Firebase Auth Domain
+- `VITE_FIREBASE_PROJECT_ID` — Firebase Project ID
+- `VITE_FIREBASE_STORAGE_BUCKET` — Firebase Storage Bucket
+- `VITE_FIREBASE_MESSAGING_SENDER_ID` — Firebase Messaging Sender ID
+- `VITE_FIREBASE_APP_ID` — Firebase App ID
 
-```json
-{
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-}
-```
+#### Backend Variables (Server-side secrets)
+- `SUPABASE_URL` — Supabase Project URL
+- `SUPABASE_ANON_KEY` — Supabase Anon Key
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase Service Role Key (Admin ops)
+- `FIREBASE_SERVICE_ACCOUNT_JSON` — Firebase Service Account JSON string
+- `ADMIN_EMAIL` — Super Admin email address
 
-### Subsequent deploys
+### Routing & Rewrites
 
-Vercel automatically redeploys on every push to the `main` branch.
+Root `vercel.json` routes `/api/*`, `/health`, and `/docs` to `api/index.py`, and all SPA routes (`/(.*)`) to `index.html`.
 
 ---
 
@@ -321,76 +326,35 @@ Vercel automatically redeploys on every push to the `main` branch.
 
 ```
 tn-board-portal/
-├── frontend/                        # React application (Vercel root)
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   ├── postcss.config.js
+├── api/
+│   └── index.py                     # Vercel Serverless entrypoint (FastAPI)
+├── backend/                         # FastAPI application
+│   ├── app/
+│   │   ├── api/v1/                  # API v1 routes
+│   │   ├── services/                # Business logic
+│   │   ├── repositories/            # Supabase data layer
+│   │   └── main.py                  # App factory
+│   └── tests/                       # Pytest test suite
+├── frontend/                        # React application
+│   ├── src/                         # Components, pages, services
+│   │   ├── components/              # Reusable UI components
+│   │   │   ├── admin/
+│   │   │   │   ├── AdminLayout.jsx  # Admin section shell/layout
+│   │   │   │   └── ProtectedRoute.jsx  # Auth guard for admin routes
+│   │   ├── lib/                     # API client & auth
+│   │   ├── pages/                   # Route-level page components
+│   │   ├── services/                # API service calls
+│   │   └── main.jsx                 # Application entry point
 │   ├── package.json
-│   └── src/
-│       ├── main.jsx                 # Application entry point
-│       ├── index.css                # Global styles
-│       ├── components/              # Reusable UI components
-│       │   ├── Navbar.jsx
-│       │   ├── Footer.jsx
-│       │   ├── SearchBar.jsx
-│       │   ├── PaperCard.jsx
-│       │   ├── ClassCard.jsx
-│       │   ├── Breadcrumb.jsx
-│       │   ├── LoadingSpinner.jsx
-│       │   ├── ErrorMessage.jsx
-│       │   └── admin/
-│       │       ├── AdminLayout.jsx  # Admin section shell/layout
-│       │       └── ProtectedRoute.jsx  # Auth guard for admin routes
-│       ├── contexts/
-│       │   └── AuthContext.jsx      # Supabase Auth session state
-│       ├── hooks/
-│       │   └── useFetch.js          # Generic data-fetching hook
-│       ├── layouts/
-│       │   └── MainLayout.jsx       # Public page layout wrapper
-│       ├── lib/
-│       │   └── supabase.js          # Supabase client (reads env vars)
-│       ├── pages/                   # Route-level page components
-│       │   ├── HomePage.jsx
-│       │   ├── ClassPage.jsx
-│       │   ├── SubjectPage.jsx
-│       │   ├── PaperListPage.jsx
-│       │   ├── PaperDetailPage.jsx
-│       │   ├── SearchPage.jsx
-│       │   ├── NotFoundPage.jsx
-│       │   └── admin/
-│       │       ├── LoginPage.jsx
-│       │       ├── DashboardPage.jsx
-│       │       ├── PapersPage.jsx       # Paper list, edit, delete
-│       │       ├── BulkUploadTab.jsx    # Multi-file upload UI
-│       │       └── ContentStatusPage.jsx
-│       ├── router/
-│       │   └── index.jsx            # React Router route definitions
-│       ├── services/                # Supabase data-access layer
-│       │   ├── papers.js            # CRUD for papers
-│       │   ├── search.js            # Full-text search via search_papers RPC
-│       │   ├── classes.js           # Fetch classes
-│       │   ├── subjects.js          # Fetch subjects
-│       │   └── admin.js             # Admin stats, audit log, content status
-│       └── utils/
-│           └── download.js          # PDF download helper
-│
+│   ├── tailwind.config.js
 ├── supabase/
-│   ├── migrations/                  # SQL migrations — apply in order
-│   │   ├── 001_schema.sql
-│   │   ├── 002_seed_data.sql
-│   │   ├── 003_rls_policies.sql
-│   │   ├── 004_functions.sql
-│   │   ├── 005_search_analytics.sql
-│   │   ├── 006_search_rpc.sql
-│   │   └── 007_paper_status.sql
+│   ├── migrations/                  # SQL migrations
 │   └── README.md
-│
-├── vercel.json                      # SPA catch-all rewrite for React Router
-├── .env.example                     # Environment variable template
-├── .gitignore
-└── README.md
+├── requirements.txt                 # Vercel Python runtime requirements
+├── package.json                     # Root monorepo build script
+└── vercel.json                      # Vercel routing & build config
 ```
+
 
 ---
 

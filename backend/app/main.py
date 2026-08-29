@@ -118,7 +118,7 @@ def create_app() -> FastAPI:
 
     # ------------------------------------------------------------------ #
     # CORS middleware
-    # Allow the React frontend (local + Vercel) and future Render backend.
+    # Allow the React frontend (local dev + Vercel unified/preview deployments).
     # ------------------------------------------------------------------ #
     app.add_middleware(
         CORSMiddleware,
@@ -150,8 +150,8 @@ def create_app() -> FastAPI:
 
     # ------------------------------------------------------------------ #
     # Top-level /health alias
-    # Required by: sprint brief, Render health check, load balancers.
-    # The canonical versioned route is GET /api/v1/health.
+    # Canonical versioned route is GET /api/v1/health.
+    # Top-level alias is also exposed at /health.
     # ------------------------------------------------------------------ #
     from app.schemas.health import HealthResponse as _HealthResponse
     from app.services.health_service import get_health as _get_health
@@ -161,10 +161,11 @@ def create_app() -> FastAPI:
         response_model=_HealthResponse,
         summary="Health check (top-level alias)",
         tags=["Health"],
-        description="Top-level health check. Identical to /api/v1/health. Used by Render.",
+        description="Top-level health check. Identical to /api/v1/health.",
     )
     async def health_alias() -> _HealthResponse:
         return _get_health()
+
 
     # ------------------------------------------------------------------ #
     # Mount versioned API router

@@ -50,26 +50,30 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     # CORS
     # Comma-separated list of allowed origins.
-    # Example: "http://localhost:5173,https://tn-board-portal.vercel.app"
+    # Example: "http://localhost:5173,http://localhost:5000,https://tn-board-portal.vercel.app"
     # ------------------------------------------------------------------ #
     CORS_ORIGINS: str = (
         "http://localhost:5173,"
+        "http://localhost:5000,"
         "http://localhost:3000,"
         "http://127.0.0.1:5173,"
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:5000,"
+        "http://127.0.0.1:3000,"
+        "https://tn-board-portal.vercel.app"
     )
 
     # ------------------------------------------------------------------ #
     # Firebase Auth
     # Two mutually exclusive ways to provide the service account:
     #   1. FIREBASE_SERVICE_ACCOUNT_JSON — full JSON string of the SA key
-    #      (preferred for Docker/Render: set the entire file content as an env var)
+    #      (preferred for Vercel/serverless: set the entire file content as an env var)
     #   2. FIREBASE_SERVICE_ACCOUNT_PATH — filesystem path to the JSON file
     #      (useful for local dev where the file exists on disk)
     # auth.py tries (1) first, then falls back to (2).
     # ------------------------------------------------------------------ #
     FIREBASE_SERVICE_ACCOUNT_JSON: str = ""   # full SA JSON as a string
     FIREBASE_SERVICE_ACCOUNT_PATH: str = ""   # path to SA JSON file
+
 
     # ------------------------------------------------------------------ #
     # Admin Authorization

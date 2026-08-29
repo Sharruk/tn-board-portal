@@ -6,18 +6,24 @@
 
 ## High-Level Overview
 
-TN Board Portal has evolved from a direct-to-database React SPA into a modern **three-tier architecture**. 
+TN Board Portal runs on a **unified Vercel deployment**:
 
-- **Frontend:** Server-rendered React SPA deployed on Vercel.
-- **Backend:** FastAPI application (Python) exposing a RESTful API.
-- **Database:** Supabase Platform (PostgreSQL + Auth + Storage).
+- **Frontend:** React SPA built with Vite and Tailwind CSS.
+- **Backend:** FastAPI application (Python) deployed via Vercel Serverless Functions (`api/index.py`).
+- **Database & Storage:** Supabase Platform (PostgreSQL + Storage).
+- **Authentication:** Firebase Admin SDK & Firebase Auth.
 
 ```mermaid
 graph TD
-    Client[Browser (React SPA)] -->|HTTPS API Requests| FastAPI[FastAPI Backend]
-    FastAPI -->|PostgREST & RPCs| Supabase[(Supabase Platform)]
-    Client -->|Direct for Auth/Storage| Supabase
+    User[User Browser] -->|Routes /* & /api/*| Vercel[Vercel Unified Deployment]
+    subgraph Vercel
+        Vercel -->|SPA Frontend| ReactSPA[React SPA / Vite]
+        Vercel -->|Serverless /api/*| FastAPI[FastAPI Backend api/index.py]
+    end
+    FastAPI -->|PostgREST & Storage| Supabase[(Supabase DB & Storage)]
+    FastAPI -->|Token Verification| FirebaseAuth[(Firebase Auth)]
 ```
+
 
 ---
 

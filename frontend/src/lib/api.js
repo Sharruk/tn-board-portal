@@ -2,29 +2,17 @@
 // FastAPI Client — lib/api.js
 // =============================================================================
 // Centralised HTTP client for the FastAPI backend.
-// Base URL is read from VITE_API_BASE_URL (set in .env.local for local dev
-// and in Vercel/Render environment variables for deployed environments).
+// In Vercel unified deployment, backend and frontend share the same origin,
+// so API_BASE_URL defaults to an empty string '' (relative path /api/v1/...).
+//
+// For local development, requests are proxied via Vite (or VITE_API_BASE_URL).
 //
 // Usage:
 //   import { apiFetch } from '../lib/api'
 //   const data = await apiFetch('/api/v1/classes')
 // =============================================================================
 
-// Fallback is the PRODUCTION backend so that a missing Vercel env var
-// does not silently route all traffic to the dev service.
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  'https://tn-board-portal-api.onrender.com'
-
-if (!import.meta.env.VITE_API_BASE_URL) {
-  console.warn(
-    '⚠️  VITE_API_BASE_URL is not set.\n' +
-    'Add it to frontend/.env.local for local dev:\n' +
-    '  VITE_API_BASE_URL=https://tn-board-portal-api-dev.onrender.com  (dev)\n' +
-    '  VITE_API_BASE_URL=https://tn-board-portal-api.onrender.com      (prod)\n' +
-    'Falling back to the PRODUCTION backend URL.'
-  )
-}
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
 /**
  * Thin fetch wrapper for the FastAPI backend.
@@ -62,3 +50,4 @@ export async function apiFetch(path, options = {}) {
 }
 
 export { API_BASE_URL }
+
