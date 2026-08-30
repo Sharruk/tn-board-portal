@@ -94,16 +94,28 @@ class ApproveRequest(BaseModel):
     """
     Body for POST /api/v1/submissions/{id}/approve.
 
-    The admin must supply subject_id, exam_type, year, and paper_type
-    because the public submission form does not collect this information.
-    The backend uses these to create a proper papers table record.
+    The admin supplies the human-readable title, optional YouTube URL,
+    and metadata (subject, exam type, year, paper type, month, district).
     """
 
+    title: str | None = Field(
+        None,
+        min_length=1,
+        max_length=255,
+        description="Admin-entered human-readable title for the paper",
+    )
+    youtube_url: str | None = Field(
+        None,
+        max_length=500,
+        description="Optional YouTube explanation video URL",
+    )
+    class_id: int | None = Field(None, description="Class ID (optional)")
     subject_id: int = Field(..., description="Subject FK — from the subjects table", gt=0)
     exam_type: str = Field(
         ...,
         description="Exam category (e.g. 'Annual Exam', 'First Mid Term Test')",
         min_length=1,
+        max_length=100,
     )
     year: int = Field(..., description="Academic year", ge=2000, le=2100)
     paper_type: Literal["question", "answer_key"] = Field(
@@ -111,6 +123,15 @@ class ApproveRequest(BaseModel):
     )
     month: str | None = Field(None, description="Month the exam was held (optional)")
     district: str | None = Field(None, description="TN district (optional)")
+
+    @classmethod
+    def validate_youtube_link(cls, v: str | None) -> str | None:
+        if not v or not v.strip():
+            return None
+        v = v.strip()
+        if not any(domain in v.lower() for domain in ["youtube.com", "youtu.be"]):
+            raise ValueError("Invalid YouTube URL. Must contain 'youtube.com' or 'youtu.be'.")
+        return v
 
 
 class RejectRequest(BaseModel):

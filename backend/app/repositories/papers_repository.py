@@ -39,6 +39,7 @@ class PapersRepository:
                 p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
                 p.public_url, p.youtube_url, p.original_filename, p.is_visible,
                 p.download_count, p.created_at,
+                p.submission_id, p.contributor_name,
                 s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
                 c.id AS class_id, c.name AS class_name, c.slug AS class_slug
             FROM papers p
@@ -50,11 +51,34 @@ class PapersRepository:
             sql += " AND p.is_visible = true"
 
         stmt = text(sql)
-        result = self._db.execute(stmt, {"paper_id": paper_id})
-        row = result.fetchone()
+        try:
+            result = self._db.execute(stmt, {"paper_id": paper_id})
+            row = result.fetchone()
+        except Exception as e:
+            logger.debug("Failed with contributor columns, falling back to legacy select: %s", e)
+            fallback_sql = """
+                SELECT 
+                    p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
+                    p.public_url, p.youtube_url, p.original_filename, p.is_visible,
+                    p.download_count, p.created_at,
+                    s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
+                    c.id AS class_id, c.name AS class_name, c.slug AS class_slug
+                FROM papers p
+                JOIN subjects s ON p.subject_id = s.id
+                JOIN classes c ON s.class_id = c.id
+                WHERE p.id = :paper_id
+            """
+            if published_only:
+                fallback_sql += " AND p.is_visible = true"
+            result = self._db.execute(text(fallback_sql), {"paper_id": paper_id})
+            row = result.fetchone()
+
         if not row:
             return None
-        return _add_status(dict(row._mapping))
+        d = dict(row._mapping)
+        if d.get("submission_id"):
+            d["submission_id"] = str(d["submission_id"])
+        return _add_status(d)
 
     def list_recent(self, limit: int = 10) -> list[dict[str, Any]]:
         """

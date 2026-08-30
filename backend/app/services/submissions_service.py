@@ -277,6 +277,14 @@ class SubmissionsService:
                 "Submission has no files — cannot approve a submission without files."
             )
 
+        # Validate YouTube URL if provided
+        youtube_url = None
+        if req.youtube_url and req.youtube_url.strip():
+            try:
+                youtube_url = ApproveRequest.validate_youtube_link(req.youtube_url)
+            except ValueError as e:
+                raise ValidationError(str(e))
+
         # Create paper records for each file
         paper_ids: list[int] = []
         for file_row in files:
@@ -290,6 +298,8 @@ class SubmissionsService:
                     month=req.month,
                     district=req.district,
                     submission=sub,
+                    title=req.title,
+                    youtube_url=youtube_url,
                 )
                 paper_ids.append(paper["id"])
             except Exception as exc:
@@ -300,8 +310,14 @@ class SubmissionsService:
                     exc,
                 )
                 filename = file_row.get("original_filename") or file_row.get("id")
+                # Format a safe, useful error message
+                err_msg = str(exc).strip()
+                if "duplicate key" in err_msg.lower() or "unique constraint" in err_msg.lower():
+                    clean_reason = "A paper with this title, subject, year, and exam type already exists."
+                else:
+                    clean_reason = err_msg.split("\n")[0]
                 raise DatabaseError(
-                    f"Failed to create paper from file '{filename}': {str(exc)}"
+                    f"Failed to publish paper '{filename}': {clean_reason}"
                 ) from exc
 
         # Mark submission as approved

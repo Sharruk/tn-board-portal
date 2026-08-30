@@ -51,6 +51,8 @@ class PaperBase(BaseModel):
     is_visible: bool = Field(..., description="Legacy visibility flag")
     status: PaperStatus = Field(..., description="draft | published | archived")
     download_count: int = Field(default=0, description="Total download count")
+    submission_id: str | None = Field(None, description="Origin material submission UUID")
+    contributor_name: str | None = Field(None, description="Contributor display name")
     created_at: datetime = Field(..., description="Upload timestamp")
 
 

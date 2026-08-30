@@ -638,6 +638,71 @@ class TestApproveSubmission:
         assert response.status_code == 200
         assert response.json()["count"] == 0
 
+    def test_approve_with_custom_title_and_youtube_url(self):
+        """Approve with custom human-readable title and YouTube video URL."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [{**MOCK_PAPER, "title": "Class 10 Science Monthly Test 2024", "youtube_url": "https://youtube.com/watch?v=dQw4w9WgXcQ"}],
+        })
+        mock_db.storage = MagicMock()
+        submissions_bucket_mock = MagicMock()
+        submissions_bucket_mock.download.return_value = b"file content"
+        papers_bucket_mock = MagicMock()
+        papers_bucket_mock.upload.return_value = MagicMock()
+        papers_bucket_mock.get_public_url.return_value = MOCK_PAPER["public_url"]
+
+        def from_side_effect(bucket_name):
+            if bucket_name == "submissions":
+                return submissions_bucket_mock
+            elif bucket_name == "papers":
+                return papers_bucket_mock
+            return MagicMock()
+
+        mock_db.storage.from_.side_effect = from_side_effect
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json={
+                **self.APPROVE_BODY,
+                "title": "Class 10 Science Monthly Test 2024",
+                "youtube_url": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            },
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "approved"
+        assert body["submission_id"] == _SUB_ID
+
+    def test_approve_invalid_youtube_url(self):
+        """Approve with invalid YouTube URL format → 422."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json={
+                **self.APPROVE_BODY,
+                "title": "Class 10 Science Monthly Test 2024",
+                "youtube_url": "https://vimeo.com/12345678",
+            },
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+        assert "youtube" in str(response.json()).lower()
+
 
 # ============================================================================
 # Tests: POST /api/v1/submissions/{id}/reject (admin)

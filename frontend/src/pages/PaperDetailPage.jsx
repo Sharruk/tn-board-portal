@@ -437,9 +437,17 @@ export default function PaperDetailPage() {
             {isQuestion ? '📄' : '✅'}
           </div>
           <div className="flex-1 min-w-0">
-            <span className={`badge text-xs ${isQuestion ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
-              {isQuestion ? 'Question Paper' : 'Answer Key'}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`badge text-xs ${isQuestion ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                {isQuestion ? 'Question Paper' : 'Answer Key'}
+              </span>
+              {paper.contributor_name && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200/70 rounded-full">
+                  <span>🏆 Contributed by:</span>
+                  <strong className="text-amber-900">{paper.contributor_name}</strong>
+                </span>
+              )}
+            </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 mt-2 leading-snug">{paper.title}</h1>
           </div>
         </div>

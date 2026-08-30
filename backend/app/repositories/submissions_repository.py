@@ -391,6 +391,8 @@ class SubmissionsRepository:
         month: str | None,
         district: str | None,
         submission: dict[str, Any],
+        title: str | None = None,
+        youtube_url: str | None = None,
     ) -> dict[str, Any]:
         """
         Insert one paper row derived from an approved submission file.
@@ -447,41 +449,43 @@ class SubmissionsRepository:
         raw_name = file_row.get("original_filename", "")
         base_name = raw_name.rsplit(".", 1)[0] if "." in raw_name else raw_name
 
-        # Query subject and class name to build canonical paper title
-        class_name = ""
-        subject_name = ""
-        try:
-            subj_stmt = text(
-                """
-                SELECT s.name AS subject_name, c.name AS class_name
-                FROM subjects s
-                JOIN classes c ON s.class_id = c.id
-                WHERE s.id = :subject_id
-                """
-            )
-            subj_row = self._db.execute(subj_stmt, {"subject_id": subject_id}).fetchone()
-            if subj_row:
-                mapping = dict(subj_row._mapping)
-                class_name = mapping.get("class_name") or ""
-                subject_name = mapping.get("subject_name") or ""
-        except Exception as e:
-            logger.warning("Failed to lookup subject/class for canonical title: %s", e)
+        # If admin entered a custom title, use it; otherwise compute canonical title
+        final_title = (title or "").strip()
+        if not final_title:
+            class_name = ""
+            subject_name = ""
+            try:
+                subj_stmt = text(
+                    """
+                    SELECT s.name AS subject_name, c.name AS class_name
+                    FROM subjects s
+                    JOIN classes c ON s.class_id = c.id
+                    WHERE s.id = :subject_id
+                    """
+                )
+                subj_row = self._db.execute(subj_stmt, {"subject_id": subject_id}).fetchone()
+                if subj_row:
+                    mapping = dict(subj_row._mapping)
+                    class_name = mapping.get("class_name") or ""
+                    subject_name = mapping.get("subject_name") or ""
+            except Exception as e:
+                logger.warning("Failed to lookup subject/class for canonical title: %s", e)
 
-        type_str = "Question Paper" if paper_type == "question" else "Answer Key"
-        title_parts = [
-            class_name,
-            subject_name,
-            exam_type,
-            month or "",
-            str(year) if year else "",
-            district or "",
-            type_str,
-        ]
-        title = " ".join(p for p in title_parts if p).strip()
-        if not title:
-            title = base_name.replace("_", " ").replace("-", " ").strip()
-        if not title:
-            title = submission.get("details") or f"Submitted Paper {str(submission['id'])[:8]}"
+            type_str = "Question Paper" if paper_type == "question" else "Answer Key"
+            title_parts = [
+                class_name,
+                subject_name,
+                exam_type,
+                month or "",
+                str(year) if year else "",
+                district or "",
+                type_str,
+            ]
+            final_title = " ".join(p for p in title_parts if p).strip()
+            if not final_title:
+                final_title = base_name.replace("_", " ").replace("-", " ").strip()
+            if not final_title:
+                final_title = submission.get("details") or f"Submitted Paper {str(submission['id'])[:8]}"
 
         # Prevent duplicate title collisions
         try:
@@ -493,28 +497,30 @@ class SubmissionsRepository:
             )
             existing = self._db.execute(
                 chk_stmt,
-                {"subject_id": subject_id, "title": title, "year": year, "exam_type": exam_type},
+                {"subject_id": subject_id, "title": final_title, "year": year, "exam_type": exam_type},
             ).fetchall()
             if existing:
-                title = f"{title} ({str(submission['id'])[:6]})"
+                final_title = f"{final_title} ({str(submission['id'])[:6]})"
         except Exception as e:
             logger.warning("Uniqueness check for paper title query failed: %s", e)
 
-        original_filename = file_row.get("original_filename") or raw_name or f"{title}.{ext}"
+        original_filename = file_row.get("original_filename") or raw_name or f"{final_title}.{ext}"
+        submission_id = str(submission["id"]) if submission.get("id") else None
+        contributor_name = submission.get("publisher_name")
 
         stmt = text(
             """
             INSERT INTO papers (
                 subject_id, exam_type, year, title, paper_type,
-                month, district, file_path, public_url, original_filename,
-                is_visible, download_count, status
+                month, district, file_path, public_url, youtube_url, original_filename,
+                is_visible, download_count, status, submission_id, contributor_name
             )
             VALUES (
                 :subject_id, :exam_type, :year, :title, :paper_type,
-                :month, :district, :file_path, :public_url, :original_filename,
-                true, 0, 'published'
+                :month, :district, :file_path, :public_url, :youtube_url, :original_filename,
+                true, 0, 'published', :submission_id, :contributor_name
             )
-            RETURNING id, subject_id, exam_type, year, title, paper_type, month, district, file_path, public_url, original_filename, is_visible, download_count, status, created_at
+            RETURNING id, subject_id, exam_type, year, title, paper_type, month, district, file_path, public_url, youtube_url, original_filename, is_visible, download_count, status, submission_id, contributor_name, created_at
             """
         )
         try:
@@ -524,20 +530,26 @@ class SubmissionsRepository:
                     "subject_id": subject_id,
                     "exam_type": exam_type,
                     "year": year,
-                    "title": title,
+                    "title": final_title,
                     "paper_type": paper_type,
                     "month": month,
                     "district": district,
                     "file_path": new_path,
                     "public_url": public_url,
+                    "youtube_url": (youtube_url.strip() if youtube_url else None),
                     "original_filename": original_filename,
+                    "submission_id": submission_id,
+                    "contributor_name": contributor_name,
                 },
             )
             self._db.commit()
             row = result.fetchone()
             if not row:
                 raise RuntimeError("Failed to create paper from submission file — no data returned")
-            return dict(row._mapping)
+            d = dict(row._mapping)
+            if d.get("submission_id"):
+                d["submission_id"] = str(d["submission_id"])
+            return d
         except Exception as e:
             self._db.rollback()
             logger.error("Failed to insert paper record: %s", e)

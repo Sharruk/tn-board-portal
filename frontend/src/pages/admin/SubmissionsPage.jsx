@@ -297,11 +297,38 @@ function SubmissionFileCard({ file, token }) {
 
 // ── Submission Detail Modal ────────────────────────────────────────────────────
 
+function extractYouTubeId(url) {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('?')[0]
+    if (u.hostname.includes('youtube.com')) {
+      const shortsMatch = u.pathname.match(/\/shorts\/([A-Za-z0-9_-]{11})/)
+      if (shortsMatch) return shortsMatch[1]
+      const embedMatch = u.pathname.match(/\/embed\/([A-Za-z0-9_-]{11})/)
+      if (embedMatch) return embedMatch[1]
+      return u.searchParams.get('v')
+    }
+  } catch {
+    const m = url.match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/)
+    return m ? m[1] : null
+  }
+  return null
+}
+
 function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed }) {
   const [approveForm, setApproveForm] = useState({
-    classId: '', subjectId: '', examType: '', year: String(CURRENT_YEAR),
-    paperType: 'question', month: '', district: '',
+    title: '',
+    youtubeUrl: '',
+    classId: '',
+    subjectId: '',
+    examType: '',
+    year: String(CURRENT_YEAR),
+    paperType: 'question',
+    month: '',
+    district: '',
   })
+  const [titleManuallyEdited, setTitleManuallyEdited] = useState(false)
   const [subjects, setSubjects]               = useState([])
   const [rejectReason, setRejectReason]       = useState('')
   const [showRejectForm, setShowRejectForm]   = useState(false)
@@ -314,15 +341,46 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     getSubjectsForClass(approveForm.classId).then(r => setSubjects(r.data || []))
   }, [approveForm.classId])
 
+  // Automatically construct clean default title when metadata changes unless admin manually typed a custom title
+  useEffect(() => {
+    if (titleManuallyEdited) return
+    const cls = classes.find(c => String(c.id) === String(approveForm.classId))?.name || ''
+    const sub = subjects.find(s => String(s.id) === String(approveForm.subjectId))?.name || ''
+    const typeStr = approveForm.paperType === 'question' ? 'Question Paper' : 'Answer Key'
+    const parts = [
+      cls,
+      sub,
+      approveForm.examType,
+      approveForm.month,
+      approveForm.year,
+      approveForm.district,
+      typeStr,
+    ].filter(Boolean)
+    if (parts.length >= 2) {
+      setApproveForm(f => ({ ...f, title: parts.join(' ') }))
+    }
+  }, [approveForm.classId, approveForm.subjectId, approveForm.examType, approveForm.month, approveForm.year, approveForm.district, approveForm.paperType, classes, subjects, titleManuallyEdited])
+
+  const ytId = extractYouTubeId(approveForm.youtubeUrl)
+
   const handleApprove = async () => {
     if (loading) return
     setError(null)
+    if (!approveForm.classId)   return setError('Please select a class.')
     if (!approveForm.subjectId) return setError('Please select a subject.')
     if (!approveForm.examType)  return setError('Please select an exam type.')
     if (!approveForm.year)      return setError('Please select a year.')
+    if (!approveForm.title.trim()) return setError('Please enter a paper title.')
+    if (approveForm.youtubeUrl.trim() && !extractYouTubeId(approveForm.youtubeUrl.trim())) {
+      return setError('Please enter a valid YouTube video URL (e.g. https://youtube.com/watch?v=... or https://youtu.be/...) or leave it blank.')
+    }
+
     setLoading(true)
     try {
       await approveSubmission(token, submission.id, {
+        title:      approveForm.title.trim(),
+        youtube_url: approveForm.youtubeUrl.trim() || null,
+        class_id:   parseInt(approveForm.classId, 10),
         subject_id: parseInt(approveForm.subjectId, 10),
         exam_type:  approveForm.examType,
         year:       parseInt(approveForm.year, 10),
@@ -458,20 +516,86 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
 
           {/* ── PENDING: Approve form ───────────────────────────────────── */}
           {isPending && !showRejectForm && !showRejectConfirm && (
-            <div className="border border-emerald-200 bg-emerald-50 rounded-2xl p-5">
-              <p className="text-sm font-bold text-emerald-800 mb-4 flex items-center gap-2">
-                <span>✅</span> Approve Submission
-              </p>
-              <p className="text-xs text-emerald-700 mb-4">
-                Select the class, subject, and exam details to publish this material.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div className="border border-emerald-200 bg-emerald-50/70 rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
+                <p className="text-base font-bold text-emerald-900 flex items-center gap-2">
+                  <span>✅</span> Approve &amp; Publish Paper
+                </p>
+                <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full">
+                  Admin Action
+                </span>
+              </div>
+
+              {/* ── Source File Identification ── */}
+              <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex items-start gap-3 shadow-2xs">
+                <span className="text-2xl shrink-0 mt-0.5">📄</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Original Uploaded File</p>
+                  <p className="text-sm font-semibold text-gray-900 font-mono break-all mt-0.5">
+                    {submission.files?.[0]?.original_filename || 'Document.pdf'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    This filename is saved in metadata. Enter a clean, descriptive title below for public display.
+                  </p>
+                </div>
+              </div>
+
+              {/* ── Paper Title (Admin Editable) ── */}
+              <div>
+                <label className="block text-xs font-bold text-gray-800 mb-1">
+                  Paper Title <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={approveForm.title}
+                  onChange={e => {
+                    setTitleManuallyEdited(true)
+                    setApproveForm(f => ({ ...f, title: e.target.value }))
+                  }}
+                  placeholder="e.g. Class 10 Science Monthly Test Question Paper August 2026 - Chennai District"
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white font-medium text-gray-900 placeholder:text-gray-400 shadow-2xs"
+                  maxLength={255}
+                  required
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  The public paper will be published with this human-readable title.
+                </p>
+              </div>
+
+              {/* ── YouTube Explanation Video URL (Optional) ── */}
+              <div>
+                <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
+                  <span>YouTube Explanation Video <span className="text-gray-400 font-normal">(optional)</span></span>
+                  <span className="text-[11px] text-gray-400 font-normal">Embeds video on paper page</span>
+                </label>
+                <input
+                  type="url"
+                  value={approveForm.youtubeUrl}
+                  onChange={e => setApproveForm(f => ({ ...f, youtubeUrl: e.target.value }))}
+                  placeholder="https://youtube.com/watch?v=... or https://youtu.be/..."
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white font-medium text-gray-900 placeholder:text-gray-400 shadow-2xs"
+                />
+                {ytId && (
+                  <div className="mt-2.5 rounded-xl overflow-hidden border border-gray-200 bg-white shadow-2xs">
+                    <img
+                      src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
+                      alt="YouTube thumbnail preview"
+                      className="w-full h-32 object-cover"
+                      onError={e => { e.currentTarget.style.display = 'none' }}
+                    />
+                    <p className="px-3 py-1.5 text-xs text-gray-600 bg-gray-50 font-medium">▶ Video preview ready for published paper</p>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Paper Academic Metadata ── */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
                   <select
                     value={approveForm.classId}
                     onChange={e => setApproveForm(f => ({ ...f, classId: e.target.value, subjectId: '' }))}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
                   >
                     <option value="">Select class…</option>
                     {classes.map(c => (
@@ -480,12 +604,12 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Subject <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Subject <span className="text-red-500">*</span></label>
                   <select
                     value={approveForm.subjectId}
                     onChange={e => setApproveForm(f => ({ ...f, subjectId: e.target.value }))}
                     disabled={!approveForm.classId}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none disabled:opacity-50"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none disabled:opacity-50 bg-white font-medium"
                   >
                     <option value="">Select subject…</option>
                     {subjects.map(s => (
@@ -494,69 +618,74 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Exam Type <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Exam Type <span className="text-red-500">*</span></label>
                   <select
                     value={approveForm.examType}
                     onChange={e => setApproveForm(f => ({ ...f, examType: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
                   >
                     <option value="">Select exam type…</option>
                     {EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Year <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Year <span className="text-red-500">*</span></label>
                   <select
                     value={approveForm.year}
                     onChange={e => setApproveForm(f => ({ ...f, year: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
                   >
                     {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Paper Type <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Paper Type <span className="text-red-500">*</span></label>
                   <select
                     value={approveForm.paperType}
                     onChange={e => setApproveForm(f => ({ ...f, paperType: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
                   >
                     <option value="question">Question Paper</option>
                     <option value="answer_key">Answer Key</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Month <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Month <span className="text-gray-400 font-normal">(optional)</span></label>
                   <select
                     value={approveForm.month}
                     onChange={e => setApproveForm(f => ({ ...f, month: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
                   >
                     <option value="">Select month…</option>
                     {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">District <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">District <span className="text-gray-400 font-normal">(optional)</span></label>
                   <select
                     value={approveForm.district}
                     onChange={e => setApproveForm(f => ({ ...f, district: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
                   >
-                    <option value="">No specific district</option>
+                    <option value="">No specific district (State-wide)</option>
                     {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
               </div>
+
               {error && (
-                <p className="text-xs text-red-600 mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+                <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+                  <span className="shrink-0 mt-0.5">⚠️</span>
+                  <span>{error}</span>
+                </div>
               )}
-              <div className="flex gap-2">
+
+              <div className="flex gap-2.5 pt-2">
                 <button
                   id="approve-submission-btn"
                   onClick={handleApprove}
                   disabled={loading}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm shadow-emerald-200"
                 >
                   {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '✅'}
                   Approve &amp; Publish
@@ -564,7 +693,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                 <button
                   onClick={() => { setShowRejectForm(true); setError(null) }}
                   disabled={loading}
-                  className="px-4 py-2.5 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold rounded-xl transition-colors"
+                  className="px-4 py-3 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold rounded-xl transition-colors"
                 >
                   Reject instead
                 </button>
