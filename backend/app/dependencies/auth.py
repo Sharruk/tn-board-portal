@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 #
 # Two credential sources are tried, in this order:
 #   1. FIREBASE_SERVICE_ACCOUNT_JSON — full SA JSON as an env-var string.
-#      Preferred for Docker/Render where baking a secrets file into the image
-#      is not safe or practical.
+#      Preferred for Vercel / serverless deployments.
 #   2. FIREBASE_SERVICE_ACCOUNT_PATH — filesystem path to the SA JSON file.
 #      Useful for local development.
 #

@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""  # For Supabase Storage operations
     SUPABASE_DATABASE_URL: str = ""      # Direct PostgreSQL connection URL (port 5432)
+    DATABASE_URL: str = ""               # Standard fallback PostgreSQL connection URL
 
 
     # ------------------------------------------------------------------ #

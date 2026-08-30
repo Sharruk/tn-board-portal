@@ -21,7 +21,7 @@ router = APIRouter(tags=["Health"])
     "/health",
     response_model=HealthResponse,
     summary="Health check",
-    description="Returns the API health status and version. Used by Render, load balancers, and monitoring tools.",
+    description="Returns the API health status and version. Used by Vercel, load balancers, and monitoring tools.",
 )
 async def health_check() -> HealthResponse:
     """Return API health status."""

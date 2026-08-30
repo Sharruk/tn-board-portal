@@ -51,4 +51,14 @@ backend/.env
 backend/.venv/
 backend/venv/
 backend/secrets/
+secrets/
+
+# Supabase CLI temp files
+supabase/.temp/
+.temp/
+
+# Vercel
+.vercel/
+
+
 
