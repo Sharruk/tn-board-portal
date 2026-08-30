@@ -12,7 +12,19 @@
 //   const data = await apiFetch('/api/v1/classes')
 // =============================================================================
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+function resolveApiBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_BASE_URL || ''
+  // If envUrl contains decommissioned render or running on Vercel production domain, use same-origin relative path
+  if (envUrl.includes('onrender.com') || envUrl.includes('render.com')) {
+    return ''
+  }
+  if (typeof window !== 'undefined' && (window.location.hostname.endsWith('vercel.app') || window.location.hostname === 'tn-board-portal.vercel.app')) {
+    return ''
+  }
+  return envUrl
+}
+
+const API_BASE_URL = resolveApiBaseUrl()
 
 /**
  * Thin fetch wrapper for the FastAPI backend.
@@ -23,7 +35,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
  * @throws {Error} on non-2xx HTTP status or network failure
  */
 export async function apiFetch(path, options = {}) {
-  const url = `${API_BASE_URL}${path}`
+  const baseUrl = resolveApiBaseUrl()
+  const url = `${baseUrl}${path}`
   const response = await fetch(url, {
     headers: {
       'Accept': 'application/json',

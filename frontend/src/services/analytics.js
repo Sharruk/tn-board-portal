@@ -1,8 +1,6 @@
-/**
- * Analytics Telemetry Service — privacy-conscious event logging & admin dashboard queries.
- */
+import { API_BASE_URL, apiFetch } from '../lib/api'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
+const API_BASE = `${API_BASE_URL}/api/v1`
 
 function getOrCreateSessionId() {
   try {
