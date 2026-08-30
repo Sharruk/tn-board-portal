@@ -11,16 +11,29 @@ from app.dependencies.supabase import get_db
 from app.schemas.leaderboard import LeaderboardResponse
 from app.services.leaderboard_service import LeaderboardService
 
-router = APIRouter(prefix="/leaderboard", tags=["Leaderboard"])
+router = APIRouter(tags=["Leaderboard"])
 
 
 @router.get(
-    "",
+    "/leaderboard",
     response_model=LeaderboardResponse,
     status_code=status.HTTP_200_OK,
     summary="Get contributor leaderboard",
     description=(
         "Public endpoint. Returns rankings of contributors based on accepted contributions "
+        "and acceptance rates. No authentication required."
+    ),
+    responses={
+        200: {"description": "Ranked list of contributors"},
+    },
+)
+@router.get(
+    "/contributors",
+    response_model=LeaderboardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get contributor leaderboard (alias)",
+    description=(
+        "Public endpoint alias for /leaderboard. Returns rankings of contributors based on accepted contributions "
         "and acceptance rates. No authentication required."
     ),
     responses={
@@ -34,3 +47,4 @@ async def get_leaderboard(
     """Retrieve public contributor rankings."""
     service = LeaderboardService(db)
     return service.get_leaderboard(limit=limit)
+

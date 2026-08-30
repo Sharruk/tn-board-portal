@@ -64,8 +64,16 @@ def test_leaderboard_empty(client):
         data = response.json()
         assert data["data"] == []
         assert data["total_contributors"] == 0
+
+        # Verify /api/v1/contributors alias behaves identically
+        alias_res = client.get("/api/v1/contributors")
+        assert alias_res.status_code == 200
+        alias_data = alias_res.json()
+        assert alias_data["data"] == []
+        assert alias_data["total_contributors"] == 0
     finally:
         app.dependency_overrides.clear()
+
 
 
 def test_leaderboard_rankings_and_calculations(client):

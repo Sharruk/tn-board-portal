@@ -64,7 +64,7 @@ export default function LeaderboardPage() {
               to="/submit-material"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl transition-colors shadow-sm"
             >
-              <span>📤</span> Submit Material &amp; Join Ranks
+              <span>📤</span> Submit Material &amp; Join the Ranks
             </Link>
           </div>
         </div>
@@ -207,25 +207,44 @@ export default function LeaderboardPage() {
                 Try Again
               </button>
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="p-12 text-center space-y-3">
-              <p className="text-4xl">🌟</p>
-              <h3 className="text-base font-bold text-gray-800">
-                {search ? 'No matching contributors found' : 'No contributions recorded yet'}
-              </h3>
-              <p className="text-xs text-gray-500 max-w-sm mx-auto">
-                {search
-                  ? 'Try searching with a different name or clear the search field.'
-                  : 'Be the first to submit a question paper or answer key and earn the #1 spot on the leaderboard!'}
-              </p>
-              {!search && (
+          ) : leaderboard.length === 0 ? (
+            <div className="py-16 px-6 text-center space-y-4 max-w-lg mx-auto">
+              <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-3xl mx-auto shadow-sm">
+                🏆
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-gray-900">
+                  No contributors yet
+                </h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  Be the first person to contribute approved study material and appear on the leaderboard.
+                </p>
+              </div>
+              <div className="pt-2">
                 <Link
                   to="/submit-material"
-                  className="inline-block mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl transition-colors shadow-sm"
                 >
-                  Submit Material Now
+                  <span>📤</span> Submit Material &amp; Join the Ranks
                 </Link>
-              )}
+              </div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-12 px-6 text-center space-y-3 max-w-sm mx-auto">
+              <span className="text-3xl">🔍</span>
+              <h3 className="text-base font-bold text-gray-800">
+                No matching contributors found
+              </h3>
+              <p className="text-xs text-gray-500">
+                No contributors matched &ldquo;{search}&rdquo;. Try searching with a different name or clear the search filter.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="mt-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition"
+              >
+                Clear Search
+              </button>
             </div>
           ) : (
             <div className="overflow-x-auto">
