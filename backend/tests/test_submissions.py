@@ -1100,6 +1100,7 @@ class TestCanonicalPaperTitleCreation:
             "original_filename": "Class 10 Social Science Monthly Test.pdf",
             "is_visible": True,
             "download_count": 0,
+            "status": "published",
             "created_at": _NOW,
         }
 
@@ -1118,11 +1119,10 @@ class TestCanonicalPaperTitleCreation:
             def fetchall(self):
                 return []
 
-        call_count = 0
+        executed_statements = []
         def mock_execute(stmt, params=None):
-            nonlocal call_count
-            call_count += 1
             stmt_str = str(stmt)
+            executed_statements.append((stmt_str, params))
             if "subjects" in stmt_str:
                 return MockCursor([subj_mapping])
             elif "SELECT id FROM papers" in stmt_str:
@@ -1155,5 +1155,47 @@ class TestCanonicalPaperTitleCreation:
 
         assert result["title"] == "Class 10 Social Science Monthly Test July 2026 Chennai Question Paper"
         assert result["original_filename"] == "Class 10 Social Science Monthly Test.pdf"
+        assert result["status"] == "published"
         assert "UUID" not in result["title"]
+        # Verify status column was in INSERT INTO papers
+        insert_stmts = [s for s, _ in executed_statements if "INSERT INTO papers" in s]
+        assert len(insert_stmts) == 1
+        assert "status" in insert_stmts[0]
+        assert "'published'" in insert_stmts[0]
+
+    def test_create_paper_from_file_rollback_on_error(self):
+        from app.repositories.submissions_repository import SubmissionsRepository
+
+        mock_db = MagicMock()
+        mock_storage = MagicMock()
+        bucket_mock = MagicMock()
+        bucket_mock.download.return_value = b"%PDF-1.4 test"
+        bucket_mock.get_public_url.return_value = "https://example.supabase.co/storage/v1/object/public/papers/paper.pdf"
+        mock_storage.from_.return_value = bucket_mock
+
+        mock_db.execute.side_effect = Exception("DB connection dropped")
+
+        repo = SubmissionsRepository(db=mock_db, storage=mock_storage)
+        file_row = {
+            "id": "file-123",
+            "storage_path": "sub-123/uuid.pdf",
+            "original_filename": "paper.pdf",
+            "file_type": "pdf",
+        }
+        submission = {"id": "sub-123"}
+
+        with pytest.raises(Exception, match="DB connection dropped"):
+            repo.create_paper_from_file(
+                file_row=file_row,
+                subject_id=5,
+                exam_type="Monthly Test",
+                year=2026,
+                paper_type="question",
+                month="July",
+                district="Chennai",
+                submission=submission,
+            )
+
+        mock_db.rollback.assert_called_once()
+
 

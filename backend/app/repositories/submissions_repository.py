@@ -437,7 +437,12 @@ class SubmissionsRepository:
             raise RuntimeError(f"Public storage upload failed for '{new_path}': {e}") from e
 
         url_response = self._storage.from_("papers").get_public_url(new_path)
-        public_url = url_response if isinstance(url_response, str) else None
+        if isinstance(url_response, str):
+            public_url = url_response
+        elif isinstance(url_response, dict):
+            public_url = url_response.get("publicUrl") or url_response.get("publicURL")
+        else:
+            public_url = None
 
         raw_name = file_row.get("original_filename", "")
         base_name = raw_name.rsplit(".", 1)[0] if "." in raw_name else raw_name
@@ -456,8 +461,9 @@ class SubmissionsRepository:
             )
             subj_row = self._db.execute(subj_stmt, {"subject_id": subject_id}).fetchone()
             if subj_row:
-                class_name = subj_row.class_name or ""
-                subject_name = subj_row.subject_name or ""
+                mapping = dict(subj_row._mapping)
+                class_name = mapping.get("class_name") or ""
+                subject_name = mapping.get("subject_name") or ""
         except Exception as e:
             logger.warning("Failed to lookup subject/class for canonical title: %s", e)
 
@@ -501,33 +507,38 @@ class SubmissionsRepository:
             INSERT INTO papers (
                 subject_id, exam_type, year, title, paper_type,
                 month, district, file_path, public_url, original_filename,
-                is_visible, download_count
+                is_visible, download_count, status
             )
             VALUES (
                 :subject_id, :exam_type, :year, :title, :paper_type,
                 :month, :district, :file_path, :public_url, :original_filename,
-                true, 0
+                true, 0, 'published'
             )
-            RETURNING id, subject_id, exam_type, year, title, paper_type, month, district, file_path, public_url, original_filename, is_visible, download_count, created_at
+            RETURNING id, subject_id, exam_type, year, title, paper_type, month, district, file_path, public_url, original_filename, is_visible, download_count, status, created_at
             """
         )
-        result = self._db.execute(
-            stmt,
-            {
-                "subject_id": subject_id,
-                "exam_type": exam_type,
-                "year": year,
-                "title": title,
-                "paper_type": paper_type,
-                "month": month,
-                "district": district,
-                "file_path": new_path,
-                "public_url": public_url,
-                "original_filename": original_filename,
-            },
-        )
-        self._db.commit()
-        row = result.fetchone()
-        if not row:
-            raise RuntimeError("Failed to create paper from submission file — no data returned")
-        return dict(row._mapping)
+        try:
+            result = self._db.execute(
+                stmt,
+                {
+                    "subject_id": subject_id,
+                    "exam_type": exam_type,
+                    "year": year,
+                    "title": title,
+                    "paper_type": paper_type,
+                    "month": month,
+                    "district": district,
+                    "file_path": new_path,
+                    "public_url": public_url,
+                    "original_filename": original_filename,
+                },
+            )
+            self._db.commit()
+            row = result.fetchone()
+            if not row:
+                raise RuntimeError("Failed to create paper from submission file — no data returned")
+            return dict(row._mapping)
+        except Exception as e:
+            self._db.rollback()
+            logger.error("Failed to insert paper record: %s", e)
+            raise
