@@ -1263,4 +1263,188 @@ class TestCanonicalPaperTitleCreation:
 
         mock_db.rollback.assert_called_once()
 
+    def test_approve_with_custom_title_download_filename_description(self):
+        from app.repositories.submissions_repository import SubmissionsRepository
+
+        mock_db = MagicMock()
+        mock_storage = MagicMock()
+        bucket_mock = MagicMock()
+        bucket_mock.download.return_value = b"%PDF-1.4 sample content"
+        bucket_mock.get_public_url.return_value = "https://example.supabase.co/storage/v1/object/public/papers/sample.pdf"
+        mock_storage.from_.return_value = bucket_mock
+
+        inserted_row = {
+            "id": 101,
+            "subject_id": 5,
+            "exam_type": "Monthly Test",
+            "year": 2026,
+            "title": "Class 10 Science Monthly Test Question Paper August 2026 - Chennai District",
+            "description": "Official Class 10 Science Monthly Test Question Paper for Chennai District conducted in August 2026.",
+            "paper_type": "question",
+            "month": "August",
+            "district": "Chennai",
+            "file_path": "sample.pdf",
+            "public_url": "https://example.supabase.co/storage/v1/object/public/papers/sample.pdf",
+            "youtube_url": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "original_filename": "Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf",
+            "is_visible": True,
+            "download_count": 0,
+            "status": "published",
+            "submission_id": "sub-123",
+            "contributor_name": "Sharruk S",
+            "created_at": "2026-08-31T00:00:00Z",
+        }
+
+        class MockCursor:
+            def __init__(self, rows):
+                self._rows = rows
+            def fetchone(self):
+                if not self._rows:
+                    return None
+                r = self._rows[0]
+                m = MagicMock()
+                m._mapping = r
+                return m
+            def fetchall(self):
+                return []
+
+        def mock_execute(stmt, params=None):
+            stmt_str = str(stmt)
+            if "SELECT id FROM papers" in stmt_str:
+                return MockCursor([])
+            elif "INSERT INTO papers" in stmt_str:
+                return MockCursor([inserted_row])
+            return MockCursor([])
+
+        mock_db.execute = mock_execute
+
+        repo = SubmissionsRepository(db=mock_db, storage=mock_storage)
+        file_row = {
+            "id": "file-123",
+            "storage_path": "sub-123/uuid.pdf",
+            "original_filename": "raw_upload.pdf",
+            "file_type": "pdf",
+        }
+        submission = {
+            "id": "sub-123",
+            "publisher_name": "Sharruk S",
+            "email": "mr.sharruk@gmail.com",
+            "details": "Original student notes",
+        }
+
+        res = repo.create_paper_from_file(
+            file_row=file_row,
+            subject_id=5,
+            exam_type="Monthly Test",
+            year=2026,
+            paper_type="question",
+            month="August",
+            district="Chennai",
+            submission=submission,
+            title="Class 10 Science Monthly Test Question Paper August 2026 - Chennai District",
+            download_filename="Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf",
+            description="Official Class 10 Science Monthly Test Question Paper for Chennai District conducted in August 2026.",
+            youtube_url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+        )
+
+        assert res["title"] == "Class 10 Science Monthly Test Question Paper August 2026 - Chennai District"
+        assert res["original_filename"] == "Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf"
+        assert res["description"] == "Official Class 10 Science Monthly Test Question Paper for Chennai District conducted in August 2026."
+        assert res["contributor_name"] == "Sharruk S"
+        assert res["submission_id"] == "sub-123"
+        assert "email" not in res  # Contributor email is not exposed
+
+    def test_create_paper_from_file_status_missing_resilient_fallback(self):
+        """Simulate psycopg2.errors.UndefinedColumn when status column does not exist on remote DB."""
+        from app.repositories.submissions_repository import SubmissionsRepository
+
+        mock_db = MagicMock()
+        mock_storage = MagicMock()
+        bucket_mock = MagicMock()
+        bucket_mock.download.return_value = b"%PDF-1.4 sample content"
+        bucket_mock.get_public_url.return_value = "https://example.supabase.co/storage/v1/object/public/papers/sample.pdf"
+        mock_storage.from_.return_value = bucket_mock
+
+        fallback_inserted_row = {
+            "id": 102,
+            "subject_id": 5,
+            "exam_type": "Monthly Test",
+            "year": 2026,
+            "title": "Class 10 Science Monthly Test 2026 Question Paper",
+            "description": "Paper description",
+            "paper_type": "question",
+            "month": "August",
+            "district": "Chennai",
+            "file_path": "sample.pdf",
+            "public_url": "https://example.supabase.co/storage/v1/object/public/papers/sample.pdf",
+            "youtube_url": None,
+            "original_filename": "Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf",
+            "is_visible": True,
+            "download_count": 0,
+            "submission_id": "sub-123",
+            "contributor_name": "Sharruk S",
+            "created_at": "2026-08-31T00:00:00Z",
+        }
+
+        class MockCursor:
+            def __init__(self, rows):
+                self._rows = rows
+            def fetchone(self):
+                if not self._rows:
+                    return None
+                r = self._rows[0]
+                m = MagicMock()
+                m._mapping = r
+                return m
+            def fetchall(self):
+                return []
+
+        call_count = {"insert": 0}
+        def mock_execute(stmt, params=None):
+            stmt_str = str(stmt)
+            if "SELECT id FROM papers" in stmt_str:
+                return MockCursor([])
+            elif "INSERT INTO papers" in stmt_str:
+                call_count["insert"] += 1
+                if call_count["insert"] == 1:
+                    # First attempt throws UndefinedColumn error for status
+                    raise Exception('(psycopg2.errors.UndefinedColumn) column "status" of relation "papers" does not exist')
+                # Second attempt (without status) succeeds
+                return MockCursor([fallback_inserted_row])
+            return MockCursor([])
+
+        mock_db.execute = mock_execute
+
+        repo = SubmissionsRepository(db=mock_db, storage=mock_storage)
+        file_row = {
+            "id": "file-123",
+            "storage_path": "sub-123/uuid.pdf",
+            "original_filename": "raw_upload.pdf",
+            "file_type": "pdf",
+        }
+        submission = {
+            "id": "sub-123",
+            "publisher_name": "Sharruk S",
+            "email": "mr.sharruk@gmail.com",
+        }
+
+        res = repo.create_paper_from_file(
+            file_row=file_row,
+            subject_id=5,
+            exam_type="Monthly Test",
+            year=2026,
+            paper_type="question",
+            month="August",
+            district="Chennai",
+            submission=submission,
+            title="Class 10 Science Monthly Test 2026 Question Paper",
+            download_filename="Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf",
+        )
+
+        assert res["id"] == 102
+        assert res["title"] == "Class 10 Science Monthly Test 2026 Question Paper"
+        assert res["status"] == "published"  # Synthesised default
+        assert res["contributor_name"] == "Sharruk S"
+
+
 

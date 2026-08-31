@@ -94,8 +94,8 @@ class ApproveRequest(BaseModel):
     """
     Body for POST /api/v1/submissions/{id}/approve.
 
-    The admin supplies the human-readable title, optional YouTube URL,
-    and metadata (subject, exam type, year, paper type, month, district).
+    The admin supplies the human-readable title, approved download filename,
+    description, optional YouTube URL, and metadata (subject, exam type, year, paper type, month, district).
     """
 
     title: str | None = Field(
@@ -103,6 +103,17 @@ class ApproveRequest(BaseModel):
         min_length=1,
         max_length=255,
         description="Admin-entered human-readable title for the paper",
+    )
+    download_filename: str | None = Field(
+        None,
+        min_length=1,
+        max_length=255,
+        description="Approved download filename for students (e.g. Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf)",
+    )
+    description: str | None = Field(
+        None,
+        max_length=2000,
+        description="Editable description/notes for the published paper",
     )
     youtube_url: str | None = Field(
         None,

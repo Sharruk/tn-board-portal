@@ -392,6 +392,8 @@ class SubmissionsRepository:
         district: str | None,
         submission: dict[str, Any],
         title: str | None = None,
+        download_filename: str | None = None,
+        description: str | None = None,
         youtube_url: str | None = None,
     ) -> dict[str, Any]:
         """
@@ -504,44 +506,55 @@ class SubmissionsRepository:
         except Exception as e:
             logger.warning("Uniqueness check for paper title query failed: %s", e)
 
-        original_filename = file_row.get("original_filename") or raw_name or f"{final_title}.{ext}"
+        # Resolve approved download filename
+        clean_dl = (download_filename or "").strip()
+        if clean_dl:
+            if not clean_dl.lower().endswith(f".{ext}"):
+                clean_dl = f"{clean_dl}.{ext}"
+            final_download_filename = clean_dl
+        else:
+            final_download_filename = file_row.get("original_filename") or raw_name or f"{final_title}.{ext}"
+
+        final_description = (description or "").strip() or None
         submission_id = str(submission["id"]) if submission.get("id") else None
         contributor_name = submission.get("publisher_name")
 
-        stmt = text(
+        params = {
+            "subject_id": subject_id,
+            "exam_type": exam_type,
+            "year": year,
+            "title": final_title,
+            "description": final_description,
+            "paper_type": paper_type,
+            "month": month,
+            "district": district,
+            "file_path": new_path,
+            "public_url": public_url,
+            "youtube_url": (youtube_url.strip() if youtube_url else None),
+            "original_filename": final_download_filename,
+            "submission_id": submission_id,
+            "contributor_name": contributor_name,
+        }
+
+        # Attempt primary insert with description, status, submission_id, contributor_name
+        stmt_full = text(
             """
             INSERT INTO papers (
-                subject_id, exam_type, year, title, paper_type,
+                subject_id, exam_type, year, title, description, paper_type,
                 month, district, file_path, public_url, youtube_url, original_filename,
                 is_visible, download_count, status, submission_id, contributor_name
             )
             VALUES (
-                :subject_id, :exam_type, :year, :title, :paper_type,
+                :subject_id, :exam_type, :year, :title, :description, :paper_type,
                 :month, :district, :file_path, :public_url, :youtube_url, :original_filename,
                 true, 0, 'published', :submission_id, :contributor_name
             )
-            RETURNING id, subject_id, exam_type, year, title, paper_type, month, district, file_path, public_url, youtube_url, original_filename, is_visible, download_count, status, submission_id, contributor_name, created_at
+            RETURNING id, subject_id, exam_type, year, title, description, paper_type, month, district, file_path, public_url, youtube_url, original_filename, is_visible, download_count, status, submission_id, contributor_name, created_at
             """
         )
+
         try:
-            result = self._db.execute(
-                stmt,
-                {
-                    "subject_id": subject_id,
-                    "exam_type": exam_type,
-                    "year": year,
-                    "title": final_title,
-                    "paper_type": paper_type,
-                    "month": month,
-                    "district": district,
-                    "file_path": new_path,
-                    "public_url": public_url,
-                    "youtube_url": (youtube_url.strip() if youtube_url else None),
-                    "original_filename": original_filename,
-                    "submission_id": submission_id,
-                    "contributor_name": contributor_name,
-                },
-            )
+            result = self._db.execute(stmt_full, params)
             self._db.commit()
             row = result.fetchone()
             if not row:
@@ -552,5 +565,72 @@ class SubmissionsRepository:
             return d
         except Exception as e:
             self._db.rollback()
-            logger.error("Failed to insert paper record: %s", e)
-            raise
+            err_msg = str(e).lower()
+            if "does not exist" not in err_msg and "undefinedcolumn" not in err_msg:
+                logger.error("Failed to insert paper record: %s", e)
+                raise
+
+            logger.warning("Primary paper INSERT failed (%s), trying resilient column fallback...", e)
+
+            # Fallback 1: without 'status' column if undefined column error
+            if "status" in err_msg:
+                try:
+                    stmt_no_status = text(
+                        """
+                        INSERT INTO papers (
+                            subject_id, exam_type, year, title, description, paper_type,
+                            month, district, file_path, public_url, youtube_url, original_filename,
+                            is_visible, download_count, submission_id, contributor_name
+                        )
+                        VALUES (
+                            :subject_id, :exam_type, :year, :title, :description, :paper_type,
+                            :month, :district, :file_path, :public_url, :youtube_url, :original_filename,
+                            true, 0, :submission_id, :contributor_name
+                        )
+                        RETURNING id, subject_id, exam_type, year, title, description, paper_type, month, district, file_path, public_url, youtube_url, original_filename, is_visible, download_count, submission_id, contributor_name, created_at
+                        """
+                    )
+                    result = self._db.execute(stmt_no_status, params)
+                    self._db.commit()
+                    row = result.fetchone()
+                    if row:
+                        d = dict(row._mapping)
+                        d.setdefault("status", "published")
+                        if d.get("submission_id"):
+                            d["submission_id"] = str(d["submission_id"])
+                        return d
+                except Exception as fb_err:
+                    self._db.rollback()
+                    logger.warning("Fallback without status failed: %s", fb_err)
+
+            # Fallback 2: without 'description' and 'status' if both are unmigrated
+            try:
+                stmt_legacy = text(
+                    """
+                    INSERT INTO papers (
+                        subject_id, exam_type, year, title, paper_type,
+                        month, district, file_path, public_url, youtube_url, original_filename,
+                        is_visible, download_count, submission_id, contributor_name
+                    )
+                    VALUES (
+                        :subject_id, :exam_type, :year, :title, :paper_type,
+                        :month, :district, :file_path, :public_url, :youtube_url, :original_filename,
+                        true, 0, :submission_id, :contributor_name
+                    )
+                    RETURNING id, subject_id, exam_type, year, title, paper_type, month, district, file_path, public_url, youtube_url, original_filename, is_visible, download_count, submission_id, contributor_name, created_at
+                    """
+                )
+                result = self._db.execute(stmt_legacy, params)
+                self._db.commit()
+                row = result.fetchone()
+                if row:
+                    d = dict(row._mapping)
+                    d.setdefault("status", "published")
+                    d.setdefault("description", final_description)
+                    if d.get("submission_id"):
+                        d["submission_id"] = str(d["submission_id"])
+                    return d
+            except Exception as leg_err:
+                self._db.rollback()
+                logger.error("All fallback paper INSERTs failed: %s", leg_err)
+                raise

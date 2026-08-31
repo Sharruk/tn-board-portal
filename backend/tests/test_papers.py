@@ -410,3 +410,75 @@ def test_term_expansion_empty_string():
     from app.services.papers_service import _expand_terms
     terms = _expand_terms("")
     assert "" in terms
+
+
+# ── Download file GET endpoint tests & Privacy checks ───────────────────────────
+
+def test_get_download_paper_file_success(monkeypatch):
+    import httpx
+    from app.dependencies.supabase import get_db
+
+    mock_db = _make_detail_db([MOCK_PAPER_DETAIL_ROW])
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    # Mock httpx.AsyncClient.get
+    async def mock_get(self, url, **kwargs):
+        class MockResp:
+            status_code = 200
+            content = b"%PDF-1.4 sample paper binary content"
+        return MockResp()
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+    try:
+        client = TestClient(app)
+        resp = client.get("/api/v1/papers/42/download")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/pdf"
+        assert 'attachment; filename="Class10_Maths_Annual_2024_QP.pdf"' in resp.headers["content-disposition"]
+        assert resp.content == b"%PDF-1.4 sample paper binary content"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_download_paper_file_not_found():
+    from app.dependencies.supabase import get_db
+
+    mock_db = _make_detail_db([])
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        client = TestClient(app)
+        resp = client.get("/api/v1/papers/999/download")
+        assert resp.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_paper_response_includes_description_and_preserves_privacy():
+    from app.dependencies.supabase import get_db
+
+    paper_with_contributor = {
+        **MOCK_PAPER_DETAIL_ROW,
+        "description": "Comprehensive question paper with complete syllabus coverage.",
+        "contributor_name": "Sharruk S",
+        "submission_id": "f5321f3f-dd55-457d-ad62-75f05482a77b",
+    }
+    mock_db = _make_detail_db([paper_with_contributor])
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        client = TestClient(app)
+        resp = client.get("/api/v1/papers/42")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["description"] == "Comprehensive question paper with complete syllabus coverage."
+        assert data["contributor_name"] == "Sharruk S"
+        assert data["submission_id"] == "f5321f3f-dd55-457d-ad62-75f05482a77b"
+        # Strict privacy check: email must NEVER be present in public paper response
+        assert "email" not in data
+        assert "contributor_email" not in data
+        assert "submitter_email" not in data
+    finally:
+        app.dependency_overrides.clear()
+

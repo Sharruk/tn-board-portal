@@ -15,11 +15,12 @@ logger = logging.getLogger(__name__)
 
 def _add_status(row: dict[str, Any]) -> dict[str, Any]:
     """
-    Inject a synthesised status field so Pydantic schemas are satisfied.
+    Inject a synthesised status and description field so Pydantic schemas are satisfied.
     Visible papers have is_visible = true (published), hidden have is_visible = false (archived).
     """
     is_visible = row.get("is_visible", True)
     row.setdefault("status", "published" if is_visible else "archived")
+    row.setdefault("description", None)
     return row
 
 
@@ -36,7 +37,7 @@ class PapersRepository:
         logger.debug("PapersRepository.get_by_id(paper_id=%s, published_only=%s)", paper_id, published_only)
         sql = """
             SELECT 
-                p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
+                p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.description, p.paper_type,
                 p.public_url, p.youtube_url, p.original_filename, p.is_visible,
                 p.download_count, p.created_at,
                 p.submission_id, p.contributor_name,
@@ -55,7 +56,7 @@ class PapersRepository:
             result = self._db.execute(stmt, {"paper_id": paper_id})
             row = result.fetchone()
         except Exception as e:
-            logger.debug("Failed with contributor columns, falling back to legacy select: %s", e)
+            logger.debug("Failed with description/contributor columns, falling back to legacy select: %s", e)
             fallback_sql = """
                 SELECT 
                     p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
@@ -85,40 +86,72 @@ class PapersRepository:
         Return the N most recently uploaded visible papers.
         """
         logger.debug("PapersRepository.list_recent(limit=%s)", limit)
-        stmt = text(
-            """
-            SELECT 
-                id, subject_id, exam_type, year, month, district, title, paper_type,
-                public_url, youtube_url, original_filename, is_visible,
-                download_count, created_at
-            FROM papers
-            WHERE is_visible = true
-            ORDER BY created_at DESC
-            LIMIT :limit
-            """
-        )
-        result = self._db.execute(stmt, {"limit": limit})
-        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        try:
+            stmt = text(
+                """
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, description, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, contributor_name, created_at
+                FROM papers
+                WHERE is_visible = true
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """
+            )
+            result = self._db.execute(stmt, {"limit": limit})
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        except Exception:
+            stmt = text(
+                """
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, created_at
+                FROM papers
+                WHERE is_visible = true
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """
+            )
+            result = self._db.execute(stmt, {"limit": limit})
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def list_popular(self, limit: int = 10) -> list[dict[str, Any]]:
         """
         Return the N most downloaded visible papers.
         """
         logger.debug("PapersRepository.list_popular(limit=%s)", limit)
-        stmt = text(
-            """
-            SELECT 
-                id, subject_id, exam_type, year, month, district, title, paper_type,
-                public_url, youtube_url, original_filename, is_visible,
-                download_count, created_at
-            FROM papers
-            WHERE is_visible = true
-            ORDER BY download_count DESC
-            LIMIT :limit
-            """
-        )
-        result = self._db.execute(stmt, {"limit": limit})
-        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        try:
+            stmt = text(
+                """
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, description, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, contributor_name, created_at
+                FROM papers
+                WHERE is_visible = true
+                ORDER BY download_count DESC
+                LIMIT :limit
+                """
+            )
+            result = self._db.execute(stmt, {"limit": limit})
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        except Exception:
+            stmt = text(
+                """
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, created_at
+                FROM papers
+                WHERE is_visible = true
+                ORDER BY download_count DESC
+                LIMIT :limit
+                """
+            )
+            result = self._db.execute(stmt, {"limit": limit})
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def list_by_subject(
         self,
@@ -144,18 +177,32 @@ class PapersRepository:
             params["paper_type"] = paper_type
 
         where_clause = " AND ".join(conditions)
-        sql = f"""
-            SELECT 
-                id, subject_id, exam_type, year, month, district, title, paper_type,
-                public_url, youtube_url, original_filename, is_visible,
-                download_count, created_at
-            FROM papers
-            WHERE {where_clause}
-            ORDER BY year DESC
-        """
-        stmt = text(sql)
-        result = self._db.execute(stmt, params)
-        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        try:
+            sql = f"""
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, description, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, contributor_name, created_at
+                FROM papers
+                WHERE {where_clause}
+                ORDER BY year DESC
+            """
+            stmt = text(sql)
+            result = self._db.execute(stmt, params)
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        except Exception:
+            sql = f"""
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, created_at
+                FROM papers
+                WHERE {where_clause}
+                ORDER BY year DESC
+            """
+            stmt = text(sql)
+            result = self._db.execute(stmt, params)
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def search(
         self,
@@ -205,22 +252,40 @@ class PapersRepository:
             params["district_filter"] = f"%{district}%"
 
         where_clause = " AND ".join(conditions)
-        sql = f"""
-            SELECT 
-                p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
-                p.public_url, p.original_filename, p.is_visible, p.download_count, p.created_at,
-                s.name AS subject_name,
-                c.id AS class_id, c.name AS class_name
-            FROM papers p
-            JOIN subjects s ON p.subject_id = s.id
-            JOIN classes c ON s.class_id = c.id
-            WHERE {where_clause}
-            ORDER BY p.created_at DESC
-            LIMIT 50
-        """
-        stmt = text(sql)
-        result = self._db.execute(stmt, params)
-        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        try:
+            sql = f"""
+                SELECT 
+                    p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.description, p.paper_type,
+                    p.public_url, p.original_filename, p.is_visible, p.download_count, p.contributor_name, p.created_at,
+                    s.name AS subject_name,
+                    c.id AS class_id, c.name AS class_name
+                FROM papers p
+                JOIN subjects s ON p.subject_id = s.id
+                JOIN classes c ON s.class_id = c.id
+                WHERE {where_clause}
+                ORDER BY p.created_at DESC
+                LIMIT 50
+            """
+            stmt = text(sql)
+            result = self._db.execute(stmt, params)
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        except Exception:
+            sql = f"""
+                SELECT 
+                    p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
+                    p.public_url, p.original_filename, p.is_visible, p.download_count, p.created_at,
+                    s.name AS subject_name,
+                    c.id AS class_id, c.name AS class_name
+                FROM papers p
+                JOIN subjects s ON p.subject_id = s.id
+                JOIN classes c ON s.class_id = c.id
+                WHERE {where_clause}
+                ORDER BY p.created_at DESC
+                LIMIT 50
+            """
+            stmt = text(sql)
+            result = self._db.execute(stmt, params)
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def record_download(
         self,

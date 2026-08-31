@@ -449,6 +449,11 @@ export default function PaperDetailPage() {
               )}
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 mt-2 leading-snug">{paper.title}</h1>
+            {paper.description && (
+              <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                {paper.description}
+              </p>
+            )}
           </div>
         </div>
 

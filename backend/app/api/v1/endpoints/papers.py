@@ -27,9 +27,11 @@ All database access lives in PapersRepository.
 """
 
 import logging
+import urllib.parse
 from typing import Annotated, Literal, Optional
 
-from fastapi import APIRouter, Depends, Query, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.dependencies.auth import get_current_user, get_current_user_optional, require_role
@@ -191,6 +193,58 @@ async def get_paper(
     """Return a single published paper by its primary key."""
     service = PapersService(db)
     return service.get_paper(paper_id)
+
+
+# ── GET /api/v1/papers/{id}/download ──────────────────────────────────────────
+
+@router.get(
+    "/{paper_id}/download",
+    summary="Download paper file with approved filename",
+    description=(
+        "Proxy-downloads the published paper PDF, setting Content-Disposition: attachment "
+        "with the approved download filename so the browser saves it locally."
+    ),
+    responses={
+        200: {"description": "PDF bytes with Content-Disposition: attachment"},
+        404: {"description": "Paper not found or file not available"},
+    },
+)
+async def download_paper_file(
+    paper_id: int,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Proxy-download a published paper PDF with approved Content-Disposition."""
+    service = PapersService(db)
+    paper = service.get_paper(paper_id)
+    uid = current_user.get("firebase_uid") if current_user else None
+    email = current_user.get("email") if current_user else None
+    service.record_download(paper_id, user_id=uid, user_email=email)
+
+    filename = paper.original_filename or f"{paper.title}.pdf"
+    if not filename.lower().endswith(".pdf"):
+        filename = f"{filename}.pdf"
+
+    encoded_name = urllib.parse.quote(filename, safe="")
+    disposition = f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded_name}'
+
+    if paper.public_url:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(paper.public_url)
+                if resp.status_code == 200:
+                    return Response(
+                        content=resp.content,
+                        media_type="application/pdf",
+                        headers={"Content-Disposition": disposition},
+                    )
+        except Exception as e:
+            logger.warning("Direct fetch from public_url failed for paper %s: %s", paper_id, e)
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Paper file not available for download.",
+    )
 
 
 # ── POST /api/v1/papers/{id}/download ─────────────────────────────────────────

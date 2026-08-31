@@ -44,10 +44,11 @@ class PaperBase(BaseModel):
     month: str | None = Field(None, description="Month the exam was held", examples=["July"])
     district: str | None = Field(None, description="TN district (nullable)", examples=["Chennai"])
     title: str = Field(..., description="Paper title")
+    description: str | None = Field(None, description="Paper description / notes")
     paper_type: PaperType = Field(..., description='"question" or "answer_key"')
     public_url: str | None = Field(None, description="Supabase Storage public CDN URL")
     youtube_url: str | None = Field(None, description="Optional YouTube embed URL")
-    original_filename: str | None = Field(None, description="Original uploaded filename")
+    original_filename: str | None = Field(None, description="Original uploaded / approved download filename")
     is_visible: bool = Field(..., description="Legacy visibility flag")
     status: PaperStatus = Field(..., description="draft | published | archived")
     download_count: int = Field(default=0, description="Total download count")
@@ -84,6 +85,7 @@ class PaperResponse(PaperBase):
                     "month": None,
                     "district": None,
                     "title": "Class 10 Maths Annual Exam 2024",
+                    "description": "Official Class 10 Maths Annual Examination question paper.",
                     "paper_type": "question",
                     "public_url": "https://your-project.supabase.co/storage/v1/object/public/papers/uuid.pdf",
                     "youtube_url": None,
@@ -91,6 +93,8 @@ class PaperResponse(PaperBase):
                     "is_visible": True,
                     "status": "published",
                     "download_count": 1234,
+                    "submission_id": None,
+                    "contributor_name": "Sharruk S",
                     "created_at": "2024-03-15T10:30:00Z",
                     "subject_name": "Mathematics",
                     "subject_slug": "maths",
@@ -121,12 +125,14 @@ class PaperSummary(BaseModel):
     month: str | None = None
     district: str | None = None
     title: str
+    description: str | None = None
     paper_type: PaperType
     public_url: str | None = None
     youtube_url: str | None = None
     original_filename: str | None = None
     status: PaperStatus
     download_count: int = 0
+    contributor_name: str | None = None
     created_at: datetime
 
 
@@ -149,6 +155,7 @@ class PaperSearchResult(BaseModel):
 
     id: int
     title: str
+    description: str | None = None
     exam_type: str
     year: int
     month: str | None = None
@@ -161,6 +168,7 @@ class PaperSearchResult(BaseModel):
     class_id: int
     status: PaperStatus
     download_count: int = 0
+    contributor_name: str | None = None
     created_at: datetime
 
 

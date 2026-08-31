@@ -15,9 +15,19 @@
 //   downloadSubmissionFile(token, fileId)        — GET  /api/v1/submissions/files/{fileId}/download
 // =============================================================================
 
-import { API_BASE_URL, apiFetch } from '../lib/api'
-
+import { apiFetch } from '../lib/api'
 import { getFirebaseToken } from '../lib/firebase'
+
+function getApiUrl(path) {
+  const envUrl = import.meta.env.VITE_API_BASE_URL || ''
+  if (envUrl.includes('onrender.com') || envUrl.includes('render.com')) {
+    return path
+  }
+  if (typeof window !== 'undefined' && (window.location.hostname.endsWith('vercel.app') || window.location.hostname === 'tn-board-portal.vercel.app')) {
+    return path
+  }
+  return `${envUrl}${path}`
+}
 
 /**
  * Submit educational material (requires auth).
@@ -32,7 +42,7 @@ export async function createSubmission(formData) {
 
   // We use raw fetch here (not apiFetch) because we need multipart/form-data
   // without setting Content-Type manually — the browser sets boundary automatically.
-  const url = `${API_BASE_URL}/api/v1/submissions`
+  const url = getApiUrl('/api/v1/submissions')
   const response = await fetch(url, {
     method: 'POST',
     body: formData,
@@ -54,15 +64,6 @@ export async function createSubmission(formData) {
   }
 
   return response.json()
-}
-
-// ── Admin helpers ─────────────────────────────────────────────────────────────
-
-function adminHeaders(token) {
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  }
 }
 
 // ── Admin: List submissions ───────────────────────────────────────────────────
@@ -105,29 +106,18 @@ export async function getSubmission(token, id) {
  *
  * @param {string} token  Firebase access_token
  * @param {string} id     Submission UUID
- * @param {{ subject_id: number, exam_type: string, year: number, paper_type: string, month?: string, district?: string }} body
+ * @param {{ title?: string, download_filename?: string, description?: string, youtube_url?: string, subject_id: number, exam_type: string, year: number, paper_type: string, month?: string, district?: string }} body
  * @returns {Promise<{ submission_id: string, status: string, paper_ids: number[] }>}
  */
 export async function approveSubmission(token, id, body) {
-  const url = `${API_BASE_URL}/api/v1/submissions/${id}/approve`
-  const response = await fetch(url, {
+  return apiFetch(`/api/v1/submissions/${id}/approve`, {
     method: 'POST',
-    headers: adminHeaders(token),
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(body),
   })
-
-  if (!response.ok) {
-    let detail = `HTTP ${response.status}`
-    try {
-      const resBody = await response.json()
-      detail = resBody?.detail || resBody?.message || detail
-    } catch {
-      // ignore
-    }
-    throw new Error(detail)
-  }
-
-  return response.json()
 }
 
 // ── Admin: Reject submission ──────────────────────────────────────────────────
@@ -141,25 +131,14 @@ export async function approveSubmission(token, id, body) {
  * @returns {Promise<{ submission_id: string, status: string, rejection_reason: string|null }>}
  */
 export async function rejectSubmission(token, id, body) {
-  const url = `${API_BASE_URL}/api/v1/submissions/${id}/reject`
-  const response = await fetch(url, {
+  return apiFetch(`/api/v1/submissions/${id}/reject`, {
     method: 'POST',
-    headers: adminHeaders(token),
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(body),
   })
-
-  if (!response.ok) {
-    let detail = `HTTP ${response.status}`
-    try {
-      const resBody = await response.json()
-      detail = resBody?.detail || resBody?.message || detail
-    } catch {
-      // ignore
-    }
-    throw new Error(detail)
-  }
-
-  return response.json()
 }
 
 // ── Admin: Restore rejected submission to pending ─────────────────────────────
@@ -172,25 +151,14 @@ export async function rejectSubmission(token, id, body) {
  * @returns {Promise<{ submission_id: string, status: string }>}
  */
 export async function restoreSubmission(token, id) {
-  const url = `${API_BASE_URL}/api/v1/submissions/${id}/restore`
-  const response = await fetch(url, {
+  return apiFetch(`/api/v1/submissions/${id}/restore`, {
     method: 'POST',
-    headers: adminHeaders(token),
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({}),
   })
-
-  if (!response.ok) {
-    let detail = `HTTP ${response.status}`
-    try {
-      const resBody = await response.json()
-      detail = resBody?.detail || resBody?.message || detail
-    } catch {
-      // ignore
-    }
-    throw new Error(detail)
-  }
-
-  return response.json()
 }
 
 // ── Admin: Download a private submission file via backend proxy ───────────────
@@ -209,7 +177,7 @@ export async function restoreSubmission(token, id) {
  * @returns {Promise<void>}  Triggers browser file save
  */
 export async function downloadSubmissionFile(token, fileId, filename) {
-  const url = `${API_BASE_URL}/api/v1/submissions/files/${fileId}/download`
+  const url = getApiUrl(`/api/v1/submissions/files/${fileId}/download`)
   const response = await fetch(url, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
@@ -226,9 +194,6 @@ export async function downloadSubmissionFile(token, fileId, filename) {
     throw new Error(detail)
   }
 
-  // Convert the binary response to a blob, create a temporary object URL,
-  // and trigger a programmatic click. This is the only reliable cross-browser
-  // approach for downloading a file fetched via XMLHttpRequest/fetch.
   const blob = await response.blob()
   const objectUrl = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -237,6 +202,6 @@ export async function downloadSubmissionFile(token, fileId, filename) {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  // Revoke the object URL after a short delay to free memory
   setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
 }
+

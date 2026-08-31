@@ -299,11 +299,13 @@ class SubmissionsService:
                     district=req.district,
                     submission=sub,
                     title=req.title,
+                    download_filename=req.download_filename,
+                    description=req.description,
                     youtube_url=youtube_url,
                 )
                 paper_ids.append(paper["id"])
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "Failed to create paper for file %s in submission %s: %s",
                     file_row.get("id"),
                     submission_id,

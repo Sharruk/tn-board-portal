@@ -317,8 +317,11 @@ function extractYouTubeId(url) {
 }
 
 function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed }) {
+  const initialFileName = submission.files?.[0]?.original_filename || ''
   const [approveForm, setApproveForm] = useState({
     title: '',
+    downloadFilename: initialFileName,
+    description: submission.details || '',
     youtubeUrl: '',
     classId: '',
     subjectId: '',
@@ -329,6 +332,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     district: '',
   })
   const [titleManuallyEdited, setTitleManuallyEdited] = useState(false)
+  const [filenameManuallyEdited, setFilenameManuallyEdited] = useState(Boolean(initialFileName))
   const [subjects, setSubjects]               = useState([])
   const [rejectReason, setRejectReason]       = useState('')
   const [showRejectForm, setShowRejectForm]   = useState(false)
@@ -341,9 +345,8 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     getSubjectsForClass(approveForm.classId).then(r => setSubjects(r.data || []))
   }, [approveForm.classId])
 
-  // Automatically construct clean default title when metadata changes unless admin manually typed a custom title
+  // Automatically construct clean default title and download filename when metadata changes
   useEffect(() => {
-    if (titleManuallyEdited) return
     const cls = classes.find(c => String(c.id) === String(approveForm.classId))?.name || ''
     const sub = subjects.find(s => String(s.id) === String(approveForm.subjectId))?.name || ''
     const typeStr = approveForm.paperType === 'question' ? 'Question Paper' : 'Answer Key'
@@ -357,9 +360,25 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
       typeStr,
     ].filter(Boolean)
     if (parts.length >= 2) {
-      setApproveForm(f => ({ ...f, title: parts.join(' ') }))
+      const genTitle = parts.join(' ')
+      if (!titleManuallyEdited) {
+        setApproveForm(f => ({ ...f, title: genTitle }))
+      }
+      if (!filenameManuallyEdited && !initialFileName) {
+        const typeCode = approveForm.paperType === 'question' ? 'QP' : 'Key'
+        const fnParts = [
+          cls.replace(/\s+/g, ''),
+          sub.replace(/\s+/g, ''),
+          (approveForm.examType || '').replace(/\s+/g, ''),
+          approveForm.month || '',
+          approveForm.year || '',
+          (approveForm.district || '').replace(/\s+/g, ''),
+          typeCode,
+        ].filter(Boolean)
+        setApproveForm(f => ({ ...f, downloadFilename: `${fnParts.join('_')}.pdf` }))
+      }
     }
-  }, [approveForm.classId, approveForm.subjectId, approveForm.examType, approveForm.month, approveForm.year, approveForm.district, approveForm.paperType, classes, subjects, titleManuallyEdited])
+  }, [approveForm.classId, approveForm.subjectId, approveForm.examType, approveForm.month, approveForm.year, approveForm.district, approveForm.paperType, classes, subjects, titleManuallyEdited, filenameManuallyEdited, initialFileName])
 
   const ytId = extractYouTubeId(approveForm.youtubeUrl)
 
@@ -371,6 +390,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     if (!approveForm.examType)  return setError('Please select an exam type.')
     if (!approveForm.year)      return setError('Please select a year.')
     if (!approveForm.title.trim()) return setError('Please enter a paper title.')
+    if (!approveForm.downloadFilename.trim()) return setError('Please enter a download file name.')
     if (approveForm.youtubeUrl.trim() && !extractYouTubeId(approveForm.youtubeUrl.trim())) {
       return setError('Please enter a valid YouTube video URL (e.g. https://youtube.com/watch?v=... or https://youtu.be/...) or leave it blank.')
     }
@@ -378,15 +398,17 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     setLoading(true)
     try {
       await approveSubmission(token, submission.id, {
-        title:      approveForm.title.trim(),
-        youtube_url: approveForm.youtubeUrl.trim() || null,
-        class_id:   parseInt(approveForm.classId, 10),
-        subject_id: parseInt(approveForm.subjectId, 10),
-        exam_type:  approveForm.examType,
-        year:       parseInt(approveForm.year, 10),
-        paper_type: approveForm.paperType,
-        month:      approveForm.month || null,
-        district:   approveForm.district || null,
+        title:              approveForm.title.trim(),
+        download_filename:  approveForm.downloadFilename.trim(),
+        description:        approveForm.description.trim() || null,
+        youtube_url:        approveForm.youtubeUrl.trim() || null,
+        class_id:           parseInt(approveForm.classId, 10),
+        subject_id:         parseInt(approveForm.subjectId, 10),
+        exam_type:          approveForm.examType,
+        year:               parseInt(approveForm.year, 10),
+        paper_type:         approveForm.paperType,
+        month:              approveForm.month || null,
+        district:           approveForm.district || null,
       })
       onReviewed('approved', submission.id)
       onClose()
@@ -459,7 +481,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
           </div>
           {submission.details && (
             <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Description</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Submitter Notes</p>
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{submission.details}</p>
             </div>
           )}
@@ -535,12 +557,12 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                     {submission.files?.[0]?.original_filename || 'Document.pdf'}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    This filename is saved in metadata. Enter a clean, descriptive title below for public display.
+                    Original upload is preserved in metadata. Adjust the public title, download filename, and description below.
                   </p>
                 </div>
               </div>
 
-              {/* ── Paper Title (Admin Editable) ── */}
+              {/* ── 1. Paper Title (Admin Editable) ── */}
               <div>
                 <label className="block text-xs font-bold text-gray-800 mb-1">
                   Paper Title <span className="text-red-500">*</span>
@@ -562,7 +584,45 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
                 </p>
               </div>
 
-              {/* ── YouTube Explanation Video URL (Optional) ── */}
+              {/* ── 2. Download File Name (Admin Editable) ── */}
+              <div>
+                <label className="block text-xs font-bold text-gray-800 mb-1">
+                  Download File Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={approveForm.downloadFilename}
+                  onChange={e => {
+                    setFilenameManuallyEdited(true)
+                    setApproveForm(f => ({ ...f, downloadFilename: e.target.value }))
+                  }}
+                  placeholder="e.g. Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf"
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white font-mono text-gray-900 placeholder:text-gray-400 shadow-2xs"
+                  maxLength={255}
+                  required
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  This is the clean filename students receive when clicking Download (browser download).
+                </p>
+              </div>
+
+              {/* ── 3. Description (Admin Editable) ── */}
+              <div>
+                <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
+                  <span>Description <span className="text-gray-400 font-normal">(optional)</span></span>
+                  <span className="text-[11px] text-gray-400 font-normal">Shown on public paper detail page</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={approveForm.description}
+                  onChange={e => setApproveForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Official Class 10 Science Monthly Test Question Paper for Chennai District conducted in August 2026. Download the question paper PDF and watch the explanation video for additional guidance."
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white text-gray-900 placeholder:text-gray-400 shadow-2xs resize-none"
+                  maxLength={2000}
+                />
+              </div>
+
+              {/* ── 4. YouTube Explanation Video URL (Optional) ── */}
               <div>
                 <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
                   <span>YouTube Explanation Video <span className="text-gray-400 font-normal">(optional)</span></span>
