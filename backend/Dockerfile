@@ -9,7 +9,7 @@
 FROM python:3.12-slim AS base
 
 # ── System dependencies ──────────────────────────────────────────────
-# curl is included for Render/Docker health check probes
+# curl is included for container health check probes
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
@@ -42,5 +42,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # ── Start server ─────────────────────────────────────────────────────
-# workers=1 for free Render tier; increase for paid instances.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
