@@ -32,6 +32,7 @@ from app.schemas.submission import (
     ApproveRequest,
     RejectRequest,
     SubmissionCreateResponse,
+    SubmissionDeleteResponse,
     SubmissionListItem,
     SubmissionListResponse,
     SubmissionOut,
@@ -532,4 +533,42 @@ class SubmissionsService:
     ) -> dict[str, int]:
         """Fetch submission statistics for user profile."""
         return self._repo.get_user_submission_stats(firebase_uid=firebase_uid, email=email)
+
+    # ------------------------------------------------------------------ #
+    # ADMIN: Delete a submission
+    # DELETE /api/v1/submissions/{id}
+    # ------------------------------------------------------------------ #
+
+    def delete_submission(self, submission_id: str) -> SubmissionDeleteResponse:
+        """
+        Permanently delete a pending or rejected submission:
+          1. Load submission — raise 404 if not found
+          2. Check safety — cannot delete if status == 'approved' or if linked to a published paper
+          3. Delete attached private files from Supabase Storage & delete DB records
+
+        Returns a SubmissionDeleteResponse.
+        Raises ValidationError if submission is approved.
+        """
+        logger.info(
+            "SubmissionsService.delete_submission(submission_id=%s)", submission_id
+        )
+
+        sub = self._repo.get_by_id(submission_id)
+        if sub is None:
+            raise NotFoundError(resource="Submission", identifier=submission_id)
+
+        if sub["status"] == "approved" or self._repo.has_linked_papers(submission_id):
+            raise ValidationError(
+                "Approved submissions linked to published papers cannot be deleted."
+            )
+
+        self._repo.delete_submission(submission_id)
+
+        logger.info("Submission %s deleted successfully", submission_id)
+        return SubmissionDeleteResponse(
+            submission_id=submission_id,
+            deleted=True,
+            message="Submission deleted successfully.",
+        )
+
 

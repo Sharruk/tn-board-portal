@@ -772,3 +772,72 @@ class SubmissionsRepository:
 
         return stats
 
+    # ------------------------------------------------------------------ #
+    # Delete submission (admin)
+    # ------------------------------------------------------------------ #
+
+    def has_linked_papers(self, submission_id: str) -> bool:
+        """Check if any papers reference this submission_id."""
+        stmt = text(
+            """
+            SELECT 1 FROM papers
+            WHERE submission_id::text = :submission_id
+            LIMIT 1
+            """
+        )
+        row = self._db.execute(stmt, {"submission_id": submission_id}).fetchone()
+        return row is not None
+
+    def delete_submission(self, submission_id: str) -> bool:
+        """
+        Delete a submission, its associated submission_files metadata rows,
+        and its private storage objects from Supabase Storage.
+        """
+        logger.debug(
+            "SubmissionsRepository.delete_submission(submission_id=%s)",
+            submission_id,
+        )
+        # 1. Query storage paths of attached files
+        stmt_files = text(
+            """
+            SELECT storage_path FROM submission_files
+            WHERE submission_id::text = :submission_id
+            """
+        )
+        file_rows = self._db.execute(stmt_files, {"submission_id": submission_id}).fetchall()
+        storage_paths = [r[0] for r in file_rows if r[0]]
+
+        # 2. Delete storage files
+        if storage_paths:
+            try:
+                self._storage.from_(SUBMISSIONS_BUCKET).remove(storage_paths)
+            except Exception as e:
+                logger.warning(
+                    "Failed to delete storage objects for submission %s (%s): %s",
+                    submission_id,
+                    storage_paths,
+                    e,
+                )
+
+        # 3. Delete submission_files rows
+        del_files_stmt = text(
+            """
+            DELETE FROM submission_files
+            WHERE submission_id::text = :submission_id
+            """
+        )
+        self._db.execute(del_files_stmt, {"submission_id": submission_id})
+
+        # 4. Delete submissions row
+        del_sub_stmt = text(
+            """
+            DELETE FROM submissions
+            WHERE id::text = :submission_id
+            """
+        )
+        self._db.execute(del_sub_stmt, {"submission_id": submission_id})
+        self._db.commit()
+
+        return True
+
+

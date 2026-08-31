@@ -5,6 +5,7 @@ import {
   approveSubmission,
   rejectSubmission,
   restoreSubmission,
+  deleteSubmission,
   downloadSubmissionFile,
 } from '../../services/submissions'
 import { getClasses, getSubjectsForClass } from '../../services/classes'
@@ -452,6 +453,7 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
 
   const isPending  = submission.status === 'pending'
   const isRejected = submission.status === 'rejected'
+  const isApproved = submission.status === 'approved'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -511,31 +513,67 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
             )}
           </div>
 
-          {/* ── REJECTED: Restore to Pending ───────────────────────────── */}
-          {isRejected && (
-            <div className="border border-amber-200 bg-amber-50 rounded-2xl p-5">
-              <p className="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
-                <span>↩</span> Restore Submission
-              </p>
-              <p className="text-xs text-amber-700 mb-4">
-                This submission was rejected. You can move it back to <strong>Pending</strong> to review and approve it.
-              </p>
-              {error && (
-                <p className="text-xs text-red-600 mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
-              )}
-              <button
-                id="restore-submission-btn"
-                onClick={handleRestore}
-                disabled={loading}
-                className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-sm font-semibold py-2.5 px-6 rounded-xl transition-colors flex items-center gap-2"
-              >
-                {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '↩'}
-                Move to Pending
-              </button>
+          {/* ── APPROVED: View Published Paper ────────────────────────── */}
+          {isApproved && (
+            <div className="border border-emerald-200 bg-emerald-50 rounded-2xl p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-emerald-900 flex items-center gap-2">
+                    <span>✅</span> Approved &amp; Published
+                  </p>
+                  <p className="text-xs text-emerald-700 mt-1">
+                    This submission has been approved and published to the public materials catalog.
+                  </p>
+                </div>
+                <a
+                  href="/admin/papers"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 hover:bg-emerald-100 px-4 py-2.5 rounded-xl transition-colors shrink-0 flex items-center justify-center gap-1.5 shadow-2xs"
+                >
+                  <span>📄</span> View Published Paper ↗
+                </a>
+              </div>
             </div>
           )}
 
-          {/* ── PENDING: Approve form ───────────────────────────────────── */}
+          {/* ── REJECTED: Restore to Pending & Delete ──────────────────── */}
+          {isRejected && (
+            <div className="border border-amber-200 bg-amber-50 rounded-2xl p-5 space-y-4">
+              <div>
+                <p className="text-sm font-bold text-amber-800 mb-1 flex items-center gap-2">
+                  <span>↩</span> Rejected Submission Actions
+                </p>
+                <p className="text-xs text-amber-700">
+                  This submission was rejected. You can move it back to <strong>Pending</strong> to review it again, or permanently delete it.
+                </p>
+              </div>
+              {error && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+              )}
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <button
+                  id="restore-submission-btn"
+                  onClick={handleRestore}
+                  disabled={loading}
+                  className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-sm font-semibold py-2.5 px-5 rounded-xl transition-colors flex items-center gap-2 shadow-2xs"
+                >
+                  {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '↩'}
+                  Restore to Pending
+                </button>
+                <button
+                  id="delete-submission-btn"
+                  onClick={() => onRequestDelete(submission)}
+                  disabled={loading}
+                  className="text-xs font-semibold text-red-600 hover:text-red-800 hover:bg-red-50 border border-red-200 bg-white py-2.5 px-4 rounded-xl transition-colors flex items-center gap-1.5"
+                >
+                  <span>🗑️</span> Delete
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── PENDING: Approve form & Delete ──────────────────────────── */}
           {isPending && !showRejectForm && !showRejectConfirm && (
             <div className="border border-emerald-200 bg-emerald-50/70 rounded-2xl p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
@@ -739,22 +777,32 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
                 </div>
               )}
 
-              <div className="flex gap-2.5 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-emerald-100/80">
+                <div className="flex gap-2 flex-1 min-w-[240px]">
+                  <button
+                    id="approve-submission-btn"
+                    onClick={handleApprove}
+                    disabled={loading}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm shadow-emerald-200"
+                  >
+                    {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '✅'}
+                    Approve &amp; Publish
+                  </button>
+                  <button
+                    onClick={() => { setShowRejectForm(true); setError(null) }}
+                    disabled={loading}
+                    className="px-4 py-3 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    Reject
+                  </button>
+                </div>
                 <button
-                  id="approve-submission-btn"
-                  onClick={handleApprove}
+                  id="delete-submission-btn"
+                  onClick={() => onRequestDelete(submission)}
                   disabled={loading}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm shadow-emerald-200"
+                  className="px-3 py-2.5 text-xs font-semibold text-red-600 hover:text-red-800 hover:bg-red-50 border border-red-200 bg-white rounded-xl transition-colors flex items-center gap-1.5"
                 >
-                  {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '✅'}
-                  Approve &amp; Publish
-                </button>
-                <button
-                  onClick={() => { setShowRejectForm(true); setError(null) }}
-                  disabled={loading}
-                  className="px-4 py-3 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold rounded-xl transition-colors"
-                >
-                  Reject instead
+                  <span>🗑️</span> Delete
                 </button>
               </div>
             </div>
@@ -837,16 +885,105 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
   )
 }
 
+// ── Delete Confirmation Modal ──────────────────────────────────────────────────
+
+function DeleteConfirmModal({ submission, onClose, onDeleted }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState(null)
+
+  const handleDelete = async () => {
+    if (loading) return
+    setError(null)
+    setLoading(true)
+    try {
+      await deleteSubmission(submission.id)
+      onDeleted(submission.id)
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Failed to delete submission. Please try again.')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={() => !loading && onClose()} aria-hidden="true" />
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-red-100">
+        <div className="flex items-center gap-3 text-red-600">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-xl shrink-0">
+            ⚠️
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Delete this submission permanently?</h3>
+            <p className="text-xs text-gray-500 font-mono mt-0.5">ID: {submission.id}</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-gray-600 leading-relaxed">
+          This will permanently remove the submission and its uploaded file. This action cannot be undone.
+        </p>
+
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-1.5 text-xs text-gray-600">
+          <div className="flex justify-between">
+            <span className="font-semibold text-gray-500">Contributor:</span>
+            <span className="font-medium text-gray-800 truncate max-w-[200px]">{submission.publisher_name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-semibold text-gray-500">Email:</span>
+            <span className="font-medium text-gray-800 truncate max-w-[200px]">{submission.email}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-semibold text-gray-500">Status:</span>
+            <span className="font-bold uppercase tracking-wider">{submission.status}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-semibold text-gray-500">Submitted:</span>
+            <span>{fmtDate(submission.created_at)}</span>
+          </div>
+        </div>
+
+        {error && (
+          <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+            <span className="shrink-0 mt-0.5">⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="flex gap-2.5 pt-2">
+          <button
+            id="cancel-delete-submission-btn"
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 hover:bg-gray-50 text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            id="confirm-delete-submission-btn"
+            onClick={handleDelete}
+            disabled={loading}
+            className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 px-4 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm shadow-red-200"
+          >
+            {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '🗑️'}
+            Delete Permanently
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SubmissionsPage() {
-  const [submissions, setSubmissions]   = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [error, setError]               = useState(null)
-  const [statusFilter, setStatusFilter] = useState('pending')
-  const [selected, setSelected]         = useState(null)
-  const [classes, setClasses]           = useState([])
-  const [toast, setToast]               = useState(null)
+  const [submissions, setSubmissions]               = useState([])
+  const [loading, setLoading]                       = useState(true)
+  const [error, setError]                           = useState(null)
+  const [statusFilter, setStatusFilter]             = useState('pending')
+  const [selected, setSelected]                     = useState(null)
+  const [deletingSubmission, setDeletingSubmission] = useState(null)
+  const [classes, setClasses]                       = useState([])
+  const [toast, setToast]                           = useState(null)
 
   useEffect(() => {
     getClasses().then(r => setClasses(r.data || []))
@@ -883,9 +1020,19 @@ export default function SubmissionsPage() {
       approved: 'approved and published',
       rejected: 'rejected',
       restored: 'moved back to Pending',
+      deleted:  'deleted',
     }
     const label = labels[action] || action
     setToast({ type: 'success', message: `Submission ${label} successfully.` })
+    loadSubmissions(statusFilter)
+  }
+
+  const handleDeleted = (id) => {
+    if (selected && selected.id === id) {
+      setSelected(null)
+    }
+    setDeletingSubmission(null)
+    setToast({ type: 'success', message: 'Submission deleted successfully.' })
     loadSubmissions(statusFilter)
   }
 
@@ -975,14 +1122,26 @@ export default function SubmissionsPage() {
                     <td className="px-4 py-3">
                       <StatusBadge status={sub.status} />
                     </td>
-                    <td className="px-4 py-3">
-                      <button
-                        id={`view-submission-${sub.id}`}
-                        onClick={() => openDetail(sub)}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        {sub.status === 'pending' ? 'Review' : 'View'}
-                      </button>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          id={`view-submission-${sub.id}`}
+                          onClick={() => openDetail(sub)}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          {sub.status === 'pending' ? 'Review' : 'View'}
+                        </button>
+                        {sub.status !== 'approved' && (
+                          <button
+                            id={`delete-submission-table-${sub.id}`}
+                            onClick={() => setDeletingSubmission(sub)}
+                            className="text-xs font-semibold text-red-600 hover:text-red-800 border border-red-200 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition-colors"
+                            title="Delete submission permanently"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -997,6 +1156,14 @@ export default function SubmissionsPage() {
           classes={classes}
           onClose={() => setSelected(null)}
           onReviewed={handleReviewed}
+          onRequestDelete={(sub) => setDeletingSubmission(sub)}
+        />
+      )}
+      {deletingSubmission && (
+        <DeleteConfirmModal
+          submission={deletingSubmission}
+          onClose={() => setDeletingSubmission(null)}
+          onDeleted={handleDeleted}
         />
       )}
       {toast && (
@@ -1009,3 +1176,4 @@ export default function SubmissionsPage() {
     </div>
   )
 }
+

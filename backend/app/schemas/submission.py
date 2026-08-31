@@ -172,6 +172,17 @@ class SubmissionCreateResponse(BaseModel):
     )
 
 
+class SubmissionDeleteResponse(BaseModel):
+    """Returned after successfully deleting a submission."""
+
+    submission_id: str = Field(..., description="Deleted submission UUID")
+    deleted: bool = Field(default=True, description="Deletion success indicator")
+    message: str = Field(
+        default="Submission deleted successfully.",
+        description="Human-readable confirmation message",
+    )
+
+
 # ── User Contributor Own Submissions ──────────────────────────────────────────
 
 class UserSubmissionFile(BaseModel):

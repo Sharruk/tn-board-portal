@@ -32,6 +32,7 @@ from app.schemas.submission import (
     ApproveRequest,
     RejectRequest,
     SubmissionCreateResponse,
+    SubmissionDeleteResponse,
     SubmissionListResponse,
     SubmissionOut,
     UserSubmissionsResponse,
@@ -347,3 +348,35 @@ async def restore_submission(
     """Restore a rejected submission back to pending for re-review."""
     service = SubmissionsService(db)
     return service.restore_submission(submission_id)
+
+
+# ── DELETE /api/v1/submissions/{id} — admin ──────────────────────────────────
+
+
+@router.delete(
+    "/{submission_id}",
+    response_model=SubmissionDeleteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete a submission (admin)",
+    description=(
+        "Admin only. Permanently deletes a pending or rejected submission, "
+        "its submission_files records, and its uploaded private files in Supabase Storage.\n\n"
+        "Approved submissions linked to published papers cannot be deleted."
+    ),
+    responses={
+        200: {"description": "Submission deleted successfully"},
+        401: {"description": "No auth token provided"},
+        403: {"description": "Admin privileges required"},
+        404: {"description": "Submission not found"},
+        422: {"description": "Submission is approved and cannot be deleted"},
+    },
+)
+async def delete_submission(
+    submission_id: str,
+    current_user: dict = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> SubmissionDeleteResponse:
+    """Permanently delete a pending or rejected submission."""
+    service = SubmissionsService(db)
+    return service.delete_submission(submission_id)
+

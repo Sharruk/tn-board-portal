@@ -20,6 +20,7 @@ class _DummyBucket:
     """Safe fallback bucket when live storage is unconfigured (e.g. testing)."""
     def upload(self, *args, **kwargs): return {}
     def download(self, *args, **kwargs): return b"%PDF-1.4 dummy bytes"
+    def remove(self, *args, **kwargs): return []
     def create_signed_url(self, *args, **kwargs): return {"signedURL": "https://example.supabase.co/signed/file.pdf"}
     def get_public_url(self, path: str = "", *args, **kwargs): return f"https://example.supabase.co/papers/{path}"
 

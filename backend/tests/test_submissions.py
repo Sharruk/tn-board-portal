@@ -146,7 +146,7 @@ def _make_table_db(table_data: dict[str, list]) -> MagicMock:
         sql = str(stmt).lower()
         params = params or {}
 
-        if "from submissions" in sql or "into submissions" in sql or "update submissions" in sql:
+        if "from submissions" in sql or "into submissions" in sql or "update submissions" in sql or "delete from submissions" in sql:
             rows = table_data.get("submissions", [])
             if "where id::text = :submission_id" in sql or "where id = :submission_id" in sql:
                 sid = str(params.get("submission_id"))
@@ -158,7 +158,7 @@ def _make_table_db(table_data: dict[str, list]) -> MagicMock:
                 return MockResult(matches)
             return MockResult(rows)
 
-        if "from submission_files" in sql or "into submission_files" in sql:
+        if "from submission_files" in sql or "into submission_files" in sql or "delete from submission_files" in sql:
             rows = table_data.get("submission_files", [])
             if "count(*)" in sql:
                 counts = {}
@@ -173,11 +173,17 @@ def _make_table_db(table_data: dict[str, list]) -> MagicMock:
             if "where submission_id::text = :submission_id" in sql:
                 sid = str(params.get("submission_id"))
                 matches = [r for r in rows if str(r.get("submission_id")) == sid]
+                if "select storage_path" in sql:
+                    return MockResult([(r.get("storage_path"),) for r in matches])
                 return MockResult(matches)
             return MockResult(rows)
 
         if "from papers" in sql or "into papers" in sql:
             rows = table_data.get("papers", [MOCK_PAPER])
+            if "where submission_id::text = :submission_id" in sql:
+                sid = str(params.get("submission_id"))
+                matches = [r for r in rows if str(r.get("submission_id")) == sid]
+                return MockResult(matches)
             return MockResult(rows)
 
         return MockResult([])
@@ -1519,6 +1525,235 @@ def test_get_my_submissions():
         assert sub["published_papers"][0]["title"] == "Class 10 Maths Annual Exam 2024"
     finally:
         app.dependency_overrides.clear()
+
+
+# ============================================================================
+# Tests: DELETE /api/v1/submissions/{id} (admin)
+# ============================================================================
+
+class TestDeleteSubmission:
+    """Tests for the admin delete submission endpoint."""
+
+    def test_delete_pending_submission_as_admin(self):
+        """1. Admin can delete a pending submission."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid",
+            "email": "admin@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            f"/api/v1/submissions/{_SUB_ID}",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["deleted"] is True
+        assert body["submission_id"] == _SUB_ID
+        assert "deleted successfully" in body["message"].lower()
+
+    def test_delete_rejected_submission_as_admin(self):
+        """2. Admin can delete a rejected submission."""
+        rejected_sub = {**MOCK_SUBMISSION, "status": "rejected"}
+        mock_db = _make_table_db({
+            "submissions": [rejected_sub],
+            "submission_files": [MOCK_FILE],
+            "papers": [],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid",
+            "email": "admin@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            f"/api/v1/submissions/{_SUB_ID}",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["deleted"] is True
+        assert body["submission_id"] == _SUB_ID
+
+    def test_delete_as_normal_user_forbidden(self):
+        """3. Normal user cannot delete (403)."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "USER",
+            "firebase_uid": "user-uid",
+            "email": "student@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            f"/api/v1/submissions/{_SUB_ID}",
+            headers={"Authorization": "Bearer student-token"},
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 403
+
+    def test_delete_unauthenticated_unauthorized(self):
+        """4. Unauthenticated user cannot delete (401)."""
+        client = TestClient(app)
+        response = client.delete(f"/api/v1/submissions/{_SUB_ID}")
+        assert response.status_code == 401
+
+    def test_delete_missing_submission_not_found(self):
+        """5. Missing submission returns 404."""
+        mock_db = _make_table_db({"submissions": [], "submission_files": []})
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid",
+            "email": "admin@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            "/api/v1/submissions/nonexistent-id",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 404
+
+    def test_delete_submission_files_metadata_deleted(self):
+        """6. Submission file metadata is deleted."""
+        executed_sqls = []
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [],
+        })
+        orig_execute = mock_db.execute.side_effect
+
+        def track_execute(stmt, params=None):
+            executed_sqls.append(str(stmt).lower())
+            return orig_execute(stmt, params)
+
+        mock_db.execute.side_effect = track_execute
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid",
+            "email": "admin@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            f"/api/v1/submissions/{_SUB_ID}",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        assert any("delete from submission_files" in s for s in executed_sqls)
+        assert any("delete from submissions" in s for s in executed_sqls)
+
+    def test_delete_submission_storage_object_deleted(self):
+        """7. Associated private storage object is deleted."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [],
+        })
+        mock_storage = MagicMock()
+        mock_bucket = MagicMock()
+        mock_storage.from_.return_value = mock_bucket
+        mock_db.storage = mock_storage
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid",
+            "email": "admin@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            f"/api/v1/submissions/{_SUB_ID}",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        mock_storage.from_.assert_called_with("submissions")
+        mock_bucket.remove.assert_called_once_with([MOCK_FILE["storage_path"]])
+
+    def test_delete_approved_submission_linked_to_paper_rejected(self):
+        """8. Approved submission linked to a published paper cannot be dangerously deleted."""
+        approved_sub = {**MOCK_SUBMISSION, "status": "approved"}
+        linked_paper = {**MOCK_PAPER, "submission_id": _SUB_ID}
+        mock_db = _make_table_db({
+            "submissions": [approved_sub],
+            "submission_files": [MOCK_FILE],
+            "papers": [linked_paper],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid",
+            "email": "admin@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            f"/api/v1/submissions/{_SUB_ID}",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+        assert "cannot be deleted" in response.json()["detail"].lower()
+
+    def test_protected_approved_submission_remains_untouched(self):
+        """9. Protected approved submission (f5321f3f-dd55-457d-ad62-75f05482a77b) remains protected."""
+        protected_id = "f5321f3f-dd55-457d-ad62-75f05482a77b"
+        protected_sub = {
+            "id": protected_id,
+            "publisher_name": "Sharruk S",
+            "email": "mr.sharruk@gmail.com",
+            "status": "approved",
+            "created_at": _NOW,
+        }
+        protected_paper = {
+            "id": 26,
+            "title": "Class 10 Science Monthly Test Question Paper August 2026 - Chennai District",
+            "submission_id": protected_id,
+        }
+        mock_db = _make_table_db({
+            "submissions": [protected_sub],
+            "submission_files": [],
+            "papers": [protected_paper],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid",
+            "email": "admin@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            f"/api/v1/submissions/{protected_id}",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+        assert "approved" in response.json()["detail"].lower()
+
 
 
 

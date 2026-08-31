@@ -288,3 +288,29 @@ export async function downloadSubmissionFile(tokenOrFileId, fileIdOrFilename, ma
   setTimeout(() => URL.revokeObjectURL(objectUrl), 10000)
 }
 
+// ── Admin: Delete submission ──────────────────────────────────────────────────
+
+/**
+ * Permanently delete a submission and its uploaded files (admin only).
+ * Obtains a fresh Firebase ID token immediately before sending the mutation request.
+ *
+ * Supports both deleteSubmission(id) and legacy deleteSubmission(token, id).
+ *
+ * @param {string} tokenOrId Submission UUID or legacy token
+ * @param {string} [maybeId] Submission UUID if token was passed first
+ * @returns {Promise<{ submission_id: string, deleted: boolean, message: string }>}
+ */
+export async function deleteSubmission(tokenOrId, maybeId) {
+  const id = maybeId !== undefined ? maybeId : tokenOrId
+  const token = await getFirebaseToken(true)
+  if (!token) throw new Error('Authentication required')
+
+  return apiFetch(`/api/v1/submissions/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  })
+}
+
+
