@@ -1,140 +1,75 @@
 # AGENTS.md — AI Operating Manual
 # TN Board Portal
 
-> **READ THIS FIRST.**
-> This is the master operating manual for every AI coding assistant working on this repository.
-> Do not make a single code change until you have read every file in this `.ai/` folder.
+> **Primary operating instructions for AI coding assistants working on this repository.**
 
 ---
 
-## What Is This Project?
+## 1. Project Architecture & Current Tech Stack
 
-TN Board Portal is a **production-quality, long-term software engineering portfolio project**.
+| Layer | Technology | Deployment / Hosting |
+|---|---|---|
+| **Frontend** | React 18, Vite 5, Tailwind CSS | Vercel (SPA) |
+| **Backend** | FastAPI 0.115, Python 3.12, Uvicorn | Vercel Serverless Functions (`api/index.py`) |
+| **Database** | PostgreSQL 15, Supabase Migrations (`001`–`025`) | Supabase Database |
+| **Storage** | Supabase Storage (`papers`, `submissions` buckets) | Supabase Object Storage |
+| **Authentication** | Firebase Auth (Google Sign-In, Firebase ID Token) | Google Firebase / Verified by FastAPI |
+| **Local Testing** | Docker (`python:3.12-slim`), pytest | Local Docker / CLI |
 
-It is NOT a college CRUD app.
-It is NOT a throwaway prototype.
-It IS a demonstration of real engineering — architecture, database design, security, documentation, and deployment — aimed at impressing recruiters at companies like Google, Microsoft, Atlassian, and GitHub.
-
-**Every commit counts. Every decision matters. Every file you touch reflects on the developer.**
-
----
-
-## Your Mandatory First Step
-
-Before touching a single file, run through this checklist:
-
-- [ ] Read `AGENTS.md` (this file)
-- [ ] Read `PROJECT_CONTEXT.md`
-- [ ] Read `ARCHITECTURE_RULES.md`
-- [ ] Read `DATABASE_RULES.md`
-- [ ] Read `CODING_STANDARDS.md`
-- [ ] Read `DEVELOPMENT_RULES.md`
-- [ ] Read the relevant workflow file (`FEATURE_WORKFLOW.md` or `BUG_FIX_WORKFLOW.md`)
-- [ ] Read `DECISIONS.md` to understand past choices
-- [ ] Read `CHANGE_HISTORY.md` to understand what already exists
-
----
-
-## AI Workflow — Non-Negotiable Order
-
-Every request, no exceptions:
-
+**Architecture Flow:**
 ```
-1. Analyze the project (read relevant source files)
-2. Understand architecture (read ARCHITECTURE_RULES.md)
-3. Identify affected files
-4. Explain the impact
-5. Produce an implementation plan
-6. WAIT FOR APPROVAL
-7. Implement
-8. Verify the build (npm run build)
-9. Summarize changes
+Frontend (React/Vite on Vercel)
+   │
+   ├── Auth Flow: Firebase Auth (Google Sign-In) ──► ID Token (Bearer)
+   │
+   └── API Requests (Same-Origin: /api/v1/...) ──► Vercel FastAPI Serverless
+                                                        │
+                                                        ├── Verify Firebase ID Token
+                                                        └── Supabase PostgreSQL & Storage
 ```
 
-**Never skip step 6. Never implement without explicit approval.**
+*Note: Render is decommissioned. All production traffic runs via Vercel + Supabase + Firebase.*
 
 ---
 
-## Critical Constraints
+## 2. Core Rule Priorities
 
-| Rule | Reason |
-|------|--------|
-| Never rewrite stable, working modules | Production is live; regressions hurt real students |
-| Never rename files unnecessarily | Breaks imports, git blame, and deployment |
-| Never introduce a backend server | Frontend-only + Supabase is the intentional architecture |
-| Never modify old migrations | Production data lives in those tables |
-| Never leave TODOs or placeholder code | This is a portfolio project — quality is mandatory |
-| Never invent completed work or fake GitHub activity | Portfolio integrity matters |
-| Never add unnecessary dependencies | Every dep is a security surface and a bundle size cost |
-| Never store secrets inside `.ai/` | The `.ai/` folder is now version-controlled — no API keys, passwords or tokens |
+1. **Never Expose Secrets**: Never commit or log API keys, private keys, service account JSONs, database passwords, or `.env` files.
+2. **Never Break Authentication**: Firebase Auth (Google Sign-In) + FastAPI token verification (`verify_firebase_token`) must remain intact.
+3. **Never Destroy Production Data**: Never run `db reset` or destructive DDL against live databases. Retain all historical migrations (`001`–`025`).
+4. **Preserve Submission & Approval Flow**: Approved papers must retain custom title, download filename, description, YouTube URL, contributor attribution, and download Content-Disposition.
+5. **Keep Same-Origin API Routing**: In production, frontend API calls must route through `/api/v1/...` on the same Vercel origin.
+6. **Maintain Contributor Privacy**: Never expose contributor email addresses in public API responses or pages.
+7. **Verify Changes**: Run `python -m pytest` and `npm.cmd run build` before concluding tasks.
 
 ---
 
-## Repository Visibility
+## 3. Git & Branching Rules
 
-- The repository is currently **private**.
-- The `.ai/` folder is **intentionally version-controlled** during active development.
-- The purpose is to synchronize AI memory across all development environments and AI coding assistants (Antigravity, Cursor, Replit, Codex, Claude Code, GitHub Copilot, and future assistants).
-- Before making the repository **public** or sharing it with recruiters, review whether `.ai/` should remain in the repository or be moved to a separate private repository.
-- **Never expose secrets, API keys, passwords, tokens, or credentials inside `.ai/`.** Every file in this folder may become public.
+- Always verify the active branch before modifying files (`git branch --show-current`).
+- Work strictly on the requested branch (e.g. `vercel-migration`).
+- Do not switch branches, merge into `main`, or push to remote repositories unless explicitly instructed.
 
 ---
 
-## What Is Committed vs. Not Committed
+## 4. Verification Commands
 
-### Committed to Git (as of v1.0+)
-- All `.ai/` files — AI operating manual, shared across all environments
-- `README.md`, `CHANGELOG.md`, `ROADMAP.md`, `CONTRIBUTING.md`
-- `docs/` — Architecture, Database, API, Deployment docs
-- `frontend/src/**` — Application source code
-- `supabase/migrations/**` — Database migrations
+```bash
+# Backend pytest suite
+cd backend && python -m pytest
 
-### Never Committed
-- `.env.local`, `.env` — Files with real environment secrets
-- `frontend/node_modules/`, `frontend/dist/` — Dependencies and build artifacts
+# Frontend production build
+cd frontend && npm.cmd run build
 
----
-
-## Tech Stack Summary
-
-| Layer | Technology |
-|-------|-----------|
-| UI Framework | React 18 |
-| Build Tool | Vite 5 |
-| Styling | Tailwind CSS 3 |
-| Routing | React Router DOM v6 |
-| Backend-as-a-Service | Supabase |
-| Database | PostgreSQL (via Supabase) |
-| Auth | Supabase Auth (email/password) |
-| Storage | Supabase Storage (3 buckets) |
-| Hosting | Vercel (Vite SPA, global CDN) |
-
----
-
-## Git Workflow
-
-The developer does NOT use Pull Requests. Follow this exact workflow:
-
-```
-feature branch
-    ↓ commit
-    ↓ push feature/dev branch
-    ↓ git checkout main
-    ↓ git pull main
-    ↓ git merge feature/dev
-    ↓ git push main
+# Docker local backend test
+docker build -t tn-board-backend ./backend
+docker run --env-file ./backend/.env -p 8000:8000 tn-board-backend
 ```
 
-**Never recommend PRs unless explicitly asked.**
-
 ---
 
-## The `.ai/` Folder Is the Project's Permanent Memory
+## 5. Companion Documents
 
-Every significant decision → update `DECISIONS.md`
-Every new coding convention → update `CODING_STANDARDS.md`
-Every workflow improvement → update `DEVELOPMENT_RULES.md`
-Every roadmap change → update `PROJECT_CONTEXT.md`
-Every implementation → update `CHANGE_HISTORY.md`
-
-The `.ai/` folder is a living document. Keep it current.
+- [PROJECT_CONTEXT.md](file:///d:/Visual_Studio_Code/projects/tn-board-portal/.ai/PROJECT_CONTEXT.md) — Problem statement, platform features, and user journeys.
+- [DEVELOPMENT_RULES.md](file:///d:/Visual_Studio_Code/projects/tn-board-portal/.ai/DEVELOPMENT_RULES.md) — Coding conventions, database migration rules, and error handling.
+- [SECURITY_GUIDELINES.md](file:///d:/Visual_Studio_Code/projects/tn-board-portal/.ai/SECURITY_GUIDELINES.md) — Security standards, token verification, and data protection.

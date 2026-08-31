@@ -109,58 +109,60 @@ Screenshots coming soon. The application is live at https://tn-board-portal.verc
 │   └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘  │
 │        └────────────┴────────────┴─────────────┘        │
 │                           │                             │
-│        services/ data-access layer                      │
-│        papers.js · search.js · classes.js · admin.js   │
+│       Same-Origin API (/api/v1/...)                     │
+│       Firebase Auth (Google Sign-In)                    │
 └───────────────────────────┼─────────────────────────────┘
-                            │  Supabase JS SDK
+                            │
                             ▼
+┌─────────────────────────────────────────────────────────┐
+│              Vercel Serverless Backend                  │
+│               FastAPI (Python 3.12)                     │
+│   ┌──────────────────────────────────────────────────┐  │
+│   │ Routes → Services → Repositories → Pydantic      │  │
+│   │ Token Verification (Firebase ID Tokens)          │  │
+│   └───────────────────────────┬──────────────────────┘  │
+└───────────────────────────────┼─────────────────────────┘
+                                │
+                                ▼
 ┌─────────────────────────────────────────────────────────┐
 │                       Supabase                          │
 │                                                         │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │ PostgreSQL  │  │     Auth     │  │    Storage    │  │
+│  │ PostgreSQL  │  │   Storage    │  │  Migrations   │  │
 │  │             │  │              │  │               │  │
-│  │ papers      │  │ Admin users  │  │ PDF files     │  │
-│  │ subjects    │  │ (email/pw)   │  │ (public CDN)  │  │
-│  │ classes     │  └──────────────┘  └───────────────┘  │
-│  │ audit_logs  │                                        │
-│  │ search_queries         RLS + SECURITY DEFINER        │
-│  └─────────────┘               RPC functions            │
-└───────────────────────────┬─────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│               Vercel (Static Hosting)                   │
-│         Vite build → dist/ → global CDN edge            │
+│  │ papers      │  │ PDF files    │  │ 001 to 025    │  │
+│  │ submissions │  │ (papers/     │  │ (ordered      │  │
+│  │ users       │  │  submissions)│  │  schema)      │  │
+│  └─────────────┘  └──────────────┘  └───────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Design Principles
 
 | Principle | Implementation |
-|-----------|---------------|
-| **Frontend-only architecture** | No custom server or API layer |
-| **React + Supabase** | All UI in React; all data in Supabase |
-| **No custom backend** | Supabase handles DB, Auth, and Storage |
-| **RLS-secured database access** | PostgreSQL Row Level Security on every table |
-| **Static deployment** | Vite SPA deployed to Vercel global CDN |
-
-> **Architecture decision:** This project intentionally uses a frontend-only React + Supabase architecture. Do not introduce a separate backend unless there is a strong technical requirement. All authorization is enforced by PostgreSQL Row Level Security policies and `SECURITY DEFINER` RPC functions — not application code.
+|---|---|
+| **Unified Vercel Deployment** | Monorepo hosting React SPA and FastAPI serverless functions |
+| **Clean Layered Backend** | Strict separation: Routes → Services → Repositories → Schemas |
+| **Secure Authentication** | Firebase Auth (Google Sign-In) verified server-side in FastAPI |
+| **Atomic Database Migrations** | Sequential SQL migrations (`001`–`025`) with resilient repository queries |
+| **Preserved File Names** | Student downloads use clean approved filenames via `Content-Disposition` |
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+|---|---|
 | UI Framework | React 18 |
 | Build Tool | Vite 5 |
 | Styling | Tailwind CSS 3 |
 | Routing | React Router DOM 6 |
-| Backend-as-a-Service | Supabase |
-| Database | PostgreSQL (via Supabase) |
-| Authentication | Supabase Auth |
-| File Storage | Supabase Storage |
+| Backend API | FastAPI 0.115 (Python 3.12) |
+| Backend Runtime | Vercel Serverless Functions (`api/index.py`) / Uvicorn (local) |
+| Database | PostgreSQL 15 (via Supabase) |
+| Authentication | Firebase Authentication (Google Sign-In & ID Token Verification) |
+| File Storage | Supabase Storage (`papers`, `submissions`) |
+| Local Testing | Docker (`python:3.12-slim`), Pytest |
 | Hosting | Vercel |
 
 ---
@@ -382,15 +384,19 @@ tn-board-portal/
 
 ## Contributing
 
-Contributions are welcome! This is a documentation-first, architecture-stable project.
+Contributions are welcome!
 
 ### Ground rules
 
-1. **Do not introduce a server-side backend.** The frontend-only React + Supabase architecture is intentional. All auth and data access must go through Supabase RLS and RPC functions.
-2. **Do not modify migrations that have already been applied to production.** Add new migration files instead.
-3. **Verify the build locally** before opening a pull request:
+1. **Follow the four-layer backend architecture.** Routes validate requests, Services handle domain logic, Repositories handle Supabase data access, and Pydantic schemas enforce contracts.
+2. **Do not modify migrations that have already been applied to production.** Add new incremental migration files instead.
+3. **Verify tests and builds locally** before committing:
 
 ```bash
+# Run backend tests
+cd backend && python -m pytest
+
+# Run frontend build
 cd frontend && npm install && npm run build
 ```
 
