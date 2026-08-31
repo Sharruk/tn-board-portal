@@ -66,7 +66,23 @@ export async function createSubmission(formData) {
   return response.json()
 }
 
+// ── Contributor: Get authenticated user's own submissions ────────────────────
+
+
+/**
+ * Fetch all submissions submitted by the current authenticated user.
+ * @returns {Promise<{ data: UserSubmissionItem[], total: number }>}
+ */
+export async function getMySubmissions() {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required')
+  return apiFetch('/api/v1/submissions/my', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 // ── Admin: List submissions ───────────────────────────────────────────────────
+
 
 /**
  * List all submissions (admin only).

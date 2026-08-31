@@ -10,6 +10,7 @@ import { getClasses } from '../services/classes'
 import { getRecentPapers, getPopularPapers } from '../services/papers'
 import { getRecentNotices, CATEGORY_ICONS } from '../services/notices'
 import { getRecentNews } from '../services/news'
+import { getLeaderboard } from '../services/leaderboard'
 
 export default function HomePage() {
   const [classes, setClasses] = useState([])
@@ -17,7 +18,9 @@ export default function HomePage() {
   const [popularPapers, setPopularPapers] = useState([])
   const [recentNotices, setRecentNotices] = useState([])
   const [recentNews, setRecentNews] = useState([])
+  const [topContributors, setTopContributors] = useState([])
   const [loading, setLoading] = useState(true)
+
 
   useEffect(() => {
     Promise.all([
@@ -26,16 +29,19 @@ export default function HomePage() {
       getPopularPapers(10),
       getRecentNotices(6, true),
       getRecentNews(6),
+      getLeaderboard(5).catch(() => ({ data: [] })),
     ])
-      .then(([clsRes, recentRes, popularRes, noticesRes, newsRes]) => {
-        setClasses(clsRes.data)
-        setRecentPapers(recentRes.data)
-        setPopularPapers(popularRes.data)
-        setRecentNotices(noticesRes.data)
-        setRecentNews(newsRes.data)
+      .then(([clsRes, recentRes, popularRes, noticesRes, newsRes, lbRes]) => {
+        setClasses(clsRes.data || [])
+        setRecentPapers(recentRes.data || [])
+        setPopularPapers(popularRes.data || [])
+        setRecentNotices(noticesRes.data || [])
+        setRecentNews(newsRes.data || [])
+        setTopContributors(lbRes.data || [])
       })
       .finally(() => setLoading(false))
   }, [])
+
 
   return (
     <div>
@@ -85,6 +91,37 @@ export default function HomePage() {
           </Link>
         </div>
       </section>
+
+      {/* ── Top Contributors Spotlight ── */}
+      {!loading && topContributors.length > 0 && (
+        <section className="bg-white border-b border-gray-100">
+          <div className="max-w-4xl mx-auto px-4 py-8">
+            <div className="bg-gradient-to-r from-amber-50/70 via-white to-amber-50/40 rounded-3xl border border-amber-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-5">
+              <div className="space-y-1 text-center sm:text-left">
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <span className="text-xl">🏆</span>
+                  <h2 className="text-lg font-extrabold text-gray-900">Top Contributors</h2>
+                </div>
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1 pt-1 text-xs sm:text-sm text-gray-700">
+                  {topContributors.slice(0, 3).map((c, i) => (
+                    <span key={c.contributor_name} className="flex items-center gap-1.5 font-medium">
+                      <strong className="text-amber-800">{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'} {c.contributor_name}</strong>
+                      <span className="text-gray-400">({c.approved_count ?? c.accepted_contributions} contributions)</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <Link
+                to="/leaderboard"
+                className="shrink-0 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-xl transition shadow-2xs"
+              >
+                View Leaderboard →
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
 
       {/* ── Latest Official Notices ── */}
       {!loading && recentNotices.length > 0 && (

@@ -16,6 +16,7 @@ from app.api.v1.endpoints.leaderboard import router as leaderboard_router
 from app.api.v1.endpoints.papers import router as papers_router
 from app.api.v1.endpoints.subjects import router as subjects_router
 from app.api.v1.endpoints.submissions import router as submissions_router
+from app.api.v1.endpoints.user_profile import router as user_profile_router
 
 router = APIRouter()
 
@@ -30,4 +31,6 @@ router.include_router(submissions_router)
 router.include_router(leaderboard_router)
 router.include_router(community_router)
 router.include_router(analytics_router)
+router.include_router(user_profile_router)
+
 

@@ -634,3 +634,141 @@ class SubmissionsRepository:
                 self._db.rollback()
                 logger.error("All fallback paper INSERTs failed: %s", leg_err)
                 raise
+
+    # ------------------------------------------------------------------ #
+    # User's own submissions & contribution history
+    # ------------------------------------------------------------------ #
+
+    def get_user_submissions(
+        self, firebase_uid: str, email: str | None = None
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch all submissions created by a specific user with their attached files
+        and any linked approved papers.
+        """
+        logger.debug(
+            "SubmissionsRepository.get_user_submissions(firebase_uid=%s, email=%s)",
+            firebase_uid,
+            email,
+        )
+
+        sql = """
+            SELECT s.id, s.publisher_name, s.email, s.firebase_uid, s.details,
+                   s.status, s.rejection_reason, s.reviewed_at, s.created_at
+            FROM submissions s
+            WHERE s.firebase_uid = :firebase_uid
+        """
+        params: dict[str, Any] = {"firebase_uid": firebase_uid}
+
+        if email:
+            sql += " OR (s.firebase_uid IS NULL AND LOWER(s.email) = LOWER(:email))"
+            params["email"] = email
+
+        sql += " ORDER BY s.created_at DESC"
+
+        stmt = text(sql)
+        result = self._db.execute(stmt, params)
+        submissions = []
+        for r in result.fetchall():
+            d = dict(r._mapping)
+            d["id"] = str(d["id"])
+            submissions.append(d)
+
+        if not submissions:
+            return []
+
+        sub_ids = [s["id"] for s in submissions]
+
+        # 1. Fetch attached files
+        files_stmt = text(
+            """
+            SELECT id, submission_id, original_filename, file_type, file_size, created_at
+            FROM submission_files
+            WHERE submission_id::text IN :sub_ids
+            ORDER BY created_at ASC
+            """
+        ).bindparams(bindparam("sub_ids", expanding=True))
+
+        files_res = self._db.execute(files_stmt, {"sub_ids": sub_ids})
+        files_map: dict[str, list[dict[str, Any]]] = {}
+        for r in files_res.fetchall():
+            fd = dict(r._mapping)
+            fd["id"] = str(fd["id"])
+            s_id = str(fd["submission_id"])
+            files_map.setdefault(s_id, []).append(fd)
+
+        # 2. Fetch linked published papers
+        papers_stmt = text(
+            """
+            SELECT p.id, p.title, p.submission_id, p.exam_type, p.year, p.paper_type, p.public_url,
+                   s.name AS subject_name, c.name AS class_name
+            FROM papers p
+            LEFT JOIN subjects s ON p.subject_id = s.id
+            LEFT JOIN classes c ON s.class_id = c.id
+            WHERE p.submission_id::text IN :sub_ids
+            """
+        ).bindparams(bindparam("sub_ids", expanding=True))
+
+        try:
+            papers_res = self._db.execute(papers_stmt, {"sub_ids": sub_ids})
+            papers_map: dict[str, list[dict[str, Any]]] = {}
+            for r in papers_res.fetchall():
+                pd = dict(r._mapping)
+                s_id = str(pd["submission_id"])
+                papers_map.setdefault(s_id, []).append(pd)
+        except Exception as e:
+            logger.debug("Failed to query linked papers for user submissions: %s", e)
+            papers_map = {}
+
+        # Merge files and published papers into submissions
+        for sub in submissions:
+            s_id = sub["id"]
+            sub["files"] = files_map.get(s_id, [])
+            sub["published_papers"] = papers_map.get(s_id, [])
+
+        return submissions
+
+    def get_user_submission_stats(
+        self, firebase_uid: str, email: str | None = None
+    ) -> dict[str, int]:
+        """
+        Return contribution counts for a user: total_submissions, published_count,
+        pending_count, rejected_count.
+        """
+        sql = """
+            SELECT status, COUNT(*)::int AS cnt
+            FROM submissions
+            WHERE firebase_uid = :firebase_uid
+        """
+        params: dict[str, Any] = {"firebase_uid": firebase_uid}
+        if email:
+            sql += " OR (firebase_uid IS NULL AND LOWER(email) = LOWER(:email))"
+            params["email"] = email
+
+        sql += " GROUP BY status"
+
+        stmt = text(sql)
+        stats = {
+            "total_submissions": 0,
+            "published_count": 0,
+            "pending_count": 0,
+            "rejected_count": 0,
+        }
+
+        try:
+            result = self._db.execute(stmt, params)
+            for r in result.fetchall():
+                status_val = str(r[0]).lower()
+                count_val = int(r[1])
+                stats["total_submissions"] += count_val
+                if status_val == "approved":
+                    stats["published_count"] += count_val
+                elif status_val == "pending":
+                    stats["pending_count"] += count_val
+                elif status_val == "rejected":
+                    stats["rejected_count"] += count_val
+        except Exception as e:
+            logger.warning("Failed to calculate user submission stats: %s", e)
+
+        return stats
+

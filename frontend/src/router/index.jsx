@@ -18,6 +18,8 @@ import SubmitMaterialPage from '../pages/SubmitMaterialPage'
 import LeaderboardPage from '../pages/LeaderboardPage'
 import CommunityPage from '../pages/CommunityPage'
 import CommunityPostDetailPage from '../pages/CommunityPostDetailPage'
+import ProfilePage from '../pages/ProfilePage'
+import MyContributionsPage from '../pages/MyContributionsPage'
 
 import LoginPage from '../pages/admin/LoginPage'
 import DashboardPage from '../pages/admin/DashboardPage'
@@ -26,6 +28,7 @@ import AdminOfficialNoticesPage from '../pages/admin/OfficialNoticesPage'
 import AdminNewsPage from '../pages/admin/NewsPage'
 import ContentStatusPage from '../pages/admin/ContentStatusPage'
 import SubmissionsPage from '../pages/admin/SubmissionsPage'
+
 
 const router = createBrowserRouter([
   // ── Public routes ──────────────────────────────────────
@@ -48,9 +51,12 @@ const router = createBrowserRouter([
       { path: 'community', element: <CommunityPage /> },
       { path: 'community/post/:id', element: <CommunityPostDetailPage /> },
       { path: 'submit-material', element: <SubmitMaterialPage /> },
+      { path: 'profile', element: <ProfilePage /> },
+      { path: 'my-contributions', element: <MyContributionsPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
+
 
   // ── Admin login (standalone, no layout) ───────────────
   { path: '/admin/login', element: <LoginPage /> },

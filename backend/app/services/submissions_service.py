@@ -36,6 +36,10 @@ from app.schemas.submission import (
     SubmissionListResponse,
     SubmissionOut,
     SubmissionFileOut,
+    UserSubmissionFile,
+    UserSubmissionPaper,
+    UserSubmissionItem,
+    UserSubmissionsResponse,
 )
 from app.utils.exceptions import DatabaseError, NotFoundError, ValidationError
 
@@ -464,3 +468,68 @@ class SubmissionsService:
             ) from exc
 
         return file_bytes, content_type, original_filename
+
+    # ------------------------------------------------------------------ #
+    # USER: Get authenticated user's own submissions
+    # GET /api/v1/submissions/my
+    # ------------------------------------------------------------------ #
+
+    def get_user_submissions(
+        self, firebase_uid: str, email: str | None = None
+    ) -> UserSubmissionsResponse:
+        """
+        Return all submissions made by the current authenticated user.
+        Includes attached files and linked published papers if approved.
+        """
+        logger.info(
+            "SubmissionsService.get_user_submissions(firebase_uid=%s)", firebase_uid
+        )
+        rows = self._repo.get_user_submissions(firebase_uid=firebase_uid, email=email)
+
+        items = []
+        for r in rows:
+            files = [
+                UserSubmissionFile(
+                    id=f["id"],
+                    original_filename=f.get("original_filename") or "paper.pdf",
+                    file_type=f.get("file_type") or "pdf",
+                    file_size=f.get("file_size") or 0,
+                    created_at=f["created_at"],
+                )
+                for f in r.get("files", [])
+            ]
+            published = [
+                UserSubmissionPaper(
+                    id=p["id"],
+                    title=p["title"],
+                    subject_name=p.get("subject_name"),
+                    class_name=p.get("class_name"),
+                    exam_type=p.get("exam_type"),
+                    year=p.get("year"),
+                    paper_type=p.get("paper_type"),
+                    public_url=p.get("public_url"),
+                )
+                for p in r.get("published_papers", [])
+            ]
+            items.append(
+                UserSubmissionItem(
+                    id=r["id"],
+                    publisher_name=r["publisher_name"],
+                    details=r.get("details"),
+                    status=r["status"],
+                    rejection_reason=r.get("rejection_reason"),
+                    reviewed_at=r.get("reviewed_at"),
+                    created_at=r["created_at"],
+                    files=files,
+                    published_papers=published,
+                )
+            )
+
+        return UserSubmissionsResponse(data=items, total=len(items))
+
+    def get_user_stats(
+        self, firebase_uid: str, email: str | None = None
+    ) -> dict[str, int]:
+        """Fetch submission statistics for user profile."""
+        return self._repo.get_user_submission_stats(firebase_uid=firebase_uid, email=email)
+

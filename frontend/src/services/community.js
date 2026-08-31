@@ -7,14 +7,23 @@ import { getFirebaseToken } from '../lib/firebase'
 
 export const COMMUNITY_CATEGORIES = [
   'All',
+  'Question Papers',
+  'Exams',
+  'Study Help',
+  'Announcements',
+  'Suggestions',
+  'General Discussion',
   'Discussion',
   'Question',
-  'Paper Request',
-  'Suggestion',
-  'Problem Report',
 ]
 
 export const CATEGORY_ICONS = {
+  'Question Papers': '📚',
+  Exams: '📝',
+  'Study Help': '🎓',
+  Announcements: '📢',
+  Suggestions: '💡',
+  'General Discussion': '❓',
   Discussion: '💬',
   Question: '❓',
   'Paper Request': '📄',
@@ -22,6 +31,7 @@ export const CATEGORY_ICONS = {
   'Problem Report': '⚠️',
   All: '🌐',
 }
+
 
 /**
  * List community discussion posts with optional category filter.

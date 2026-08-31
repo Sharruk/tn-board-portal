@@ -1447,4 +1447,79 @@ class TestCanonicalPaperTitleCreation:
         assert res["contributor_name"] == "Sharruk S"
 
 
+def test_get_my_submissions():
+    """Test GET /api/v1/submissions/my returns only authenticated user's submissions."""
+    client = TestClient(app)
+    mock_db = MagicMock()
+
+
+    mock_sub = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "publisher_name": "Sharruk",
+        "email": "sharruk@example.com",
+        "firebase_uid": "user-uid-123",
+        "details": "Math paper upload",
+        "status": "approved",
+        "rejection_reason": None,
+        "reviewed_at": "2024-03-15T10:30:00+00:00",
+        "created_at": "2024-03-15T10:00:00+00:00",
+    }
+    mock_file = {
+        "id": "22222222-2222-2222-2222-222222222222",
+        "submission_id": "11111111-1111-1111-1111-111111111111",
+        "original_filename": "Class10_Maths.pdf",
+        "file_type": "pdf",
+        "file_size": 10240,
+        "created_at": "2024-03-15T10:00:00+00:00",
+    }
+    mock_paper = {
+        "id": 42,
+        "title": "Class 10 Maths Annual Exam 2024",
+        "submission_id": "11111111-1111-1111-1111-111111111111",
+        "exam_type": "Annual Exam",
+        "year": 2024,
+        "paper_type": "question",
+        "public_url": "https://example.com/paper.pdf",
+        "subject_name": "Mathematics",
+        "class_name": "Class 10",
+    }
+
+    def _exec(stmt, params=None):
+        sql = str(stmt).lower()
+        if "from submissions" in sql:
+            return MockResult([mock_sub])
+        if "from submission_files" in sql:
+            return MockResult([mock_file])
+        if "from papers" in sql:
+            return MockResult([mock_paper])
+        return MockResult([])
+
+    mock_db.execute.side_effect = _exec
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "user-uuid",
+        "firebase_uid": "user-uid-123",
+        "email": "sharruk@example.com",
+        "display_name": "Sharruk",
+        "role": "USER",
+    }
+
+    try:
+        res = client.get("/api/v1/submissions/my", headers={"Authorization": "Bearer token"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total"] == 1
+        sub = data["data"][0]
+        assert sub["id"] == "11111111-1111-1111-1111-111111111111"
+        assert sub["status"] == "approved"
+        assert len(sub["files"]) == 1
+        assert sub["files"][0]["original_filename"] == "Class10_Maths.pdf"
+        assert len(sub["published_papers"]) == 1
+        assert sub["published_papers"][0]["title"] == "Class 10 Maths Annual Exam 2024"
+    finally:
+        app.dependency_overrides.clear()
+
+
+
 

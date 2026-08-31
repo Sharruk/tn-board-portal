@@ -14,26 +14,19 @@ from app.schemas.leaderboard import LeaderboardEntry, LeaderboardResponse
 logger = logging.getLogger(__name__)
 
 
-def compute_badges(approved_count: int, acceptance_rate: float) -> list[str]:
-    """Compute milestone badges based on approved contributions and quality."""
+def compute_badges(approved_count: int, rank: int = 0) -> list[str]:
+    """Compute contributor recognition badges based on approved contributions and rank."""
     badges: list[str] = []
-    if approved_count >= 50:
-        badges.append("50 Contributions")
-    elif approved_count >= 25:
-        badges.append("25 Contributions")
-    elif approved_count >= 10:
-        badges.append("10 Contributions")
+    if approved_count >= 15 or (rank > 0 and rank <= 3):
+        badges.append("Top Contributor")
     elif approved_count >= 5:
-        badges.append("5 Contributions")
+        badges.append("Active Contributor")
     elif approved_count >= 1:
-        badges.append("First Contribution")
-
-    if approved_count >= 10 and acceptance_rate >= 90.0:
-        badges.append("Helpful Contributor")
-    elif approved_count >= 5 and acceptance_rate >= 80.0:
-        badges.append("Verified Contributor")
-
+        badges.append("Contributor")
+    else:
+        badges.append("User")
     return badges
+
 
 
 class LeaderboardService:
@@ -136,20 +129,21 @@ class LeaderboardService:
                 }
             )
 
-        # Sort based on specified criteria: Approved count first, then acceptance rate
+        # Sort based on positive contribution criteria: Approved count first, then total submitted
         ranked_list.sort(
             key=lambda x: (
                 x["approved_count"],
-                x["acceptance_rate"],
                 x["submitted_count"],
+                x["acceptance_rate"],
             ),
             reverse=True,
         )
 
-        # Slice limit and assign 1-indexed ranks
+        # Slice limit and assign 1-indexed ranks and badges
         limited = ranked_list[:limit]
         entries: list[LeaderboardEntry] = []
         for idx, item in enumerate(limited, start=1):
+            badges = compute_badges(item["approved_count"], rank=idx)
             entries.append(
                 LeaderboardEntry(
                     rank=idx,
@@ -161,10 +155,11 @@ class LeaderboardService:
                     total_contributions=item["total_contributions"],
                     accepted_contributions=item["accepted_contributions"],
                     acceptance_rate=item["acceptance_rate"],
-                    badges=item["badges"],
+                    badges=badges,
                     recent_contributions=item["recent_contributions"],
                 )
             )
+
 
         return LeaderboardResponse(
             data=entries,

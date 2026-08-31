@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from app.dependencies.auth import require_admin, require_role
+from app.dependencies.auth import get_current_user, require_admin, require_role
 from app.dependencies.supabase import get_db
 from app.schemas.submission import (
     ApproveRequest,
@@ -34,6 +34,7 @@ from app.schemas.submission import (
     SubmissionCreateResponse,
     SubmissionListResponse,
     SubmissionOut,
+    UserSubmissionsResponse,
 )
 from app.services.submissions_service import SubmissionsService
 from app.utils.exceptions import DatabaseError, NotFoundError, ValidationError
@@ -88,7 +89,38 @@ async def create_submission(
     )
 
 
+# ── GET /api/v1/submissions/my — authenticated user's own submissions ──────────
+
+
+@router.get(
+    "/my",
+    response_model=UserSubmissionsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get current user's submitted materials",
+    description=(
+        "Authenticated endpoint. Returns all submissions uploaded by the current user, "
+        "including attached file names, current status (Under Review, Published, Rejected), "
+        "rejection reason if rejected, and links to published papers if approved."
+    ),
+    responses={
+        200: {"description": "User's submissions"},
+        401: {"description": "Authentication required"},
+    },
+)
+async def get_my_submissions(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserSubmissionsResponse:
+    """Return all submissions made by the authenticated user."""
+    service = SubmissionsService(db)
+    return service.get_user_submissions(
+        firebase_uid=current_user["firebase_uid"],
+        email=current_user.get("email"),
+    )
+
+
 # ── GET /api/v1/submissions — admin ──────────────────────────────────────────
+
 
 
 @router.get(

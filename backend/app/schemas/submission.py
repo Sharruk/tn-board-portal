@@ -16,9 +16,10 @@ Schema hierarchy:
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
+
 
 
 # ── Status literal ────────────────────────────────────────────────────────────
@@ -169,3 +170,49 @@ class SubmissionCreateResponse(BaseModel):
         default="Material submitted successfully. It will be reviewed before publication.",
         description="Human-readable confirmation message",
     )
+
+
+# ── User Contributor Own Submissions ──────────────────────────────────────────
+
+class UserSubmissionFile(BaseModel):
+    """Lightweight file info for user contribution tracking."""
+
+    id: str
+    original_filename: str
+    file_type: str
+    file_size: int
+    created_at: datetime
+
+
+class UserSubmissionPaper(BaseModel):
+    """Linked published paper details when approved."""
+
+    id: int
+    title: str
+    subject_name: Optional[str] = None
+    class_name: Optional[str] = None
+    exam_type: Optional[str] = None
+    year: Optional[int] = None
+    paper_type: Optional[str] = None
+    public_url: Optional[str] = None
+
+
+class UserSubmissionItem(BaseModel):
+    """Submission item returned in the My Contributions page."""
+
+    id: str
+    publisher_name: str
+    details: Optional[str] = None
+    status: SubmissionStatus
+    rejection_reason: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+    files: list[UserSubmissionFile] = Field(default_factory=list)
+    published_papers: list[UserSubmissionPaper] = Field(default_factory=list)
+
+
+class UserSubmissionsResponse(BaseModel):
+    """Response containing authenticated user's submissions."""
+
+    data: list[UserSubmissionItem] = Field(default_factory=list)
+    total: int = Field(default=0)

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { createSubmission } from '../services/submissions'
+
 
 const ALLOWED_TYPES = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']
 const MAX_FILE_SIZE_MB = 25
@@ -172,32 +174,57 @@ export default function SubmitMaterialPage() {
 
   if (success) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center px-4 py-16">
-        <div className="max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+      <div className="min-h-[75vh] flex items-center justify-center px-4 py-16">
+        <div className="max-w-lg w-full bg-white border border-gray-200/90 rounded-3xl p-8 sm:p-10 shadow-lg text-center space-y-6 animate-fade-in">
+          <div className="w-20 h-20 bg-emerald-100/90 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner text-4xl">
+            ✅
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">Submitted Successfully!</h2>
-          <p className="text-gray-600 text-base leading-relaxed mb-6">
-            Your material has been received. It will be reviewed by our admin team before
-            being published on the platform. Thank you for contributing!
+          
+          <div className="space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900">
+              Submission Received!
+            </h2>
+            <p className="text-sm font-semibold text-emerald-700">
+              Thank you for contributing to the TN Board community.
+            </p>
+          </div>
+
+          <p className="text-gray-600 text-xs sm:text-sm leading-relaxed bg-gray-50/90 p-4 rounded-2xl border border-gray-100">
+            Your educational material has been submitted successfully and is currently <strong>under review</strong>. Once verified, it will be published with your contributor name. You can track its live status from <strong>My Contributions</strong>.
           </p>
-          <button
-            onClick={() => {
-              setSuccess(false)
-              setForm({ publisher_name: '', details: '' })
-              setFiles([])
-            }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition-colors"
-          >
-            Submit Another Material
-          </button>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <Link
+              to="/my-contributions"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-xs"
+            >
+              <span>📂</span> View My Contributions
+            </Link>
+            <Link
+              to="/"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 font-bold text-xs rounded-xl transition"
+            >
+              <span>🏠</span> Back to Home
+            </Link>
+          </div>
+
+          <div className="pt-3 border-t border-gray-100">
+            <button
+              onClick={() => {
+                setSuccess(false)
+                setForm({ publisher_name: user?.displayName || user?.email?.split('@')[0] || '', details: '' })
+                setFiles([])
+              }}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition inline-flex items-center gap-1"
+            >
+              <span>➕</span> Submit Another Material
+            </button>
+          </div>
         </div>
       </div>
     )
   }
+
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/60 to-gray-50 py-12 px-4">
