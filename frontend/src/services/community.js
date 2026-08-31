@@ -55,7 +55,7 @@ export async function createCommunityPost(payload) {
   const token = await getFirebaseToken()
   if (!token) throw new Error('Authentication required to create a post')
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/posts`, {
+  return apiFetch('/api/v1/community/posts', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -63,23 +63,16 @@ export async function createCommunityPost(payload) {
     },
     body: JSON.stringify(payload),
   })
-
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to create post')
-  }
-
-  return res.json()
 }
 
 /**
- * Update post (author or admin).
+ * Update discussion post (author or admin).
  */
 export async function updateCommunityPost(postId, payload) {
   const token = await getFirebaseToken()
   if (!token) throw new Error('Authentication required to update post')
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/posts/${postId}`, {
+  return apiFetch(`/api/v1/community/posts/${postId}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -87,13 +80,6 @@ export async function updateCommunityPost(postId, payload) {
     },
     body: JSON.stringify(payload),
   })
-
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to update post')
-  }
-
-  return res.json()
 }
 
 /**
@@ -103,19 +89,12 @@ export async function deleteCommunityPost(postId) {
   const token = await getFirebaseToken()
   if (!token) throw new Error('Authentication required to delete post')
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/posts/${postId}`, {
+  return apiFetch(`/api/v1/community/posts/${postId}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   })
-
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to delete post')
-  }
-
-  return res.json()
 }
 
 /**
@@ -125,7 +104,7 @@ export async function addCommunityComment(postId, payload) {
   const token = await getFirebaseToken()
   if (!token) throw new Error('Authentication required to reply')
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/posts/${postId}/comments`, {
+  return apiFetch(`/api/v1/community/posts/${postId}/comments`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -133,13 +112,6 @@ export async function addCommunityComment(postId, payload) {
     },
     body: JSON.stringify(payload),
   })
-
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to post reply')
-  }
-
-  return res.json()
 }
 
 /**
@@ -149,19 +121,12 @@ export async function deleteCommunityComment(commentId) {
   const token = await getFirebaseToken()
   if (!token) throw new Error('Authentication required to delete reply')
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/comments/${commentId}`, {
+  return apiFetch(`/api/v1/community/comments/${commentId}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   })
-
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to delete reply')
-  }
-
-  return res.json()
 }
 
 /**
@@ -171,20 +136,13 @@ export async function togglePostUpvote(postId) {
   const token = await getFirebaseToken()
   if (!token) throw new Error('Authentication required to upvote')
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/posts/${postId}/upvote`, {
+  return apiFetch(`/api/v1/community/posts/${postId}/upvote`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
   })
-
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to upvote')
-  }
-
-  return res.json()
 }
 
 /**
@@ -194,7 +152,7 @@ export async function submitReport(payload) {
   const token = await getFirebaseToken()
   if (!token) throw new Error('Authentication required to report')
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/reports`, {
+  return apiFetch('/api/v1/community/reports', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -202,13 +160,6 @@ export async function submitReport(payload) {
     },
     body: JSON.stringify(payload),
   })
-
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to submit report')
-  }
-
-  return res.json()
 }
 
 /**
@@ -217,16 +168,11 @@ export async function submitReport(payload) {
 export async function getAdminReports(status = null) {
   const token = await getFirebaseToken()
   const statusParam = status ? `?status=${status}` : ''
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/reports${statusParam}`, {
+  return apiFetch(`/api/v1/community/reports${statusParam}`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   })
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to load reports')
-  }
-  return res.json()
 }
 
 /**
@@ -234,17 +180,12 @@ export async function getAdminReports(status = null) {
  */
 export async function updateAdminReport(reportId, status) {
   const token = await getFirebaseToken()
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/reports/${reportId}?status=${status}`, {
+  return apiFetch(`/api/v1/community/reports/${reportId}?status=${status}`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   })
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to update report')
-  }
-  return res.json()
 }
 
 /**
@@ -259,7 +200,7 @@ export async function createPaperRequest(payload) {
   const token = await getFirebaseToken()
   if (!token) throw new Error('Authentication required to request a paper')
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/requests`, {
+  return apiFetch('/api/v1/community/requests', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -267,29 +208,17 @@ export async function createPaperRequest(payload) {
     },
     body: JSON.stringify(payload),
   })
-
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to submit paper request')
-  }
-
-  return res.json()
 }
 
 export async function updatePaperRequestStatus(requestId, status, fulfilledPaperId = null) {
   const token = await getFirebaseToken()
   const pParam = fulfilledPaperId ? `&fulfilled_paper_id=${fulfilledPaperId}` : ''
-  const res = await fetch(`${API_BASE_URL}/api/v1/community/requests/${requestId}?status=${status}${pParam}`, {
+  return apiFetch(`/api/v1/community/requests/${requestId}?status=${status}${pParam}`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
     },
   })
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b?.detail || 'Failed to update request')
-  }
-  return res.json()
 }
 
 /**

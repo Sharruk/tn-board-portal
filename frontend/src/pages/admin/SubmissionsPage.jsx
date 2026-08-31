@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import { getFirebaseToken } from '../../lib/firebase'
 import {
   getSubmissions,
   getSubmission,
@@ -87,7 +86,7 @@ function canPreview(type) {
 
 // ── File Preview Modal ────────────────────────────────────────────────────────
 
-function FilePreviewModal({ file, token, onClose }) {
+function FilePreviewModal({ file, onClose }) {
   const [loadError, setLoadError] = useState(false)
   const [pdfLoaded, setPdfLoaded] = useState(false)
   const [downloading, setDownloading] = useState(false)
@@ -105,7 +104,7 @@ function FilePreviewModal({ file, token, onClose }) {
     setDlError(null)
     setDownloading(true)
     try {
-      await downloadSubmissionFile(token, file.id, file.original_filename)
+      await downloadSubmissionFile(file.id, file.original_filename)
     } catch (err) {
       setDlError(err.message || 'Download failed. Please try again.')
     } finally {
@@ -232,7 +231,7 @@ function FilePreviewModal({ file, token, onClose }) {
 
 // ── File Card ──────────────────────────────────────────────────────────────────
 
-function SubmissionFileCard({ file, token }) {
+function SubmissionFileCard({ file }) {
   const [previewing, setPreviewing] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [dlError, setDlError] = useState(null)
@@ -243,7 +242,7 @@ function SubmissionFileCard({ file, token }) {
     setDlError(null)
     setDownloading(true)
     try {
-      await downloadSubmissionFile(token, file.id, file.original_filename)
+      await downloadSubmissionFile(file.id, file.original_filename)
     } catch (err) {
       setDlError(err.message || 'Download failed. Please try again.')
     } finally {
@@ -290,7 +289,7 @@ function SubmissionFileCard({ file, token }) {
           )}
         </div>
       </div>
-      {previewing && <FilePreviewModal file={file} token={token} onClose={() => setPreviewing(false)} />}
+      {previewing && <FilePreviewModal file={file} onClose={() => setPreviewing(false)} />}
     </>
   )
 }
@@ -316,7 +315,7 @@ function extractYouTubeId(url) {
   return null
 }
 
-function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed }) {
+function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
   const initialFileName = submission.files?.[0]?.original_filename || ''
   const [approveForm, setApproveForm] = useState({
     title: '',
@@ -397,7 +396,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
 
     setLoading(true)
     try {
-      await approveSubmission(token, submission.id, {
+      await approveSubmission(submission.id, {
         title:              approveForm.title.trim(),
         download_filename:  approveForm.downloadFilename.trim(),
         description:        approveForm.description.trim() || null,
@@ -425,7 +424,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     setError(null)
     setLoading(true)
     try {
-      await rejectSubmission(token, submission.id, {
+      await rejectSubmission(submission.id, {
         rejection_reason: rejectReason.trim() || null,
       })
       onReviewed('rejected', submission.id)
@@ -441,7 +440,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
     setError(null)
     setLoading(true)
     try {
-      await restoreSubmission(token, submission.id)
+      await restoreSubmission(submission.id)
       onReviewed('restored', submission.id)
       onClose()
     } catch (err) {
@@ -506,7 +505,7 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
             ) : (
               <div className="space-y-2">
                 {submission.files.map(file => (
-                  <SubmissionFileCard key={file.id} file={file} token={token} />
+                  <SubmissionFileCard key={file.id} file={file} />
                 ))}
               </div>
             )}
@@ -841,7 +840,6 @@ function SubmissionDetailModal({ submission, token, classes, onClose, onReviewed
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SubmissionsPage() {
-  const [token, setToken]               = useState(null)
   const [submissions, setSubmissions]   = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
@@ -851,34 +849,29 @@ export default function SubmissionsPage() {
   const [toast, setToast]               = useState(null)
 
   useEffect(() => {
-    getFirebaseToken().then(token => setToken(token))
-  }, [])
-
-  useEffect(() => {
     getClasses().then(r => setClasses(r.data || []))
   }, [])
 
   const loadSubmissions = useCallback(async (filter) => {
-    if (!token) return
     setLoading(true)
     setError(null)
     try {
-      const res = await getSubmissions(token, filter || null)
+      const res = await getSubmissions(filter || null)
       setSubmissions(res.data || [])
     } catch (err) {
       setError(err.message || 'Failed to load submissions.')
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [])
 
   useEffect(() => {
-    if (token) loadSubmissions(statusFilter)
-  }, [token, statusFilter, loadSubmissions])
+    loadSubmissions(statusFilter)
+  }, [statusFilter, loadSubmissions])
 
   const openDetail = async (sub) => {
     try {
-      const detail = await getSubmission(token, sub.id)
+      const detail = await getSubmission(sub.id)
       setSelected(detail)
     } catch (err) {
       setToast({ type: 'error', message: err.message || 'Failed to load submission detail.' })
@@ -1001,7 +994,6 @@ export default function SubmissionsPage() {
       {selected && (
         <SubmissionDetailModal
           submission={selected}
-          token={token}
           classes={classes}
           onClose={() => setSelected(null)}
           onReviewed={handleReviewed}

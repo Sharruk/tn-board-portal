@@ -62,5 +62,12 @@ export async function apiFetch(path, options = {}) {
   return response.json()
 }
 
+export function getApiUrl(path) {
+  const baseUrl = resolveApiBaseUrl()
+  return `${baseUrl}${path}`
+}
+
 export { API_BASE_URL }
+
+
 

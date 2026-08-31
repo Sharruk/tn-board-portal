@@ -83,16 +83,31 @@ export async function getMySubmissions() {
 
 // ── Admin: List submissions ───────────────────────────────────────────────────
 
-
 /**
  * List all submissions (admin only).
  *
- * @param {string} token    Firebase access_token
- * @param {string|null} [statusFilter]  'pending' | 'approved' | 'rejected' | null
- * @param {number} [limit]  Max results (default 50)
+ * Supports both getSubmissions(statusFilter, limit) and legacy getSubmissions(token, statusFilter, limit).
+ *
+ * @param {string|null} [tokenOrStatusFilter]  statusFilter ('pending' | 'approved' | 'rejected' | null) or legacy token
+ * @param {string|number|null} [statusFilterOrLimit]
+ * @param {number} [maybeLimit]  Max results (default 50)
  * @returns {Promise<{ data: SubmissionListItem[], count: number, status_filter: string|null }>}
  */
-export async function getSubmissions(token, statusFilter = null, limit = 50) {
+export async function getSubmissions(tokenOrStatusFilter = null, statusFilterOrLimit = null, maybeLimit = 50) {
+  let statusFilter = null
+  let limit = 50
+
+  if (typeof tokenOrStatusFilter === 'string' && (tokenOrStatusFilter.startsWith('ey') || tokenOrStatusFilter.length > 50)) {
+    statusFilter = statusFilterOrLimit
+    limit = typeof maybeLimit === 'number' ? maybeLimit : 50
+  } else {
+    statusFilter = tokenOrStatusFilter
+    limit = typeof statusFilterOrLimit === 'number' ? statusFilterOrLimit : 50
+  }
+
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required')
+
   const params = new URLSearchParams({ limit: String(limit) })
   if (statusFilter) params.set('status', statusFilter)
   return apiFetch(`/api/v1/submissions?${params}`, {
@@ -105,11 +120,17 @@ export async function getSubmissions(token, statusFilter = null, limit = 50) {
 /**
  * Get a single submission with its file list (admin only).
  *
- * @param {string} token  Firebase access_token
- * @param {string} id     Submission UUID
+ * Supports both getSubmission(id) and legacy getSubmission(token, id).
+ *
+ * @param {string} tokenOrId  Submission UUID or legacy token
+ * @param {string} [maybeId]  Submission UUID if token was passed first
  * @returns {Promise<SubmissionOut>}
  */
-export async function getSubmission(token, id) {
+export async function getSubmission(tokenOrId, maybeId) {
+  const id = maybeId !== undefined ? maybeId : tokenOrId
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required')
+
   return apiFetch(`/api/v1/submissions/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -119,13 +140,28 @@ export async function getSubmission(token, id) {
 
 /**
  * Approve a pending submission and create paper record(s).
+ * Obtains a fresh Firebase ID token immediately before sending the mutation request.
  *
- * @param {string} token  Firebase access_token
- * @param {string} id     Submission UUID
- * @param {{ title?: string, download_filename?: string, description?: string, youtube_url?: string, subject_id: number, exam_type: string, year: number, paper_type: string, month?: string, district?: string }} body
+ * Supports both approveSubmission(id, body) and legacy approveSubmission(token, id, body).
+ *
+ * @param {string} tokenOrId  Submission UUID or legacy token
+ * @param {string|object} idOrBody Submission UUID or body object
+ * @param {object} [maybeBody] Body if token was passed as first argument
  * @returns {Promise<{ submission_id: string, status: string, paper_ids: number[] }>}
  */
-export async function approveSubmission(token, id, body) {
+export async function approveSubmission(tokenOrId, idOrBody, maybeBody) {
+  let id, body
+  if (maybeBody !== undefined) {
+    id = idOrBody
+    body = maybeBody
+  } else {
+    id = tokenOrId
+    body = idOrBody
+  }
+
+  const token = await getFirebaseToken(true)
+  if (!token) throw new Error('Authentication required')
+
   return apiFetch(`/api/v1/submissions/${id}/approve`, {
     method: 'POST',
     headers: {
@@ -140,13 +176,28 @@ export async function approveSubmission(token, id, body) {
 
 /**
  * Reject a pending submission.
+ * Obtains a fresh Firebase ID token immediately before sending the mutation request.
  *
- * @param {string} token  Firebase access_token
- * @param {string} id     Submission UUID
- * @param {{ rejection_reason?: string }} body
+ * Supports both rejectSubmission(id, body) and legacy rejectSubmission(token, id, body).
+ *
+ * @param {string} tokenOrId  Submission UUID or legacy token
+ * @param {string|object} idOrBody Submission UUID or body object
+ * @param {object} [maybeBody] Body if token was passed as first argument
  * @returns {Promise<{ submission_id: string, status: string, rejection_reason: string|null }>}
  */
-export async function rejectSubmission(token, id, body) {
+export async function rejectSubmission(tokenOrId, idOrBody, maybeBody) {
+  let id, body
+  if (maybeBody !== undefined) {
+    id = idOrBody
+    body = maybeBody
+  } else {
+    id = tokenOrId
+    body = idOrBody
+  }
+
+  const token = await getFirebaseToken(true)
+  if (!token) throw new Error('Authentication required')
+
   return apiFetch(`/api/v1/submissions/${id}/reject`, {
     method: 'POST',
     headers: {
@@ -161,12 +212,19 @@ export async function rejectSubmission(token, id, body) {
 
 /**
  * Restore a rejected submission back to pending.
+ * Obtains a fresh Firebase ID token immediately before sending the mutation request.
  *
- * @param {string} token  Firebase access_token
- * @param {string} id     Submission UUID
+ * Supports both restoreSubmission(id) and legacy restoreSubmission(token, id).
+ *
+ * @param {string} tokenOrId  Submission UUID or legacy token
+ * @param {string} [maybeId]  Submission UUID if token was passed first
  * @returns {Promise<{ submission_id: string, status: string }>}
  */
-export async function restoreSubmission(token, id) {
+export async function restoreSubmission(tokenOrId, maybeId) {
+  const id = maybeId !== undefined ? maybeId : tokenOrId
+  const token = await getFirebaseToken(true)
+  if (!token) throw new Error('Authentication required')
+
   return apiFetch(`/api/v1/submissions/${id}/restore`, {
     method: 'POST',
     headers: {
@@ -182,17 +240,26 @@ export async function restoreSubmission(token, id) {
 /**
  * Download a private submission file through the backend proxy endpoint.
  *
- * The HTML `download` attribute is silently ignored by browsers for
- * cross-origin URLs (the Supabase signed URL is cross-origin). This
- * function calls our backend proxy which returns the file with
- * Content-Disposition: attachment, so the browser saves it locally.
+ * Supports both downloadSubmissionFile(fileId, filename) and legacy downloadSubmissionFile(token, fileId, filename).
  *
- * @param {string} token    Firebase access_token
- * @param {string} fileId   UUID from submission_files table
- * @param {string} filename Original filename for the saved file
+ * @param {string} tokenOrFileId  File UUID or legacy token
+ * @param {string} fileIdOrFilename Original filename or file UUID
+ * @param {string} [maybeFilename] Original filename if token was passed first
  * @returns {Promise<void>}  Triggers browser file save
  */
-export async function downloadSubmissionFile(token, fileId, filename) {
+export async function downloadSubmissionFile(tokenOrFileId, fileIdOrFilename, maybeFilename) {
+  let fileId, filename
+  if (maybeFilename !== undefined) {
+    fileId = fileIdOrFilename
+    filename = maybeFilename
+  } else {
+    fileId = tokenOrFileId
+    filename = fileIdOrFilename
+  }
+
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required')
+
   const url = getApiUrl(`/api/v1/submissions/files/${fileId}/download`)
   const response = await fetch(url, {
     method: 'GET',
