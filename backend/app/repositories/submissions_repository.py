@@ -811,8 +811,11 @@ class SubmissionsRepository:
         from app.repositories.papers_repository import PapersRepository
 
         sub = self.get_by_id(submission_id)
+        if not sub:
+            logger.warning("Submission %s not found for deletion", submission_id)
+            return []
 
-        # 1. Query and delete all linked published papers
+        # 1. Query all linked published papers
         stmt_papers = text(
             """
             SELECT id FROM papers
@@ -821,15 +824,6 @@ class SubmissionsRepository:
         )
         paper_rows = self._db.execute(stmt_papers, {"submission_id": submission_id}).fetchall()
         linked_paper_ids = [int(r[0]) for r in paper_rows if r[0] is not None]
-
-        if linked_paper_ids:
-            papers_repo = PapersRepository(self._db, self._storage)
-            for p_id in linked_paper_ids:
-                try:
-                    papers_repo.delete_paper(p_id, admin_id=admin_id, admin_email=admin_email)
-                    logger.info("Deleted linked paper %s for submission %s", p_id, submission_id)
-                except Exception as p_err:
-                    logger.warning("Error deleting linked paper %s for submission %s: %s", p_id, submission_id, p_err)
 
         # 2. Query storage paths of attached submission files
         stmt_files = text(
@@ -841,7 +835,22 @@ class SubmissionsRepository:
         file_rows = self._db.execute(stmt_files, {"submission_id": submission_id}).fetchall()
         storage_paths = [r[0] for r in file_rows if r[0]]
 
-        # 3. Delete private storage files
+        # 3. Clean up linked published papers (storage objects and database rows)
+        if linked_paper_ids:
+            papers_repo = PapersRepository(self._db, self._storage)
+            for p_id in linked_paper_ids:
+                try:
+                    papers_repo.delete_paper(
+                        p_id,
+                        admin_id=admin_id,
+                        admin_email=admin_email,
+                        auto_commit=False,
+                    )
+                    logger.info("Deleted linked paper %s for submission %s", p_id, submission_id)
+                except Exception as p_err:
+                    logger.warning("Error deleting linked paper %s for submission %s: %s", p_id, submission_id, p_err)
+
+        # 4. Delete private storage files from 'submissions' bucket
         if storage_paths:
             try:
                 self._storage.from_(SUBMISSIONS_BUCKET).remove(storage_paths)
@@ -853,54 +862,63 @@ class SubmissionsRepository:
                     e,
                 )
 
-        # 4. Delete submission_files rows
-        del_files_stmt = text(
-            """
-            DELETE FROM submission_files
-            WHERE submission_id::text = :submission_id
-            """
-        )
-        self._db.execute(del_files_stmt, {"submission_id": submission_id})
-
-        # 5. Delete submissions row
-        del_sub_stmt = text(
-            """
-            DELETE FROM submissions
-            WHERE id::text = :submission_id
-            """
-        )
-        self._db.execute(del_sub_stmt, {"submission_id": submission_id})
-
-        # 6. Insert audit log
         try:
-            audit_stmt = text(
+            # 5. Delete submission_files rows
+            del_files_stmt = text(
                 """
-                INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
-                VALUES (:admin_id, :admin_email, 'delete_submission', :target_paper_id, :details, NOW())
+                DELETE FROM submission_files
+                WHERE submission_id::text = :submission_id
                 """
             )
-            details = json.dumps(
-                {
-                    "submission_id": submission_id,
-                    "publisher_name": sub.get("publisher_name") if sub else None,
-                    "email": sub.get("email") if sub else None,
-                    "status": sub.get("status") if sub else None,
-                    "deleted_paper_ids": linked_paper_ids,
-                }
-            )
-            self._db.execute(
-                audit_stmt,
-                {
-                    "admin_id": admin_id,
-                    "admin_email": admin_email,
-                    "target_paper_id": linked_paper_ids[0] if linked_paper_ids else None,
-                    "details": details,
-                },
-            )
-        except Exception as a_err:
-            logger.warning("Failed to insert audit log for submission deletion: %s", a_err)
+            self._db.execute(del_files_stmt, {"submission_id": submission_id})
 
-        self._db.commit()
-        return linked_paper_ids
+            # 6. Delete submissions row
+            del_sub_stmt = text(
+                """
+                DELETE FROM submissions
+                WHERE id::text = :submission_id
+                """
+            )
+            self._db.execute(del_sub_stmt, {"submission_id": submission_id})
+
+            # 7. Insert audit log
+            # Note: audit_logs.admin_id REFERENCES auth.users(id) (Supabase Auth).
+            # When Firebase Auth is used, admin_id is a Firebase UID, so we store it
+            # inside target_details JSONB and pass NULL for the UUID column to prevent type/FK errors.
+            # target_paper_id is set to NULL since this is a submission deletion.
+            try:
+                audit_stmt = text(
+                    """
+                    INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
+                    VALUES (NULL, :admin_email, 'delete_submission', NULL, :details, NOW())
+                    """
+                )
+                details = json.dumps(
+                    {
+                        "submission_id": submission_id,
+                        "admin_uid": admin_id,
+                        "admin_email": admin_email,
+                        "publisher_name": sub.get("publisher_name") if sub else None,
+                        "email": sub.get("email") if sub else None,
+                        "status": sub.get("status") if sub else None,
+                        "deleted_paper_ids": linked_paper_ids,
+                    }
+                )
+                self._db.execute(
+                    audit_stmt,
+                    {
+                        "admin_email": admin_email,
+                        "details": details,
+                    },
+                )
+            except Exception as a_err:
+                logger.warning("Failed to insert audit log for submission deletion %s: %s", submission_id, a_err)
+
+            self._db.commit()
+            return linked_paper_ids
+        except Exception as db_err:
+            self._db.rollback()
+            logger.error("Database error deleting submission %s: %s", submission_id, db_err)
+            raise
 
 

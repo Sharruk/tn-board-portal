@@ -1770,6 +1770,57 @@ class TestDeleteSubmission:
         data = response.json()
         assert data["deleted"] is True
 
+    def test_delete_submission_audit_log_sql_integrity(self):
+        """10. Audit log is created without foreign key or UUID type issues."""
+        approved_sub = {**MOCK_SUBMISSION, "status": "approved"}
+        linked_paper = {
+            **MOCK_PAPER,
+            "id": 26,
+            "submission_id": _SUB_ID,
+            "file_path": "uuid-paper-26.pdf",
+        }
+        mock_db = _make_table_db({
+            "submissions": [approved_sub],
+            "submission_files": [MOCK_FILE],
+            "papers": [linked_paper],
+        })
+        mock_storage = MagicMock()
+        mock_bucket = MagicMock()
+        mock_storage.from_.return_value = mock_bucket
+        mock_db.storage = mock_storage
+
+        executed_statements = []
+        orig_execute = mock_db.execute.side_effect
+
+        def track_execute(stmt, params=None):
+            executed_statements.append((str(stmt), params))
+            return orig_execute(stmt, params)
+
+        mock_db.execute.side_effect = track_execute
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "alphanumeric-firebase-uid-12345",
+            "email": "admin@example.com",
+        }
+        client = TestClient(app)
+        response = client.delete(
+            f"/api/v1/submissions/{_SUB_ID}",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        # Verify audit log insert statements were executed
+        audit_inserts = [
+            (stmt, params) for stmt, params in executed_statements if "insert into audit_logs" in stmt.lower()
+        ]
+        assert len(audit_inserts) >= 1
+        for stmt, params in audit_inserts:
+            # Ensure no direct non-UUID is passed to a UUID parameter in params
+            assert "admin_id" not in params or params.get("admin_id") is None
+
 
 
 

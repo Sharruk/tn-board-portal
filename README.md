@@ -199,23 +199,46 @@ FastAPI DELETE /api/v1/submissions/{submission_id} (Server-side admin authorizat
 
 ## 🏗️ System Architecture
 
+TN Board Portal follows a modern, cloud-native architecture with a clear separation of concerns between frontend, backend, database, storage, and authentication.
+
 ```mermaid
 graph TD
-    Client["Browser / Student Client (React SPA)"] -->|Static Assets & Client Routing| Vercel["Vercel CDN (Frontend Host)"]
-    Client -->|API Requests /api/v1/...| Render["Render Web Service (FastAPI Backend)"]
-    Client -->|Google Sign-In| FirebaseAuth["Firebase Authentication"]
+    Client["Browser / Student Client (React SPA)<br/><small>• Static assets & client routing<br/>• User interactions</small>"] --> Vercel["Vercel (CDN)<br/><small>• Serves static assets<br/>• Global CDN delivery</small>"]
+    Vercel --> APIReq["API Requests<br/>/api/v1/..."]
+    APIReq --> Render["Render Web Service (FastAPI Backend)<br/><small>• Handles API requests</small>"]
+    Client --> FirebaseAuth["Firebase Authentication<br/><small>• Google Sign-In<br/>• ID Token issuance</small>"]
 
-    subgraph BackendAPI ["FastAPI Backend (Render)"]
-        Render --> RouteLayer["Route Layer (app/api/v1/endpoints/)"]
-        RouteLayer --> ServiceLayer["Service Layer (app/services/)"]
-        ServiceLayer --> RepoLayer["Repository Layer (app/repositories/)"]
-        RouteLayer --> AuthDep["Auth Dependency (app/dependencies/auth.py)"]
-        AuthDep -->|Verify ID Token| GoogleCert["Google OAuth2 Public Certs"]
+    subgraph BackendApp ["FastAPI Backend (Render)"]
+        RouteLayer["Route Layer (app/api/v1/endpoints/)"]
+        ServiceLayer["Service Layer (app/services/)"]
+        RepoLayer["Repository Layer (app/repositories/)"]
+        AuthDep["Auth Dependency (app/dependencies/auth.py)"]
+        VerifyToken["Verify ID Token<br/><small>• GoogleCert<br/>• Google OAuth2 Public Certs</small>"]
+
+        RouteLayer --> ServiceLayer
+        ServiceLayer --> RepoLayer
+        RepoLayer --> AuthDep
+        AuthDep --> VerifyToken
+        VerifyToken --> ServiceLayer
     end
 
-    RepoLayer -->|SQL Transactions (Port 5432)| PostgresDB[("Supabase PostgreSQL")]
-    RepoLayer -->|File Storage Operations| SupabaseStorage[("Supabase Storage")]
+    Render --> RouteLayer
+    FirebaseAuth --> RouteLayer
+
+    PostgresDB[("Supabase PostgreSQL (Database)<br/><small>• SQL Transactions (Port 5432)</small>")]
+    SupabaseStorage[("Supabase Storage (File Storage)<br/><small>• Secure file uploads & delivery</small>")]
+
+    BackendApp --> PostgresDB
+    PostgresDB <--> SupabaseStorage
 ```
+
+### Key Points
+- **Frontend (React SPA)** hosted on Vercel.
+- **Backend (FastAPI)** hosted on Render.
+- **Database** on Supabase PostgreSQL (Port 5432).
+- **File storage** on Supabase Storage.
+- **Authentication** via Firebase (Google Sign-In) with ID token verification in backend.
+- **Clear separation of concerns** for scalability, security, and maintainability.
 
 ### Backend Layer Responsibilities
 1. **Route Layer (`app/api/v1/endpoints/`)**: Defines HTTP routes, applies dependency injection (`get_db`, `require_admin`), and maps request/response schemas.

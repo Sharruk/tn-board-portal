@@ -71,6 +71,7 @@ class PapersRepository:
         paper_id: int,
         admin_id: str | None = None,
         admin_email: str | None = None,
+        auto_commit: bool = True,
     ) -> tuple[bool, bool]:
         """
         Delete a paper record and its associated storage file in the 'papers' bucket.
@@ -78,7 +79,12 @@ class PapersRepository:
         Returns:
             Tuple of (db_deleted: bool, storage_deleted: bool).
         """
-        logger.debug("PapersRepository.delete_paper(paper_id=%s)", paper_id)
+        logger.debug(
+            "PapersRepository.delete_paper(paper_id=%s, admin_email=%s, auto_commit=%s)",
+            paper_id,
+            admin_email,
+            auto_commit,
+        )
 
         # 1. Fetch the paper row (including hidden/archived)
         paper = self.get_by_id(paper_id, published_only=False)
@@ -120,44 +126,57 @@ class PapersRepository:
                         f"Failed to delete paper file from storage: {exc}"
                     ) from exc
 
-        # 3. Delete database record
-        del_stmt = text("DELETE FROM papers WHERE id = :paper_id")
-        self._db.execute(del_stmt, {"paper_id": paper_id})
-
-        # 4. Insert audit log
         try:
-            audit_stmt = text(
-                """
-                INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
-                VALUES (:admin_id, :admin_email, 'delete', :paper_id, :details, NOW())
-                """
-            )
-            details = json.dumps(
-                {
-                    "title": paper.get("title"),
-                    "exam_type": paper.get("exam_type"),
-                    "year": paper.get("year"),
-                    "class_name": paper.get("class_name"),
-                    "subject_name": paper.get("subject_name"),
-                    "file_path": file_path,
-                    "original_filename": paper.get("original_filename"),
-                    "contributor_name": paper.get("contributor_name"),
-                }
-            )
-            self._db.execute(
-                audit_stmt,
-                {
-                    "admin_id": admin_id,
-                    "admin_email": admin_email,
-                    "paper_id": paper_id,
-                    "details": details,
-                },
-            )
-        except Exception as e:
-            logger.warning("Failed to insert audit log for deleted paper %s: %s", paper_id, e)
+            # 3. Delete database record
+            del_stmt = text("DELETE FROM papers WHERE id = :paper_id")
+            self._db.execute(del_stmt, {"paper_id": paper_id})
 
-        self._db.commit()
-        return True, storage_deleted
+            # 4. Insert audit log
+            # Note: audit_logs.admin_id REFERENCES auth.users(id) (Supabase Auth).
+            # When Firebase Auth is used, admin_id is a Firebase UID, so we store it
+            # inside target_details JSONB and pass NULL for the UUID column to prevent type/FK errors.
+            # target_paper_id is set to NULL since the paper row is deleted.
+            try:
+                audit_stmt = text(
+                    """
+                    INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
+                    VALUES (NULL, :admin_email, 'delete', NULL, :details, NOW())
+                    """
+                )
+                details = json.dumps(
+                    {
+                        "paper_id": paper_id,
+                        "admin_uid": admin_id,
+                        "admin_email": admin_email,
+                        "title": paper.get("title"),
+                        "exam_type": paper.get("exam_type"),
+                        "year": paper.get("year"),
+                        "class_name": paper.get("class_name"),
+                        "subject_name": paper.get("subject_name"),
+                        "file_path": file_path,
+                        "original_filename": paper.get("original_filename"),
+                        "contributor_name": paper.get("contributor_name"),
+                    }
+                )
+                self._db.execute(
+                    audit_stmt,
+                    {
+                        "admin_email": admin_email,
+                        "details": details,
+                    },
+                )
+            except Exception as a_err:
+                logger.warning("Failed to insert audit log for deleted paper %s: %s", paper_id, a_err)
+
+            if auto_commit:
+                self._db.commit()
+
+            return True, storage_deleted
+        except Exception as db_err:
+            if auto_commit:
+                self._db.rollback()
+            logger.error("Failed to delete paper record %s from database: %s", paper_id, db_err)
+            raise
 
     def list_recent(self, limit: int = 10) -> list[dict[str, Any]]:
         """
