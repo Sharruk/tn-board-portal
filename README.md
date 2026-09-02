@@ -193,7 +193,7 @@ FastAPI DELETE /api/v1/submissions/{submission_id} (Server-side admin authorizat
 | **Database** | Supabase PostgreSQL | Managed PostgreSQL 15 with version-controlled migrations |
 | **File Storage** | Supabase Storage | `papers` (public CDN), `submissions` (private), `official-updates`, `news-media` |
 | **Authentication** | Firebase Authentication | Google OAuth2 identity provider |
-| **Automated Testing** | Pytest | Test suite with 137 unit and integration tests |
+| **Automated Testing** | Pytest | Test suite with 141 unit and integration tests |
 
 ---
 
@@ -266,7 +266,7 @@ tn-board-portal/
 │   │   ├── services/                # Business logic and domain rules
 │   │   ├── utils/                   # Exceptions, helpers, and constants
 │   │   └── main.py                  # FastAPI app factory
-│   ├── tests/                       # Automated test suite (137 tests)
+│   ├── tests/                       # Automated test suite (141 tests)
 │   └── requirements.txt             # Backend Python dependencies
 ├── frontend/                        # React SPA (Hosted on Vercel)
 │   ├── public/                      # Static assets and icons
@@ -472,7 +472,7 @@ The application will open at **http://localhost:5173**.
 ## 🧪 Testing & Quality Assurance
 
 ### Run Backend Test Suite
-The repository includes **137 unit and integration tests** covering routes, services, repositories, authentication, and the submission deletion lifecycle:
+The repository includes **141 unit and integration tests** covering routes, services, repositories, authentication, and the submission deletion lifecycle:
 ```bash
 # From the repository root
 python -m pytest backend/tests -q

@@ -580,3 +580,109 @@ def test_delete_paper_unauthenticated():
         app.dependency_overrides.clear()
 
 
+# ── Regression tests for missing column resilience (UndefinedColumn) ─────────
+
+def test_get_paper_fallback_when_description_column_undefined():
+    """
+    Regression test for:
+    psycopg2.errors.UndefinedColumn: column p.description does not exist
+    Verifies that if PostgreSQL lacks the `description` column, get_paper()
+    gracefully falls back and returns 200 with description=None.
+    """
+    from app.dependencies.supabase import get_db
+
+    mock_db = MagicMock()
+    call_count = {"count": 0}
+
+    def _execute(stmt, params=None):
+        call_count["count"] += 1
+        sql = str(stmt).lower()
+        if "p.description" in sql:
+            # Simulate psycopg2 UndefinedColumn error
+            raise Exception("psycopg2.errors.UndefinedColumn: column p.description does not exist")
+        # Fallback query succeeds
+        row_without_desc = {
+            k: v for k, v in MOCK_PAPER_DETAIL_ROW.items() if k != "description"
+        }
+        return MockResult([row_without_desc])
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        client = TestClient(app)
+        resp = client.get("/api/v1/papers/42")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == 42
+        assert data["title"] == "Class 10 Maths Annual Exam 2024"
+        assert data["description"] is None
+        assert data["status"] == "published"
+        assert call_count["count"] == 2  # Primary failed, fallback succeeded
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_get_paper_fallback_when_all_optional_columns_undefined():
+    """
+    Regression test verifying fallback 2 succeeds even if description,
+    submission_id, and contributor_name columns are all absent in legacy schema.
+    """
+    from app.dependencies.supabase import get_db
+
+    mock_db = MagicMock()
+    call_count = {"count": 0}
+
+    def _execute(stmt, params=None):
+        call_count["count"] += 1
+        sql = str(stmt).lower()
+        if "p.description" in sql:
+            raise Exception("psycopg2.errors.UndefinedColumn: column p.description does not exist")
+        if "p.submission_id" in sql or "p.contributor_name" in sql:
+            raise Exception("psycopg2.errors.UndefinedColumn: column p.submission_id does not exist")
+        # Fallback 2 (core legacy columns) succeeds
+        core_row = {
+            "id": 25,
+            "subject_id": 8,
+            "exam_type": "First Mid Term Test",
+            "year": 2026,
+            "month": "July",
+            "district": "Chennai",
+            "title": "Class 10 Science First Mid Term Test July 2026",
+            "paper_type": "question",
+            "file_path": "uuid-25.pdf",
+            "public_url": "https://example.supabase.co/storage/v1/object/public/papers/uuid-25.pdf",
+            "youtube_url": None,
+            "original_filename": "Class10_Science_QP.pdf",
+            "is_visible": True,
+            "download_count": 50,
+            "created_at": _NOW,
+            "subject_name": "Science",
+            "subject_slug": "science",
+            "is_practical": True,
+            "class_id": 10,
+            "class_name": "Class 10",
+            "class_slug": "10",
+        }
+        return MockResult([core_row])
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        client = TestClient(app)
+        resp = client.get("/api/v1/papers/25")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == 25
+        assert data["title"] == "Class 10 Science First Mid Term Test July 2026"
+        assert data["description"] is None
+        assert data["contributor_name"] is None
+        assert data["submission_id"] is None
+        assert data["status"] == "published"
+        assert call_count["count"] == 3  # Primary -> Fallback 1 -> Fallback 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+

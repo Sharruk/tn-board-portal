@@ -18,12 +18,14 @@ logger = logging.getLogger(__name__)
 
 def _add_status(row: dict[str, Any]) -> dict[str, Any]:
     """
-    Inject a synthesised status and description field so Pydantic schemas are satisfied.
+    Inject synthesised status, description, and contributor fields so Pydantic schemas are satisfied.
     Visible papers have is_visible = true (published), hidden have is_visible = false (archived).
     """
     is_visible = row.get("is_visible", True)
     row.setdefault("status", "published" if is_visible else "archived")
     row.setdefault("description", None)
+    row.setdefault("submission_id", None)
+    row.setdefault("contributor_name", None)
     return row
 
 
@@ -37,6 +39,7 @@ class PapersRepository:
     def get_by_id(self, paper_id: int, published_only: bool = True) -> dict[str, Any] | None:
         """
         Return one paper with full subject + class join, or None.
+        Includes resilient fallback for missing optional columns (e.g. description, contributor_name).
         """
         logger.debug("PapersRepository.get_by_id(paper_id=%s, published_only=%s)", paper_id, published_only)
         sql = """
@@ -56,8 +59,58 @@ class PapersRepository:
             sql += " AND p.is_visible = true"
 
         stmt = text(sql)
-        result = self._db.execute(stmt, {"paper_id": paper_id})
-        row = result.fetchone()
+        try:
+            result = self._db.execute(stmt, {"paper_id": paper_id})
+            row = result.fetchone()
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "does not exist" not in err_msg and "undefinedcolumn" not in err_msg and "no such column" not in err_msg:
+                raise
+            self._db.rollback()
+            logger.warning("Primary get_by_id SELECT failed (%s), trying fallback queries...", exc)
+
+            # Fallback 1: Without description (if description column is unmigrated in DB)
+            try:
+                fallback_sql_1 = """
+                    SELECT 
+                        p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
+                        p.file_path, p.public_url, p.youtube_url, p.original_filename, p.is_visible,
+                        p.download_count, p.created_at,
+                        p.submission_id, p.contributor_name,
+                        s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
+                        c.id AS class_id, c.name AS class_name, c.slug AS class_slug
+                    FROM papers p
+                    JOIN subjects s ON p.subject_id = s.id
+                    JOIN classes c ON s.class_id = c.id
+                    WHERE p.id = :paper_id
+                """
+                if published_only:
+                    fallback_sql_1 += " AND p.is_visible = true"
+                result = self._db.execute(text(fallback_sql_1), {"paper_id": paper_id})
+                row = result.fetchone()
+            except Exception as fb1_exc:
+                fb1_err = str(fb1_exc).lower()
+                if "does not exist" not in fb1_err and "undefinedcolumn" not in fb1_err and "no such column" not in fb1_err:
+                    raise
+                self._db.rollback()
+                logger.warning("Fallback 1 failed (%s), trying legacy core columns fallback...", fb1_exc)
+                # Fallback 2: Core guaranteed legacy columns
+                fallback_sql_2 = """
+                    SELECT 
+                        p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
+                        p.file_path, p.public_url, p.youtube_url, p.original_filename, p.is_visible,
+                        p.download_count, p.created_at,
+                        s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
+                        c.id AS class_id, c.name AS class_name, c.slug AS class_slug
+                    FROM papers p
+                    JOIN subjects s ON p.subject_id = s.id
+                    JOIN classes c ON s.class_id = c.id
+                    WHERE p.id = :paper_id
+                """
+                if published_only:
+                    fallback_sql_2 += " AND p.is_visible = true"
+                result = self._db.execute(text(fallback_sql_2), {"paper_id": paper_id})
+                row = result.fetchone()
 
         if not row:
             return None
