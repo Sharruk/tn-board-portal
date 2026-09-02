@@ -359,16 +359,15 @@ async def restore_submission(
     status_code=status.HTTP_200_OK,
     summary="Delete a submission (admin)",
     description=(
-        "Admin only. Permanently deletes a pending or rejected submission, "
-        "its submission_files records, and its uploaded private files in Supabase Storage.\n\n"
-        "Approved submissions linked to published papers cannot be deleted."
+        "Admin only. Permanently deletes a submission (pending, rejected, or approved), "
+        "its submission_files records, its uploaded private files in Supabase Storage, "
+        "and any associated published papers and their public CDN storage objects."
     ),
     responses={
-        200: {"description": "Submission deleted successfully"},
+        200: {"description": "Submission and associated published papers deleted successfully"},
         401: {"description": "No auth token provided"},
         403: {"description": "Admin privileges required"},
         404: {"description": "Submission not found"},
-        422: {"description": "Submission is approved and cannot be deleted"},
     },
 )
 async def delete_submission(
@@ -376,7 +375,7 @@ async def delete_submission(
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> SubmissionDeleteResponse:
-    """Permanently delete a pending or rejected submission."""
+    """Permanently delete a submission (pending, rejected, or approved)."""
     service = SubmissionsService(db)
-    return service.delete_submission(submission_id)
+    return service.delete_submission(submission_id, current_user=current_user)
 

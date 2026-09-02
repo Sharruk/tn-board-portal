@@ -513,9 +513,9 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
             )}
           </div>
 
-          {/* ── APPROVED: View Published Paper ────────────────────────── */}
+          {/* ── APPROVED: View Published Paper & Delete ────────────────── */}
           {isApproved && (
-            <div className="border border-emerald-200 bg-emerald-50 rounded-2xl p-5">
+            <div className="border border-emerald-200 bg-emerald-50 rounded-2xl p-5 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-bold text-emerald-900 flex items-center gap-2">
@@ -525,14 +525,24 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
                     This submission has been approved and published to the public materials catalog.
                   </p>
                 </div>
-                <a
-                  href="/admin/papers"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 hover:bg-emerald-100 px-4 py-2.5 rounded-xl transition-colors shrink-0 flex items-center justify-center gap-1.5 shadow-2xs"
-                >
-                  <span>📄</span> View Published Paper ↗
-                </a>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <a
+                    href="/admin/papers"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 hover:bg-emerald-100 px-4 py-2.5 rounded-xl transition-colors shrink-0 flex items-center justify-center gap-1.5 shadow-2xs"
+                  >
+                    <span>📄</span> View Published Paper ↗
+                  </a>
+                  <button
+                    id="delete-approved-submission-btn"
+                    onClick={() => onRequestDelete(submission)}
+                    disabled={loading}
+                    className="text-xs font-semibold text-red-600 hover:text-red-800 hover:bg-red-50 border border-red-200 bg-white py-2.5 px-4 rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <span>🗑️</span> Delete Submission
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -919,9 +929,24 @@ function DeleteConfirmModal({ submission, onClose, onDeleted }) {
           </div>
         </div>
 
-        <p className="text-sm text-gray-600 leading-relaxed">
-          This will permanently remove the submission and its uploaded file. This action cannot be undone.
-        </p>
+        {submission.status === 'approved' ? (
+          <div className="space-y-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3.5">
+            <p className="font-bold text-sm text-red-800">This submission has already been approved and published.</p>
+            <p className="text-gray-700 font-medium">Deleting it will permanently remove:</p>
+            <ul className="list-disc list-inside space-y-1 text-gray-700 font-medium pl-1">
+              <li>The submission record and submission files</li>
+              <li>Private uploaded files from storage</li>
+              <li>The associated published paper in the library</li>
+              <li>Associated public PDF files from CDN storage</li>
+              <li>Related discussions, comments, and likes</li>
+            </ul>
+            <p className="text-red-600 font-semibold pt-1">This action cannot be undone.</p>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600 leading-relaxed">
+            This will permanently remove the submission and its uploaded files from storage. This action cannot be undone.
+          </p>
+        )}
 
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-1.5 text-xs text-gray-600">
           <div className="flex justify-between">
@@ -1131,16 +1156,14 @@ export default function SubmissionsPage() {
                         >
                           {sub.status === 'pending' ? 'Review' : 'View'}
                         </button>
-                        {sub.status !== 'approved' && (
-                          <button
-                            id={`delete-submission-table-${sub.id}`}
-                            onClick={() => setDeletingSubmission(sub)}
-                            className="text-xs font-semibold text-red-600 hover:text-red-800 border border-red-200 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition-colors"
-                            title="Delete submission permanently"
-                          >
-                            Delete
-                          </button>
-                        )}
+                        <button
+                          id={`delete-submission-table-${sub.id}`}
+                          onClick={() => setDeletingSubmission(sub)}
+                          className="text-xs font-semibold text-red-600 hover:text-red-800 border border-red-200 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition-colors"
+                          title="Delete submission permanently"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </tr>

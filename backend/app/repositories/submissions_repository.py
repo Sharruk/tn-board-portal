@@ -3,6 +3,7 @@ Submissions repository — direct PostgreSQL data access for `submissions` and `
 with Supabase Storage client integration for file binary operations.
 """
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -788,16 +789,49 @@ class SubmissionsRepository:
         row = self._db.execute(stmt, {"submission_id": submission_id}).fetchone()
         return row is not None
 
-    def delete_submission(self, submission_id: str) -> bool:
+    def delete_submission(
+        self,
+        submission_id: str,
+        admin_id: str | None = None,
+        admin_email: str | None = None,
+    ) -> list[int]:
         """
-        Delete a submission, its associated submission_files metadata rows,
-        and its private storage objects from Supabase Storage.
+        Delete a submission, all attached submission_files metadata rows,
+        their private storage objects from Supabase Storage, and any
+        associated published paper records (and their public CDN storage objects).
+
+        Returns:
+            List of deleted paper IDs (if any).
         """
         logger.debug(
-            "SubmissionsRepository.delete_submission(submission_id=%s)",
+            "SubmissionsRepository.delete_submission(submission_id=%s, admin_email=%s)",
             submission_id,
+            admin_email,
         )
-        # 1. Query storage paths of attached files
+        from app.repositories.papers_repository import PapersRepository
+
+        sub = self.get_by_id(submission_id)
+
+        # 1. Query and delete all linked published papers
+        stmt_papers = text(
+            """
+            SELECT id FROM papers
+            WHERE submission_id::text = :submission_id
+            """
+        )
+        paper_rows = self._db.execute(stmt_papers, {"submission_id": submission_id}).fetchall()
+        linked_paper_ids = [int(r[0]) for r in paper_rows if r[0] is not None]
+
+        if linked_paper_ids:
+            papers_repo = PapersRepository(self._db, self._storage)
+            for p_id in linked_paper_ids:
+                try:
+                    papers_repo.delete_paper(p_id, admin_id=admin_id, admin_email=admin_email)
+                    logger.info("Deleted linked paper %s for submission %s", p_id, submission_id)
+                except Exception as p_err:
+                    logger.warning("Error deleting linked paper %s for submission %s: %s", p_id, submission_id, p_err)
+
+        # 2. Query storage paths of attached submission files
         stmt_files = text(
             """
             SELECT storage_path FROM submission_files
@@ -807,7 +841,7 @@ class SubmissionsRepository:
         file_rows = self._db.execute(stmt_files, {"submission_id": submission_id}).fetchall()
         storage_paths = [r[0] for r in file_rows if r[0]]
 
-        # 2. Delete storage files
+        # 3. Delete private storage files
         if storage_paths:
             try:
                 self._storage.from_(SUBMISSIONS_BUCKET).remove(storage_paths)
@@ -819,7 +853,7 @@ class SubmissionsRepository:
                     e,
                 )
 
-        # 3. Delete submission_files rows
+        # 4. Delete submission_files rows
         del_files_stmt = text(
             """
             DELETE FROM submission_files
@@ -828,7 +862,7 @@ class SubmissionsRepository:
         )
         self._db.execute(del_files_stmt, {"submission_id": submission_id})
 
-        # 4. Delete submissions row
+        # 5. Delete submissions row
         del_sub_stmt = text(
             """
             DELETE FROM submissions
@@ -836,8 +870,37 @@ class SubmissionsRepository:
             """
         )
         self._db.execute(del_sub_stmt, {"submission_id": submission_id})
-        self._db.commit()
 
-        return True
+        # 6. Insert audit log
+        try:
+            audit_stmt = text(
+                """
+                INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
+                VALUES (:admin_id, :admin_email, 'delete_submission', :target_paper_id, :details, NOW())
+                """
+            )
+            details = json.dumps(
+                {
+                    "submission_id": submission_id,
+                    "publisher_name": sub.get("publisher_name") if sub else None,
+                    "email": sub.get("email") if sub else None,
+                    "status": sub.get("status") if sub else None,
+                    "deleted_paper_ids": linked_paper_ids,
+                }
+            )
+            self._db.execute(
+                audit_stmt,
+                {
+                    "admin_id": admin_id,
+                    "admin_email": admin_email,
+                    "target_paper_id": linked_paper_ids[0] if linked_paper_ids else None,
+                    "details": details,
+                },
+            )
+        except Exception as a_err:
+            logger.warning("Failed to insert audit log for submission deletion: %s", a_err)
+
+        self._db.commit()
+        return linked_paper_ids
 
 

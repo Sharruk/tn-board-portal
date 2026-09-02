@@ -12,7 +12,6 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![Supabase](https://img.shields.io/badge/Supabase-DB%20%26%20Storage-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
 [![Firebase](https://img.shields.io/badge/Firebase-Auth-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 ### 🌐 [Visit Live Portal → tn-board-portal.vercel.app](https://tn-board-portal.vercel.app/)
 
@@ -25,6 +24,7 @@
 - [About the Project](#-about-the-project)
 - [Key Features](#-key-features)
 - [Community Contributions & Recognition](#-community-contributions--recognition)
+- [Admin Material Submission Deletion](#-admin-material-submission-deletion)
 - [Technology Stack](#-technology-stack)
 - [System Architecture](#-system-architecture)
 - [Project Structure](#-project-structure)
@@ -39,7 +39,6 @@
 - [Roadmap](#-roadmap)
 - [Hungry Learner](#-hungry-learner)
 - [Contributing](#-contributing)
-- [License](#-license)
 
 ---
 
@@ -47,7 +46,7 @@
 
 Tamil Nadu State Board school students (Classes 9, 10, 11, and 12) preparing for examinations often encounter fragmented, incomplete, or unverified educational materials across unofficial groups and paywalled websites.
 
-**TN Board Portal** is an open, community-driven education platform built by **Hungry Learner** to solve this problem. It provides students and educators with a fast, verified, and centralized repository of previous years' question papers, answer keys, official government circulars, syllabus updates, and video explanations — completely free and accessible without mandatory login.
+**TN Board Portal** is an independent, community-driven education platform built by **Hungry Learner** for Tamil Nadu State Board students. It provides students, educators, and parents with a fast, verified, and centralized repository of previous years' question papers, answer keys, official government circulars, syllabus updates, and video explanations — completely free and accessible without mandatory login.
 
 > **Disclaimer:** TN Board Portal is an independent community initiative developed by Hungry Learner for students of the Tamil Nadu State Board. It is not an official government agency portal.
 
@@ -67,7 +66,8 @@ Tamil Nadu State Board school students (Classes 9, 10, 11, and 12) preparing for
 
 ### 🛡️ Admin Management & Review Portal
 - 🔐 **Administrator Authentication**: Secure administrator login via Google Sign-In with server-side authorization against configured administrator credentials.
-- 📋 **Submissions Review Workflow**: Queue of pending materials submitted by students and teachers with in-browser preview, approval configuration, and rejection with feedback.
+- 📋 **Submissions Review Workflow**: Queue of pending materials submitted by students and teachers with in-browser preview, approval configuration (custom title, clean download filename, description, YouTube URL, academic metadata), and rejection with feedback.
+- 🗑️ **Safe Submission Deletion**: Permanently delete pending, rejected, and **approved/published** submissions with complete cascading cleanup of private files, linked published papers, public CDN files, and audit logging.
 - 🗂 **Paper Lifecycle Management**: Upload new papers, edit academic metadata, toggle draft/published status, and execute **permanent deletions** with complete Supabase Storage object cleanup.
 - 📦 **Bulk Upload Tool**: Upload batches of PDF files simultaneously with automated metadata parsing from standard file naming conventions.
 - 📊 **Analytics & Audit Logging**: Real-time admin statistics, search query tracking, and immutable audit logs capturing admin upload, edit, and deletion history.
@@ -76,7 +76,7 @@ Tamil Nadu State Board school students (Classes 9, 10, 11, and 12) preparing for
 
 ## 🤝 Community Contributions & Recognition
 
-The platform relies on a collaborative, peer-reviewed model where students, teachers, and educators contribute past examination papers and answer keys.
+The platform uses a collaborative, admin-reviewed contribution model where students, teachers, and educators can submit educational materials for review before publication.
 
 ```mermaid
 sequenceDiagram
@@ -107,11 +107,56 @@ sequenceDiagram
 ### Contributor Recognition & Leaderboard
 - **Public Attribution**: Approved papers credit the contributor by display name (`Contributed by: <Name>`), while strictly preserving contributor email privacy.
 - **My Contributions Dashboard**: Contributors can track the status of all submitted materials (Under Review, Published, or Rejected with reason) and view their published papers.
-- **Contributor Leaderboard**: Public leaderboard celebrating educators and students who contribute approved materials, showcasing:
+- **Positive Recognition Leaderboard**: Public leaderboard celebrating educators and students who contribute approved materials, showcasing:
   - 🏆 **Top Contributor** ($\ge 15$ approved materials or Top 3 ranking)
   - 🌟 **Active Contributor** ($\ge 5$ approved materials)
   - 🎓 **Contributor** ($\ge 1$ approved material)
   - 📈 Total downloads generated across contributed materials.
+- **Dynamic Calculation**: Leaderboard statistics compute dynamically from live database records, ensuring published counts update immediately if a submission or paper is removed.
+
+---
+
+## 🗑️ Admin Material Submission Deletion
+
+Administrators can permanently delete material submissions directly from the Admin Submissions portal, including submissions that have already been **approved and published**.
+
+```
+Admin Submissions Portal
+  │
+  ▼
+Admin clicks "Delete Submission"
+  │
+  ▼
+Confirmation Modal displays contributor metadata & cascading cleanup warning
+  │
+  ▼ Admin clicks "Delete Permanently"
+FastAPI DELETE /api/v1/submissions/{submission_id} (Server-side admin authorization)
+  │
+  ├─► 1. Query Linked Published Papers (SELECT id FROM papers WHERE submission_id = :id)
+  │      • Remove public storage objects from 'papers' bucket
+  │      • Delete paper records from 'papers' table (cascading likes/comments)
+  │      • Record paper deletion audit log
+  │
+  ├─► 2. Query Attached Submission Files (SELECT storage_path FROM submission_files)
+  │      • Remove private files from 'submissions' bucket
+  │
+  ├─► 3. Delete Database Records:
+  │      • DELETE FROM submission_files
+  │      • DELETE FROM submissions
+  │
+  ├─► 4. Record Audit Log:
+  │      • INSERT INTO audit_logs (action='delete_submission', target_details={...})
+  │
+  ▼
+200 OK — Modals close, submissions list refreshes, and success toast displays
+```
+
+### Safety Model & Guarantees
+- **Server-Side Authorization**: Protected with FastAPI's `require_admin` dependency; only authorized administrator accounts can execute deletion.
+- **Scoped Database Paths**: Storage deletion paths are queried directly from trusted database rows (`submission_files.storage_path` and `papers.file_path`), preventing arbitrary path manipulation.
+- **Resilient File Handling**: If a storage object is already missing on the storage provider, the error is logged and database cleanup proceeds smoothly without blocking the admin.
+- **Immediate Catalog Removal**: Deleting an approved submission immediately removes the associated paper from public catalog feeds, search indices, subject pages, and download endpoints.
+- **Administrative Auditability**: A `delete_submission` audit log entry is saved with administrator identity, timestamp, and deleted metadata.
 
 ---
 
@@ -125,8 +170,8 @@ sequenceDiagram
 | **Styling** | Tailwind CSS `3.4.14` | Utility-first, responsive design system |
 | **Routing** | React Router DOM `6.27.0` | Client-side routing with protected admin layouts |
 | **Authentication Client** | Firebase JS SDK `12.17.1` | Client-side Google Sign-In authentication |
-| **Database/Storage Client** | `@supabase/supabase-js` `2.45.4` | Client-side queries for public catalog and notices |
-| **API Client** | Native `fetch` + `apiFetch` | Centralized REST client with Bearer token injection |
+| **Database Client** | `@supabase/supabase-js` `^2.108.2` | Client-side queries for public notices, news, and search RPCs |
+| **API Client** | Native `fetch` + `apiFetch` | Centralized REST client with Bearer token injection for papers, submissions, and admin actions |
 
 ### Backend API
 | Component | Technology | Description |
@@ -140,25 +185,23 @@ sequenceDiagram
 | **Auth Verification** | `google-auth` `>= 2.28.0` | Server-side Firebase ID token verification |
 | **HTTP Client** | HTTPX `0.27.2` | Asynchronous HTTP client for proxy downloads |
 
-### Database, Storage & Infrastructure
-| Component | Technology | Description |
+### Infrastructure & Hosting
+| Component | Platform | Description |
 |---|---|---|
-| **Database** | PostgreSQL 15 (Supabase) | Relational database with 25 sequential migrations |
+| **Frontend Hosting** | Vercel | Global CDN hosting for React SPA with client-side routing rewrites |
+| **Backend Hosting** | Render | Dedicated Python Web Service hosting for FastAPI REST API |
+| **Database** | Supabase PostgreSQL | Managed PostgreSQL 15 with version-controlled migrations |
 | **File Storage** | Supabase Storage | `papers` (public CDN), `submissions` (private), `official-updates`, `news-media` |
 | **Authentication** | Firebase Authentication | Google OAuth2 identity provider |
-| **Frontend Hosting** | Vercel | Global CDN hosting for React SPA |
-| **Backend Hosting** | Render | Dedicated Web Service hosting for FastAPI API |
 | **Automated Testing** | Pytest | Test suite with 137 unit and integration tests |
 
 ---
 
 ## 🏗️ System Architecture
 
-The platform uses a decoupled client-server architecture:
-
 ```mermaid
 graph TD
-    Client["Browser / Student Client (React SPA)"] -->|Public Static Assets| Vercel["Vercel CDN (Frontend Host)"]
+    Client["Browser / Student Client (React SPA)"] -->|Static Assets & Client Routing| Vercel["Vercel CDN (Frontend Host)"]
     Client -->|API Requests /api/v1/...| Render["Render Web Service (FastAPI Backend)"]
     Client -->|Google Sign-In| FirebaseAuth["Firebase Authentication"]
 
@@ -221,12 +264,12 @@ tn-board-portal/
 │   ├── tailwind.config.js           # Tailwind CSS theme configuration
 │   └── vite.config.js               # Vite build and development proxy settings
 ├── supabase/
-│   ├── migrations/                  # Ordered SQL migrations (001 → 025)
+│   ├── migrations/                  # Ordered, forward-only SQL migrations
 │   └── README.md                    # Database documentation
 ├── .ai/                             # Engineering guidelines and architectural standards
 ├── docs/                            # Deep-dive architecture documents
-├── package.json                     # Monorepo build and development scripts
-└── vercel.json                      # Vercel SPA routing and build configuration
+├── package.json                     # Monorepo build script
+└── vercel.json                      # Vercel SPA routing configuration
 ```
 
 ---
@@ -275,6 +318,26 @@ tn-board-portal/
 | `official-updates` | **Public** | PDFs and attachments for official circulars and notices |
 | `news-media` | **Public** | Cover images and media for educational news updates |
 
+### Safe Database Migrations Workflow
+The project manages database schema through version-controlled, forward-only Supabase PostgreSQL migrations in `supabase/migrations/`.
+
+1. **Link to Supabase Project**:
+   ```bash
+   supabase link --project-ref YOUR_PROJECT_REF
+   ```
+2. **Inspect Migration Status**:
+   ```bash
+   supabase migration list
+   ```
+3. **Apply Unapplied Migrations**:
+   ```bash
+   supabase db push
+   ```
+4. **Create New Migrations**: Always create a new forward-only migration file for schema changes; never modify or delete already-applied migration files:
+   ```bash
+   supabase migration new descriptive_migration_name
+   ```
+
 ---
 
 ## ⚙️ Environment Variables
@@ -319,7 +382,7 @@ Configured in `backend/.env` for development and in the **Render Dashboard** for
 - **npm**: v9.0 or later
 - **Python**: v3.10, v3.11, or v3.12
 - **Git**
-- **Supabase CLI** (`npm install -g supabase` or `brew install supabase/tap/supabase`)
+- **Supabase CLI** (`npm install -g supabase`)
 
 ### 1. Clone the Repository
 ```bash
@@ -328,7 +391,7 @@ cd tn-board-portal
 ```
 
 ### 2. Configure Environment Variables
-Copy `.env.example` to `backend/.env` and `frontend/.env.local`:
+Copy example environment templates:
 ```bash
 # Backend configuration
 cp backend/.env.example backend/.env
@@ -339,12 +402,11 @@ cp frontend/.env.example frontend/.env.local
 Fill in your Supabase, Firebase, and backend API credentials.
 
 ### 3. Apply Supabase Database Migrations
-Use the Supabase CLI to apply versioned migrations:
 ```bash
-# Link your local repository to your remote Supabase project
+# Link local repository to your remote Supabase project
 supabase link --project-ref YOUR_PROJECT_REF
 
-# Push all unapplied migrations (001 through 025)
+# Push unapplied migrations safely
 supabase db push
 ```
 
@@ -387,14 +449,22 @@ The application will open at **http://localhost:5173**.
 ## 🧪 Testing & Quality Assurance
 
 ### Run Backend Test Suite
-The repository includes **137 unit and integration tests** across 11 test modules covering routes, services, repositories, and authentication:
+The repository includes **137 unit and integration tests** covering routes, services, repositories, authentication, and the submission deletion lifecycle:
 ```bash
 # From the repository root
 python -m pytest backend/tests -q
 ```
 
+The test suite validates:
+- Approved submission deletion with linked paper and storage cleanup
+- Storage cleanup resilience when files are already missing
+- Pending and rejected submission deletion
+- Admin authorization enforcement (`403 Forbidden` for non-admins, `401 Unauthorized` for unauthenticated requests)
+- Missing submission `404 Not Found` handling
+- Submission file metadata cleanup
+- Audit logging verification
+
 ### Validate Frontend Production Build
-Verify that all React components, styling, and assets bundle cleanly:
 ```bash
 # From the frontend directory
 cd frontend
@@ -410,8 +480,8 @@ The production environment operates across specialized cloud providers:
 - **Frontend (Vercel)**:
   - Repository linked to Vercel.
   - Automatically builds `frontend/` using Vite.
-  - Single Page Application rewrites configured via `vercel.json` to route all traffic to `index.html`.
-  - Environment variables set in Vercel Project Settings (`VITE_API_BASE_URL` pointing to the Render backend).
+  - Single Page Application rewrites configured via `vercel.json` to route traffic to `index.html`.
+  - Environment variables set in Vercel Project Settings (`VITE_API_BASE_URL` pointing to Render).
 
 - **Backend API (Render)**:
   - Deployed as a Python Web Service on Render.
@@ -420,7 +490,7 @@ The production environment operates across specialized cloud providers:
   - Health check endpoint: `GET /health`
 
 - **Database & Storage (Supabase)**:
-  - Supabase PostgreSQL managed database running versioned migrations.
+  - Supabase PostgreSQL managed database running version-controlled migrations.
   - Supabase Storage hosting public PDF assets and private submission queues.
 
 ---
@@ -430,13 +500,15 @@ The production environment operates across specialized cloud providers:
 Follow the engineering rules documented in `.ai/`:
 
 1. **Branching Strategy**:
-   - `main`: Production-ready code.
-   - `feature/*` or `fix/*`: Feature development and bugfix branches.
+   - `main`: Production release branch.
+   - `dev`: Active integration and development branch.
+   - `feature/*`: Feature development branches.
+   - `fix/*`: Bugfix branches.
 2. **Database Schema Evolution**:
-   - Never edit existing applied migration files (`001_schema.sql` through `025_paper_description_and_fields.sql`).
-   - Always create forward-only incremental migrations (`026_...sql`) and test via `supabase db push`.
-3. **Pre-Commit Verification**:
-   - Run the Pytest test suite (`python -m pytest backend/tests`) and verify the frontend build (`npm run build`) before pushing.
+   - Never edit existing applied migration files.
+   - Always create forward-only incremental migrations and test via `supabase db push`.
+3. **Pre-Merge Verification**:
+   - Run the Pytest test suite (`python -m pytest backend/tests`) and verify the frontend build (`npm run build`) before merging to `dev` or `main`.
 
 ---
 
@@ -449,7 +521,8 @@ Follow the engineering rules documented in `.ai/`:
 - Content-Disposition proxy downloads with clean, approved filenames.
 - Community material submission flow with private storage bucket protection.
 - Admin review dashboard: approve, reject, restore, and configure paper metadata.
-- Admin paper lifecycle management including bulk upload and **permanent deletion** with storage cleanup.
+- **Admin submission deletion**: permanent removal of pending, rejected, and approved submissions with linked paper and storage cleanup.
+- **Admin paper lifecycle management**: create, edit, toggle draft/published, and permanent deletion with storage cleanup.
 - Official notices, circulars, and educational news portals.
 - Community discussions, question threads, upvoting, and paper requests.
 - Contributor recognition leaderboard with dynamic badges and download metrics.
@@ -491,22 +564,15 @@ Connect with Hungry Learner across our official platforms:
 
 We welcome contributions from developers, educators, and students!
 
-1. Fork the repository on GitHub.
-2. Create your feature branch (`git checkout -b feature/amazing-feature`).
-3. Verify tests and build:
+1. Create a feature or bugfix branch from `dev` (`git checkout -b feature/amazing-feature`).
+2. Verify tests and build locally:
    ```bash
    python -m pytest backend/tests
    cd frontend && npm run build
    ```
-4. Commit your changes (`git commit -m "feat: add amazing feature"`).
-5. Push to the branch (`git push origin feature/amazing-feature`).
-6. Open a Pull Request on GitHub.
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+3. Commit your changes with descriptive messages (`git commit -m "feat: add amazing feature"`).
+4. Push to your branch (`git push origin feature/amazing-feature`).
+5. Open a Pull Request targeting `dev`.
 
 ---
 
@@ -517,3 +583,4 @@ Made with ❤️ for Tamil Nadu State Board students by **Hungry Learner**
 [🌐 Visit Live Site](https://tn-board-portal.vercel.app/) · [🐛 Report an Issue](https://github.com/Sharruk/tn-board-portal/issues) · [💡 Request a Feature](https://github.com/Sharruk/tn-board-portal/issues)
 
 </div>
+

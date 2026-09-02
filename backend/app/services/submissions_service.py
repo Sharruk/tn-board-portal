@@ -539,15 +539,17 @@ class SubmissionsService:
     # DELETE /api/v1/submissions/{id}
     # ------------------------------------------------------------------ #
 
-    def delete_submission(self, submission_id: str) -> SubmissionDeleteResponse:
+    def delete_submission(
+        self, submission_id: str, current_user: dict | None = None
+    ) -> SubmissionDeleteResponse:
         """
-        Permanently delete a pending or rejected submission:
+        Permanently delete a submission (pending, rejected, or approved):
           1. Load submission — raise 404 if not found
-          2. Check safety — cannot delete if status == 'approved' or if linked to a published paper
-          3. Delete attached private files from Supabase Storage & delete DB records
+          2. Delete attached private files from Supabase Storage, delete any linked published
+             papers from public storage and PostgreSQL, and delete submission records.
+          3. Record deletion in audit log.
 
         Returns a SubmissionDeleteResponse.
-        Raises ValidationError if submission is approved.
         """
         logger.info(
             "SubmissionsService.delete_submission(submission_id=%s)", submission_id
@@ -557,18 +559,23 @@ class SubmissionsService:
         if sub is None:
             raise NotFoundError(resource="Submission", identifier=submission_id)
 
-        if sub["status"] == "approved" or self._repo.has_linked_papers(submission_id):
-            raise ValidationError(
-                "Approved submissions linked to published papers cannot be deleted."
-            )
+        admin_id = current_user.get("firebase_uid") or current_user.get("id") if current_user else None
+        admin_email = current_user.get("email") if current_user else None
 
-        self._repo.delete_submission(submission_id)
+        deleted_paper_ids = self._repo.delete_submission(
+            submission_id, admin_id=admin_id, admin_email=admin_email
+        )
 
-        logger.info("Submission %s deleted successfully", submission_id)
+        logger.info(
+            "Submission %s deleted successfully (linked papers: %s)",
+            submission_id,
+            deleted_paper_ids,
+        )
         return SubmissionDeleteResponse(
             submission_id=submission_id,
             deleted=True,
-            message="Submission deleted successfully.",
+            deleted_paper_ids=deleted_paper_ids,
+            message="Submission and associated published papers deleted successfully.",
         )
 
 

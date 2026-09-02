@@ -177,6 +177,10 @@ class SubmissionDeleteResponse(BaseModel):
 
     submission_id: str = Field(..., description="Deleted submission UUID")
     deleted: bool = Field(default=True, description="Deletion success indicator")
+    deleted_paper_ids: list[int] = Field(
+        default_factory=list,
+        description="IDs of associated published papers deleted along with the submission",
+    )
     message: str = Field(
         default="Submission deleted successfully.",
         description="Human-readable confirmation message",

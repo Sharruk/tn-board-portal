@@ -1693,15 +1693,25 @@ class TestDeleteSubmission:
         mock_storage.from_.assert_called_with("submissions")
         mock_bucket.remove.assert_called_once_with([MOCK_FILE["storage_path"]])
 
-    def test_delete_approved_submission_linked_to_paper_rejected(self):
-        """8. Approved submission linked to a published paper cannot be dangerously deleted."""
+    def test_delete_approved_submission_deletes_linked_paper_and_storage(self):
+        """8. Approved submission linked to a published paper is completely and safely deleted."""
         approved_sub = {**MOCK_SUBMISSION, "status": "approved"}
-        linked_paper = {**MOCK_PAPER, "submission_id": _SUB_ID}
+        linked_paper = {
+            **MOCK_PAPER,
+            "id": 26,
+            "submission_id": _SUB_ID,
+            "file_path": "uuid-paper-26.pdf",
+        }
         mock_db = _make_table_db({
             "submissions": [approved_sub],
             "submission_files": [MOCK_FILE],
             "papers": [linked_paper],
         })
+        mock_storage = MagicMock()
+        mock_bucket = MagicMock()
+        mock_storage.from_.return_value = mock_bucket
+        mock_db.storage = mock_storage
+
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         app.dependency_overrides[get_current_user] = lambda: {
             "role": "ADMIN",
@@ -1715,29 +1725,34 @@ class TestDeleteSubmission:
         )
         app.dependency_overrides.clear()
 
-        assert response.status_code == 422
-        assert "cannot be deleted" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] is True
+        assert data["submission_id"] == _SUB_ID
+        assert 26 in data["deleted_paper_ids"]
+        # Verified that storage removals were called for both buckets
+        assert mock_storage.from_.call_count >= 2
 
-    def test_protected_approved_submission_remains_untouched(self):
-        """9. Protected approved submission (f5321f3f-dd55-457d-ad62-75f05482a77b) remains protected."""
-        protected_id = "f5321f3f-dd55-457d-ad62-75f05482a77b"
-        protected_sub = {
-            "id": protected_id,
-            "publisher_name": "Sharruk S",
-            "email": "mr.sharruk@gmail.com",
-            "status": "approved",
-            "created_at": _NOW,
-        }
-        protected_paper = {
+    def test_delete_submission_handles_missing_storage_resilience(self):
+        """9. Storage cleanup handles already missing files gracefully."""
+        approved_sub = {**MOCK_SUBMISSION, "status": "approved"}
+        linked_paper = {
+            **MOCK_PAPER,
             "id": 26,
-            "title": "Class 10 Science Monthly Test Question Paper August 2026 - Chennai District",
-            "submission_id": protected_id,
+            "submission_id": _SUB_ID,
+            "file_path": "missing-paper.pdf",
         }
         mock_db = _make_table_db({
-            "submissions": [protected_sub],
-            "submission_files": [],
-            "papers": [protected_paper],
+            "submissions": [approved_sub],
+            "submission_files": [MOCK_FILE],
+            "papers": [linked_paper],
         })
+        mock_storage = MagicMock()
+        mock_bucket = MagicMock()
+        mock_bucket.remove.side_effect = Exception("404 Not Found")
+        mock_storage.from_.return_value = mock_bucket
+        mock_db.storage = mock_storage
+
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
         app.dependency_overrides[get_current_user] = lambda: {
             "role": "ADMIN",
@@ -1746,13 +1761,14 @@ class TestDeleteSubmission:
         }
         client = TestClient(app)
         response = client.delete(
-            f"/api/v1/submissions/{protected_id}",
+            f"/api/v1/submissions/{_SUB_ID}",
             headers=ADMIN_HEADERS,
         )
         app.dependency_overrides.clear()
 
-        assert response.status_code == 422
-        assert "approved" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] is True
 
 
 
