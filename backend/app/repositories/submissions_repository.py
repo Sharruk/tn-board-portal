@@ -803,29 +803,45 @@ class SubmissionsRepository:
         Returns:
             List of deleted paper IDs (if any).
         """
-        logger.debug(
-            "SubmissionsRepository.delete_submission(submission_id=%s, admin_email=%s)",
+        logger.info(
+            "[DELETE_SUBMISSION] START submission_id=%s admin_email=%s",
             submission_id,
             admin_email,
         )
-        from app.repositories.papers_repository import PapersRepository
 
+        # ── PHASE A: READ & PLAN ─────────────────────────────────────
+        logger.info("[DELETE_SUBMISSION] STEP 1 load submission %s", submission_id)
         sub = self.get_by_id(submission_id)
         if not sub:
-            logger.warning("Submission %s not found for deletion", submission_id)
+            logger.warning("[DELETE_SUBMISSION] Submission %s not found", submission_id)
             return []
 
-        # 1. Query all linked published papers
+        logger.info("[DELETE_SUBMISSION] STEP 2 load linked papers for submission %s", submission_id)
         stmt_papers = text(
             """
-            SELECT id FROM papers
+            SELECT id, file_path, public_url FROM papers
             WHERE submission_id::text = :submission_id
             """
         )
         paper_rows = self._db.execute(stmt_papers, {"submission_id": submission_id}).fetchall()
-        linked_paper_ids = [int(r[0]) for r in paper_rows if r[0] is not None]
+        linked_paper_ids: list[int] = []
+        paper_storage_paths: list[str] = []
 
-        # 2. Query storage paths of attached submission files
+        for r in paper_rows:
+            p_dict = dict(r._mapping)
+            if p_dict.get("id") is not None:
+                linked_paper_ids.append(int(p_dict["id"]))
+            f_path = p_dict.get("file_path")
+            if not f_path and p_dict.get("public_url") and "/papers/" in p_dict["public_url"]:
+                f_path = p_dict["public_url"].split("/papers/")[-1].split("?")[0]
+            if f_path:
+                paper_storage_paths.append(f_path)
+
+        logger.info(
+            "[DELETE_SUBMISSION] STEP 3 load submission files for submission %s (found %d linked papers)",
+            submission_id,
+            len(linked_paper_ids),
+        )
         stmt_files = text(
             """
             SELECT storage_path FROM submission_files
@@ -833,37 +849,60 @@ class SubmissionsRepository:
             """
         )
         file_rows = self._db.execute(stmt_files, {"submission_id": submission_id}).fetchall()
-        storage_paths = [r[0] for r in file_rows if r[0]]
+        sub_storage_paths = [r[0] for r in file_rows if r[0]]
 
-        # 3. Clean up linked published papers (storage objects and database rows)
-        if linked_paper_ids:
-            papers_repo = PapersRepository(self._db, self._storage)
-            for p_id in linked_paper_ids:
-                try:
-                    papers_repo.delete_paper(
-                        p_id,
-                        admin_id=admin_id,
-                        admin_email=admin_email,
-                        auto_commit=False,
-                    )
-                    logger.info("Deleted linked paper %s for submission %s", p_id, submission_id)
-                except Exception as p_err:
-                    logger.warning("Error deleting linked paper %s for submission %s: %s", p_id, submission_id, p_err)
-
-        # 4. Delete private storage files from 'submissions' bucket
-        if storage_paths:
+        # ── PHASE B: STORAGE CLEANUP ─────────────────────────────────
+        # 1. Clean up public paper files from 'papers' bucket
+        if paper_storage_paths:
+            logger.info(
+                "[DELETE_SUBMISSION] STEP 4 delete linked paper storage %s",
+                paper_storage_paths,
+            )
             try:
-                self._storage.from_(SUBMISSIONS_BUCKET).remove(storage_paths)
-            except Exception as e:
+                self._storage.from_("papers").remove(paper_storage_paths)
+            except Exception as p_storage_err:
                 logger.warning(
-                    "Failed to delete storage objects for submission %s (%s): %s",
+                    "[DELETE_SUBMISSION] Non-fatal storage deletion error on 'papers' bucket for submission %s: %s",
                     submission_id,
-                    storage_paths,
-                    e,
+                    p_storage_err,
                 )
 
+        # 2. Clean up private submission files from 'submissions' bucket
+        if sub_storage_paths:
+            logger.info(
+                "[DELETE_SUBMISSION] STEP 5 delete submission storage %s",
+                sub_storage_paths,
+            )
+            try:
+                self._storage.from_(SUBMISSIONS_BUCKET).remove(sub_storage_paths)
+            except Exception as sub_storage_err:
+                logger.warning(
+                    "[DELETE_SUBMISSION] Non-fatal storage deletion error on 'submissions' bucket for submission %s: %s",
+                    submission_id,
+                    sub_storage_err,
+                )
+
+        # ── PHASE C: ATOMIC DATABASE TRANSACTION ─────────────────────
         try:
-            # 5. Delete submission_files rows
+            # Step 6: Delete linked papers rows
+            if linked_paper_ids:
+                logger.info(
+                    "[DELETE_SUBMISSION] STEP 6 delete linked paper database rows %s",
+                    linked_paper_ids,
+                )
+                del_papers_stmt = text(
+                    """
+                    DELETE FROM papers
+                    WHERE submission_id::text = :submission_id
+                    """
+                )
+                self._db.execute(del_papers_stmt, {"submission_id": submission_id})
+
+            # Step 7: Delete submission_files rows
+            logger.info(
+                "[DELETE_SUBMISSION] STEP 7 delete submission_files rows for submission %s",
+                submission_id,
+            )
             del_files_stmt = text(
                 """
                 DELETE FROM submission_files
@@ -872,7 +911,11 @@ class SubmissionsRepository:
             )
             self._db.execute(del_files_stmt, {"submission_id": submission_id})
 
-            # 6. Delete submissions row
+            # Step 8: Delete submissions row
+            logger.info(
+                "[DELETE_SUBMISSION] STEP 8 delete submissions row for submission %s",
+                submission_id,
+            )
             del_sub_stmt = text(
                 """
                 DELETE FROM submissions
@@ -881,44 +924,50 @@ class SubmissionsRepository:
             )
             self._db.execute(del_sub_stmt, {"submission_id": submission_id})
 
-            # 7. Insert audit log
-            # Note: audit_logs.admin_id REFERENCES auth.users(id) (Supabase Auth).
-            # When Firebase Auth is used, admin_id is a Firebase UID, so we store it
-            # inside target_details JSONB and pass NULL for the UUID column to prevent type/FK errors.
-            # target_paper_id is set to NULL since this is a submission deletion.
-            try:
-                audit_stmt = text(
-                    """
-                    INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
-                    VALUES (NULL, :admin_email, 'delete_submission', NULL, :details, NOW())
-                    """
-                )
-                details = json.dumps(
-                    {
-                        "submission_id": submission_id,
-                        "admin_uid": admin_id,
-                        "admin_email": admin_email,
-                        "publisher_name": sub.get("publisher_name") if sub else None,
-                        "email": sub.get("email") if sub else None,
-                        "status": sub.get("status") if sub else None,
-                        "deleted_paper_ids": linked_paper_ids,
-                    }
-                )
-                self._db.execute(
-                    audit_stmt,
-                    {
-                        "admin_email": admin_email,
-                        "details": details,
-                    },
-                )
-            except Exception as a_err:
-                logger.warning("Failed to insert audit log for submission deletion %s: %s", submission_id, a_err)
+            # Step 9: Insert audit log
+            logger.info(
+                "[DELETE_SUBMISSION] STEP 9 insert submission audit log for submission %s",
+                submission_id,
+            )
+            audit_stmt = text(
+                """
+                INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
+                VALUES (NULL, :admin_email, 'delete_submission', NULL, :details, NOW())
+                """
+            )
+            details = json.dumps(
+                {
+                    "submission_id": submission_id,
+                    "admin_uid": admin_id,
+                    "admin_email": admin_email,
+                    "publisher_name": sub.get("publisher_name") if sub else None,
+                    "email": sub.get("email") if sub else None,
+                    "status": sub.get("status") if sub else None,
+                    "deleted_paper_ids": linked_paper_ids,
+                }
+            )
+            self._db.execute(
+                audit_stmt,
+                {
+                    "admin_email": admin_email,
+                    "details": details,
+                },
+            )
 
+            # Step 10: Commit atomic transaction
+            logger.info("[DELETE_SUBMISSION] STEP 10 COMMIT submission %s", submission_id)
             self._db.commit()
+            logger.info("[DELETE_SUBMISSION] SUCCESS submission %s deleted", submission_id)
             return linked_paper_ids
         except Exception as db_err:
+            logger.error(
+                "[DELETE_SUBMISSION] FAILED stage=database_transaction submission_id=%s exception=%s message=%s",
+                submission_id,
+                type(db_err).__name__,
+                db_err,
+                exc_info=True,
+            )
             self._db.rollback()
-            logger.error("Database error deleting submission %s: %s", submission_id, db_err)
             raise
 
 

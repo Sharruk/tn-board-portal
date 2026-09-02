@@ -1821,6 +1821,44 @@ class TestDeleteSubmission:
             # Ensure no direct non-UUID is passed to a UUID parameter in params
             assert "admin_id" not in params or params.get("admin_id") is None
 
+    def test_delete_submission_db_error_triggers_rollback(self):
+        """11. Database error during deletion triggers rollback and does not leave unhandled InFailedSqlTransaction."""
+        approved_sub = {**MOCK_SUBMISSION, "status": "approved"}
+        mock_db = _make_table_db({
+            "submissions": [approved_sub],
+            "submission_files": [MOCK_FILE],
+            "papers": [],
+        })
+        mock_storage = MagicMock()
+        mock_storage.from_.return_value = MagicMock()
+        mock_db.storage = mock_storage
+
+        orig_execute = mock_db.execute.side_effect
+
+        def fail_on_delete_sub(stmt, params=None):
+            if "delete from submissions" in str(stmt).lower():
+                raise RuntimeError("Simulated database failure during submissions row deletion")
+            return orig_execute(stmt, params)
+
+        mock_db.execute.side_effect = fail_on_delete_sub
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid",
+            "email": "admin@example.com",
+        }
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            response = client.delete(
+                f"/api/v1/submissions/{_SUB_ID}",
+                headers=ADMIN_HEADERS,
+            )
+            assert response.status_code == 500
+            assert mock_db.rollback.called
+        finally:
+            app.dependency_overrides.clear()
+
 
 
 

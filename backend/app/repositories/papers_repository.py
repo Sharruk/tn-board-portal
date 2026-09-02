@@ -79,16 +79,18 @@ class PapersRepository:
         Returns:
             Tuple of (db_deleted: bool, storage_deleted: bool).
         """
-        logger.debug(
-            "PapersRepository.delete_paper(paper_id=%s, admin_email=%s, auto_commit=%s)",
+        logger.info(
+            "[DELETE_PAPER] START paper_id=%s admin_email=%s auto_commit=%s",
             paper_id,
             admin_email,
             auto_commit,
         )
 
         # 1. Fetch the paper row (including hidden/archived)
+        logger.info("[DELETE_PAPER] STEP 1 fetch paper %s", paper_id)
         paper = self.get_by_id(paper_id, published_only=False)
         if not paper:
+            logger.warning("[DELETE_PAPER] Paper %s not found", paper_id)
             return False, False
 
         file_path = paper.get("file_path")
@@ -101,81 +103,82 @@ class PapersRepository:
         # 2. Delete the storage object from the 'papers' bucket
         storage_deleted = False
         if file_path:
+            logger.info("[DELETE_PAPER] STEP 2 delete storage object '%s'", file_path)
             try:
                 self._storage.from_("papers").remove([file_path])
                 storage_deleted = True
-                logger.info("Deleted storage object '%s' for paper %s", file_path, paper_id)
+                logger.info("[DELETE_PAPER] Deleted storage object '%s' for paper %s", file_path, paper_id)
             except Exception as exc:
                 err_str = str(exc).lower()
                 if "not found" in err_str or "404" in err_str or "resource not found" in err_str:
                     logger.warning(
-                        "Storage object '%s' already missing for paper %s: %s",
+                        "[DELETE_PAPER] Storage object '%s' already missing for paper %s: %s",
                         file_path,
                         paper_id,
                         exc,
                     )
                     storage_deleted = False
                 else:
-                    logger.error(
-                        "Failed to delete storage object '%s' for paper %s: %s",
+                    logger.warning(
+                        "[DELETE_PAPER] Non-fatal storage deletion error for paper %s (%s): %s",
                         file_path,
                         paper_id,
                         exc,
                     )
-                    raise RuntimeError(
-                        f"Failed to delete paper file from storage: {exc}"
-                    ) from exc
 
         try:
             # 3. Delete database record
+            logger.info("[DELETE_PAPER] STEP 3 delete database row for paper %s", paper_id)
             del_stmt = text("DELETE FROM papers WHERE id = :paper_id")
             self._db.execute(del_stmt, {"paper_id": paper_id})
 
             # 4. Insert audit log
-            # Note: audit_logs.admin_id REFERENCES auth.users(id) (Supabase Auth).
-            # When Firebase Auth is used, admin_id is a Firebase UID, so we store it
-            # inside target_details JSONB and pass NULL for the UUID column to prevent type/FK errors.
-            # target_paper_id is set to NULL since the paper row is deleted.
-            try:
-                audit_stmt = text(
-                    """
-                    INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
-                    VALUES (NULL, :admin_email, 'delete', NULL, :details, NOW())
-                    """
-                )
-                details = json.dumps(
-                    {
-                        "paper_id": paper_id,
-                        "admin_uid": admin_id,
-                        "admin_email": admin_email,
-                        "title": paper.get("title"),
-                        "exam_type": paper.get("exam_type"),
-                        "year": paper.get("year"),
-                        "class_name": paper.get("class_name"),
-                        "subject_name": paper.get("subject_name"),
-                        "file_path": file_path,
-                        "original_filename": paper.get("original_filename"),
-                        "contributor_name": paper.get("contributor_name"),
-                    }
-                )
-                self._db.execute(
-                    audit_stmt,
-                    {
-                        "admin_email": admin_email,
-                        "details": details,
-                    },
-                )
-            except Exception as a_err:
-                logger.warning("Failed to insert audit log for deleted paper %s: %s", paper_id, a_err)
+            logger.info("[DELETE_PAPER] STEP 4 insert audit log for paper %s", paper_id)
+            audit_stmt = text(
+                """
+                INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
+                VALUES (NULL, :admin_email, 'delete', NULL, :details, NOW())
+                """
+            )
+            details = json.dumps(
+                {
+                    "paper_id": paper_id,
+                    "admin_uid": admin_id,
+                    "admin_email": admin_email,
+                    "title": paper.get("title"),
+                    "exam_type": paper.get("exam_type"),
+                    "year": paper.get("year"),
+                    "class_name": paper.get("class_name"),
+                    "subject_name": paper.get("subject_name"),
+                    "file_path": file_path,
+                    "original_filename": paper.get("original_filename"),
+                    "contributor_name": paper.get("contributor_name"),
+                }
+            )
+            self._db.execute(
+                audit_stmt,
+                {
+                    "admin_email": admin_email,
+                    "details": details,
+                },
+            )
 
             if auto_commit:
+                logger.info("[DELETE_PAPER] STEP 5 COMMIT paper %s", paper_id)
                 self._db.commit()
 
+            logger.info("[DELETE_PAPER] SUCCESS paper %s deleted", paper_id)
             return True, storage_deleted
         except Exception as db_err:
+            logger.error(
+                "[DELETE_PAPER] FAILED paper_id=%s exception=%s message=%s",
+                paper_id,
+                type(db_err).__name__,
+                db_err,
+                exc_info=True,
+            )
             if auto_commit:
                 self._db.rollback()
-            logger.error("Failed to delete paper record %s from database: %s", paper_id, db_err)
             raise
 
     def list_recent(self, limit: int = 10) -> list[dict[str, Any]]:
