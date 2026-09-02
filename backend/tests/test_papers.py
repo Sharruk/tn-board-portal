@@ -482,3 +482,101 @@ def test_paper_response_includes_description_and_preserves_privacy():
     finally:
         app.dependency_overrides.clear()
 
+
+# ── Delete Paper Tests ────────────────────────────────────────────────────────
+
+def test_delete_paper_as_admin_success():
+    from app.dependencies.auth import require_admin
+    from app.dependencies.supabase import get_db
+
+    mock_db = _make_detail_db([
+        {
+            **MOCK_PAPER_DETAIL_ROW,
+            "file_path": "uuid-1234.pdf",
+            "submission_id": "sub-1234",
+            "contributor_name": "Sharruk",
+        }
+    ])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: {
+        "firebase_uid": "admin-uid-123",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+    }
+
+    try:
+        client = TestClient(app)
+        resp = client.delete("/api/v1/papers/42")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["paper_id"] == 42
+        assert data["deleted"] is True
+        assert "deleted successfully" in data["message"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_paper_missing_storage_resilience():
+    from app.dependencies.auth import require_admin
+    from app.dependencies.supabase import get_db
+
+    mock_db = _make_detail_db([
+        {
+            **MOCK_PAPER_DETAIL_ROW,
+            "file_path": "missing-file.pdf",
+        }
+    ])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: {
+        "firebase_uid": "admin-uid-123",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+    }
+
+    try:
+        client = TestClient(app)
+        resp = client.delete("/api/v1/papers/42")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["paper_id"] == 42
+        assert data["deleted"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_paper_not_found():
+    from app.dependencies.auth import require_admin
+    from app.dependencies.supabase import get_db
+
+    mock_db = _make_detail_db([])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: {
+        "firebase_uid": "admin-uid-123",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+    }
+
+    try:
+        client = TestClient(app)
+        resp = client.delete("/api/v1/papers/99999")
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_delete_paper_unauthenticated():
+    from app.dependencies.supabase import get_db
+
+    mock_db = _make_detail_db([MOCK_PAPER_DETAIL_ROW])
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        client = TestClient(app)
+        # Calling without auth token
+        resp = client.delete("/api/v1/papers/42")
+        assert resp.status_code in (401, 403)
+    finally:
+        app.dependency_overrides.clear()
+
+

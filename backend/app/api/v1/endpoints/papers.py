@@ -34,11 +34,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.dependencies.auth import get_current_user, get_current_user_optional, require_role
+from app.dependencies.auth import get_current_user, get_current_user_optional, require_admin, require_role
 from app.dependencies.supabase import get_db
 from app.schemas.paper import (
     PaperCommentCreate,
     PaperCommentOut,
+    PaperDeleteResponse,
     PaperDetail,
     PaperLikeResponse,
     PaperListResponse,
@@ -193,6 +194,36 @@ async def get_paper(
     """Return a single published paper by its primary key."""
     service = PapersService(db)
     return service.get_paper(paper_id)
+
+
+# ── DELETE /api/v1/papers/{id} ───────────────────────────────────────────────
+
+@router.delete(
+    "/{paper_id}",
+    response_model=PaperDeleteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete a paper (admin)",
+    description=(
+        "Admin only. Permanently deletes a paper, its database record, and its "
+        "associated storage file in Supabase Storage.\n\n"
+        "Scoped to the specific paper_id. Storage object key is derived from the "
+        "database record."
+    ),
+    responses={
+        200: {"description": "Paper and storage object deleted successfully"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Admin privileges required"},
+        404: {"description": "Paper not found"},
+    },
+)
+async def delete_paper(
+    paper_id: int,
+    current_user: dict = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> PaperDeleteResponse:
+    """Permanently delete a paper and its storage file."""
+    service = PapersService(db)
+    return service.delete_paper(paper_id=paper_id, current_user=current_user)
 
 
 # ── GET /api/v1/papers/{id}/download ──────────────────────────────────────────

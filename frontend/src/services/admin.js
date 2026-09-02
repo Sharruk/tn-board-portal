@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { getFirebaseToken, auth } from '../lib/firebase'
+import { apiFetch } from '../lib/api'
 
 async function getAuthUser() {
   const user = auth.currentUser
@@ -102,22 +103,15 @@ export const updatePaper = async (id, updates) => {
 }
 
 export const deletePaper = async (id) => {
-  const { data: paper, error: fetchError } = await supabase
-    .from('papers')
-    .select('file_path, title')
-    .eq('id', id)
-    .single()
-  if (fetchError) throw fetchError
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required to delete papers')
 
-  if (paper?.file_path) {
-    const { error: storageError } = await supabase.storage.from('papers').remove([paper.file_path])
-    if (storageError) throw storageError
-  }
-
-  const { error } = await supabase.from('papers').delete().eq('id', id)
-  if (error) throw error
-
-  await insertAuditLog('delete', id, { title: paper?.title })
+  return await apiFetch(`/api/v1/papers/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  })
 }
 
 export const getAdminStats = async () => {

@@ -208,7 +208,8 @@ export default function PapersPage() {
   const [activeTab, setActiveTab] = useState('papers')
 
   const [showUpload, setShowUpload] = useState(false)
-  const [deleteId, setDeleteId] = useState(null)
+  const [paperToDelete, setPaperToDelete] = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const [editPaper, setEditPaper] = useState(null)
 
   const [form, setForm] = useState(EMPTY_FORM)
@@ -347,14 +348,19 @@ export default function PapersPage() {
   }
 
   const handleDelete = async () => {
-    if (!deleteId) return
+    if (!paperToDelete) return
+    setDeleteLoading(true)
     try {
-      await deletePaper(deleteId)
-      setDeleteId(null)
-      load()
-      showToast('Paper deleted.')
+      await deletePaper(paperToDelete.id)
+      const removedId = paperToDelete.id
+      setPaperToDelete(null)
+      // Optimistically remove from state immediately
+      setPapers(prev => prev.filter(p => p.id !== removedId))
+      showToast('Paper and its uploaded file deleted permanently.')
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -513,10 +519,15 @@ export default function PapersPage() {
                           <td className="px-4 py-3 text-gray-400 font-mono text-xs">{index + 1}</td>
                           <td className="px-4 py-3 max-w-xs">
                             <div className="font-medium text-gray-800 truncate" title={p.title}>{p.title}</div>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
                               <Badge type={p.paper_type} />
+                              {p.contributor_name && (
+                                <span className="text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded font-medium" title={`Contributor: ${p.contributor_name}`}>
+                                  👤 {p.contributor_name}
+                                </span>
+                              )}
                               {p.original_filename && !/^[0-9a-f-]{36}/i.test(p.original_filename) && (
-                                <span className="text-xs text-gray-400 font-mono truncate max-w-[140px]" title={p.original_filename}>
+                                <span className="text-xs text-gray-500 font-mono truncate max-w-[140px]" title={p.original_filename}>
                                   📎 {p.original_filename}
                                 </span>
                               )}
@@ -567,7 +578,7 @@ export default function PapersPage() {
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
                               <button onClick={() => openEdit(p)} className="text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">Edit</button>
-                              <button onClick={() => setDeleteId(p.id)} className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
+                              <button onClick={() => setPaperToDelete(p)} className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
                             </div>
                           </td>
                         </tr>
@@ -789,16 +800,80 @@ export default function PapersPage() {
         </Modal>
       )}
 
-      {/* ── Delete Confirm ── */}
-      {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
-            <div className="text-5xl mb-4">🗑️</div>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Paper?</h3>
-            <p className="text-sm text-gray-500 mb-6">This will permanently remove the paper and its PDF file. This cannot be undone.</p>
+      {/* ── Delete Confirm Modal ── */}
+      {paperToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => !deleteLoading && setPaperToDelete(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">
+              🗑️
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 text-center mb-1">Delete Paper Permanently?</h3>
+            <p className="text-xs text-red-600 font-medium text-center mb-4">
+              This will permanently remove the published paper and its uploaded file from storage. This action cannot be undone.
+            </p>
+
+            {/* Identifying Details Card */}
+            <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-xs space-y-2 mb-6">
+              <div className="flex justify-between items-start gap-2">
+                <span className="text-gray-400 font-semibold shrink-0">Title:</span>
+                <span className="font-bold text-gray-800 text-right">{paperToDelete.title}</span>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-gray-400 font-semibold shrink-0">Class & Subject:</span>
+                <span className="font-medium text-gray-700 text-right">
+                  {subjectMap[paperToDelete.subject_id]?.class_name || 'Class ?'} — {subjectMap[paperToDelete.subject_id]?.name || `Subject #${paperToDelete.subject_id}`}
+                </span>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-gray-400 font-semibold shrink-0">Exam Info:</span>
+                <span className="text-gray-700 text-right">
+                  {paperToDelete.exam_type} ({paperToDelete.year})
+                  {paperToDelete.month ? ` • ${paperToDelete.month}` : ''}
+                  {paperToDelete.district ? ` • ${paperToDelete.district}` : ''}
+                </span>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-gray-400 font-semibold shrink-0">Type:</span>
+                <span className="text-gray-700 font-medium capitalize">{paperToDelete.paper_type === 'question' ? 'Question Paper' : 'Answer Key'}</span>
+              </div>
+              {paperToDelete.contributor_name && (
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-gray-400 font-semibold shrink-0">Contributor:</span>
+                  <span className="text-blue-700 font-medium">{paperToDelete.contributor_name}</span>
+                </div>
+              )}
+              {paperToDelete.original_filename && (
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-gray-400 font-semibold shrink-0">File:</span>
+                  <span className="font-mono text-gray-600 break-all text-right max-w-[200px]">{paperToDelete.original_filename}</span>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="btn-secondary flex-1 justify-center">Cancel</button>
-              <button onClick={handleDelete} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">Delete</button>
+              <button
+                type="button"
+                onClick={() => setPaperToDelete(null)}
+                disabled={deleteLoading}
+                className="btn-secondary flex-1 justify-center"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
+              >
+                {deleteLoading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Deleting…
+                  </>
+                ) : (
+                  'Delete Paper'
+                )}
+              </button>
             </div>
           </div>
         </div>

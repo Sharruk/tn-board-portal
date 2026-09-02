@@ -15,12 +15,13 @@ Business rules implemented:
 """
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
 from app.repositories.papers_repository import PapersRepository
 from app.schemas.paper import (
+    PaperDeleteResponse,
     PaperListResponse,
     PaperResponse,
     PaperSearchResult,
@@ -100,8 +101,8 @@ _expand_search_terms = _expand_terms
 class PapersService:
     """Business logic for the papers domain."""
 
-    def __init__(self, db: Session) -> None:
-        self._repo = PapersRepository(db)
+    def __init__(self, db: Session, storage: Any = None) -> None:
+        self._repo = PapersRepository(db, storage=storage)
 
     # ------------------------------------------------------------------ #
     # GET /api/v1/papers/{id}
@@ -186,17 +187,16 @@ class PapersService:
         district: str | None = None,
     ) -> SearchResponse:
         """
-        Full-text paper search using the search_papers() Supabase RPC.
+        Full-text paper search using direct SQL joining papers, subjects, and classes.
 
         Mirrors the frontend searchPapers() function in search.js:
           1. Normalise the raw query
           2. Expand into multiple terms (aliases + exam patterns)
-          3. Call search_papers() RPC for each term
+          3. Call search query for each term
           4. De-duplicate results by paper id (last-write-wins)
           5. Return wrapped SearchResponse
 
-        The RPC already filters to status='published'.
-        No SQL is written here — we call the existing RPC.
+        Only searches visible / published papers.
         """
         logger.info(
             "PapersService.search_papers(q=%r, class_id=%s, exam_type=%s, "
@@ -246,6 +246,45 @@ class PapersService:
         except Exception as exc:
             logger.warning("record_download failed for paper_id=%s: %s", paper_id, exc)
             raise NotFoundError(resource="Paper", identifier=paper_id) from exc
+
+    # ------------------------------------------------------------------ #
+    # DELETE /api/v1/papers/{id} (Admin)
+    # ------------------------------------------------------------------ #
+
+    def delete_paper(self, paper_id: int, current_user: dict | None = None) -> PaperDeleteResponse:
+        """
+        Permanently delete a paper and its associated storage file in the 'papers' bucket.
+
+        Args:
+            paper_id: Primary key of the paper.
+            current_user: Admin user dict from require_admin dependency.
+
+        Raises:
+            NotFoundError if the paper does not exist.
+        """
+        logger.info("PapersService.delete_paper(paper_id=%s)", paper_id)
+        admin_id = current_user.get("firebase_uid") if current_user else None
+        admin_email = current_user.get("email") if current_user else None
+
+        db_deleted, storage_deleted = self._repo.delete_paper(
+            paper_id=paper_id,
+            admin_id=admin_id,
+            admin_email=admin_email,
+        )
+        if not db_deleted:
+            raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        msg = (
+            "Paper and its uploaded file deleted successfully."
+            if storage_deleted
+            else "Paper deleted successfully (storage file was not found)."
+        )
+        return PaperDeleteResponse(
+            paper_id=paper_id,
+            deleted=True,
+            storage_deleted=storage_deleted,
+            message=msg,
+        )
 
     # ------------------------------------------------------------------ #
     # Likes & Comments

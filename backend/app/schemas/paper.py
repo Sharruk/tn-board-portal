@@ -246,3 +246,13 @@ class PaperLikeResponse(BaseModel):
     likes_count: int
     has_liked: bool
 
+
+class PaperDeleteResponse(BaseModel):
+    """Response returned when a paper is successfully deleted by an admin."""
+
+    paper_id: int = Field(..., description="ID of the deleted paper")
+    deleted: bool = Field(True, description="Whether the deletion succeeded")
+    storage_deleted: bool = Field(True, description="Whether the associated storage file was removed")
+    message: str = Field("Paper deleted successfully", description="Status message")
+
+

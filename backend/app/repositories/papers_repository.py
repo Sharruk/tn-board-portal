@@ -4,11 +4,14 @@ Papers repository — direct PostgreSQL data access for the `papers` table.
 Uses SQLAlchemy Session with parameterized SQL.
 """
 
+import json
 import logging
 from typing import Any, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from app.db.storage import get_storage_client
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +30,9 @@ def _add_status(row: dict[str, Any]) -> dict[str, Any]:
 class PapersRepository:
     """Data access layer for the `papers` table."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, storage: Any = None) -> None:
         self._db = db
+        self._storage = storage if storage is not None else get_storage_client()
 
     def get_by_id(self, paper_id: int, published_only: bool = True) -> dict[str, Any] | None:
         """
@@ -37,8 +41,8 @@ class PapersRepository:
         logger.debug("PapersRepository.get_by_id(paper_id=%s, published_only=%s)", paper_id, published_only)
         sql = """
             SELECT 
-                p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
-                p.public_url, p.youtube_url, p.original_filename, p.is_visible,
+                p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.description, p.paper_type,
+                p.file_path, p.public_url, p.youtube_url, p.original_filename, p.is_visible,
                 p.download_count, p.created_at,
                 p.submission_id, p.contributor_name,
                 s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
@@ -61,6 +65,99 @@ class PapersRepository:
         if d.get("submission_id"):
             d["submission_id"] = str(d["submission_id"])
         return _add_status(d)
+
+    def delete_paper(
+        self,
+        paper_id: int,
+        admin_id: str | None = None,
+        admin_email: str | None = None,
+    ) -> tuple[bool, bool]:
+        """
+        Delete a paper record and its associated storage file in the 'papers' bucket.
+
+        Returns:
+            Tuple of (db_deleted: bool, storage_deleted: bool).
+        """
+        logger.debug("PapersRepository.delete_paper(paper_id=%s)", paper_id)
+
+        # 1. Fetch the paper row (including hidden/archived)
+        paper = self.get_by_id(paper_id, published_only=False)
+        if not paper:
+            return False, False
+
+        file_path = paper.get("file_path")
+        # If file_path is missing but public_url exists, attempt fallback extraction
+        if not file_path and paper.get("public_url"):
+            pub_url = paper["public_url"]
+            if "/papers/" in pub_url:
+                file_path = pub_url.split("/papers/")[-1].split("?")[0]
+
+        # 2. Delete the storage object from the 'papers' bucket
+        storage_deleted = False
+        if file_path:
+            try:
+                self._storage.from_("papers").remove([file_path])
+                storage_deleted = True
+                logger.info("Deleted storage object '%s' for paper %s", file_path, paper_id)
+            except Exception as exc:
+                err_str = str(exc).lower()
+                if "not found" in err_str or "404" in err_str or "resource not found" in err_str:
+                    logger.warning(
+                        "Storage object '%s' already missing for paper %s: %s",
+                        file_path,
+                        paper_id,
+                        exc,
+                    )
+                    storage_deleted = False
+                else:
+                    logger.error(
+                        "Failed to delete storage object '%s' for paper %s: %s",
+                        file_path,
+                        paper_id,
+                        exc,
+                    )
+                    raise RuntimeError(
+                        f"Failed to delete paper file from storage: {exc}"
+                    ) from exc
+
+        # 3. Delete database record
+        del_stmt = text("DELETE FROM papers WHERE id = :paper_id")
+        self._db.execute(del_stmt, {"paper_id": paper_id})
+
+        # 4. Insert audit log
+        try:
+            audit_stmt = text(
+                """
+                INSERT INTO audit_logs (admin_id, admin_email, action, target_paper_id, target_details, created_at)
+                VALUES (:admin_id, :admin_email, 'delete', :paper_id, :details, NOW())
+                """
+            )
+            details = json.dumps(
+                {
+                    "title": paper.get("title"),
+                    "exam_type": paper.get("exam_type"),
+                    "year": paper.get("year"),
+                    "class_name": paper.get("class_name"),
+                    "subject_name": paper.get("subject_name"),
+                    "file_path": file_path,
+                    "original_filename": paper.get("original_filename"),
+                    "contributor_name": paper.get("contributor_name"),
+                }
+            )
+            self._db.execute(
+                audit_stmt,
+                {
+                    "admin_id": admin_id,
+                    "admin_email": admin_email,
+                    "paper_id": paper_id,
+                    "details": details,
+                },
+            )
+        except Exception as e:
+            logger.warning("Failed to insert audit log for deleted paper %s: %s", paper_id, e)
+
+        self._db.commit()
+        return True, storage_deleted
 
     def list_recent(self, limit: int = 10) -> list[dict[str, Any]]:
         """
