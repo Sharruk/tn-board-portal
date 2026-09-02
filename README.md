@@ -84,7 +84,7 @@ sequenceDiagram
     actor Contributor as Contributor (Student / Teacher)
     participant Auth as Firebase Auth
     participant Frontend as React Frontend (Vercel)
-    participant Backend as FastAPI Backend (Render)
+    participant Backend as FastAPI Backend (Vercel)
     participant Storage as Private Storage Bucket
     actor Admin as Platform Admin
     participant PublicStorage as Public Storage CDN
@@ -189,7 +189,7 @@ FastAPI DELETE /api/v1/submissions/{submission_id} (Server-side admin authorizat
 | Component | Platform | Description |
 |---|---|---|
 | **Frontend Hosting** | Vercel | Global CDN hosting for React SPA with client-side routing rewrites |
-| **Backend Hosting** | Render | Dedicated Python Web Service hosting for FastAPI REST API |
+| **Backend Hosting** | Vercel | Serverless Python runtime hosting for FastAPI REST API |
 | **Database** | Supabase PostgreSQL | Managed PostgreSQL 15 with version-controlled migrations |
 | **File Storage** | Supabase Storage | `papers` (public CDN), `submissions` (private), `official-updates`, `news-media` |
 | **Authentication** | Firebase Authentication | Google OAuth2 identity provider |
@@ -203,38 +203,44 @@ TN Board Portal follows a modern, cloud-native architecture with a clear separat
 
 ```mermaid
 graph TD
-    Client["Browser / Student Client (React SPA)<br/><small>• Static assets & client routing<br/>• User interactions</small>"] --> Vercel["Vercel (CDN)<br/><small>• Serves static assets<br/>• Global CDN delivery</small>"]
-    Vercel --> APIReq["API Requests<br/>/api/v1/..."]
-    APIReq --> Render["Render Web Service (FastAPI Backend)<br/><small>• Handles API requests</small>"]
-    Client --> FirebaseAuth["Firebase Authentication<br/><small>• Google Sign-In<br/>• ID Token issuance</small>"]
-
-    subgraph BackendApp ["FastAPI Backend (Render)"]
-        RouteLayer["Route Layer (app/api/v1/endpoints/)"]
-        ServiceLayer["Service Layer (app/services/)"]
-        RepoLayer["Repository Layer (app/repositories/)"]
-        AuthDep["Auth Dependency (app/dependencies/auth.py)"]
-        VerifyToken["Verify ID Token<br/><small>• GoogleCert<br/>• Google OAuth2 Public Certs</small>"]
-
-        RouteLayer --> ServiceLayer
-        ServiceLayer --> RepoLayer
-        RepoLayer --> AuthDep
-        AuthDep --> VerifyToken
-        VerifyToken --> ServiceLayer
+    Browser["Student / Admin Browser"]
+    FirebaseAuth["Firebase Authentication"]
+    
+    subgraph VercelPlatform ["Vercel Cloud Platform"]
+        Frontend["React + Vite Frontend"]
+        FastAPI["FastAPI Backend (api/index.py)"]
+        
+        subgraph BackendLayers ["Backend Architecture"]
+            Routes["Route Endpoints (/api/v1/...)"]
+            Services["Service Layer (Business Logic)"]
+            Repos["Repository Layer (Data Access)"]
+            AuthVerify["Token Verification (Google OAuth2 / Firebase)"]
+            
+            Routes --> Services
+            Services --> Repos
+            Routes --> AuthVerify
+        end
+        
+        FastAPI --> Routes
     end
 
-    Render --> RouteLayer
-    FirebaseAuth --> RouteLayer
+    Browser --> Frontend
+    Browser --> FirebaseAuth
+    Frontend --> FastAPI
+    FirebaseAuth -.-> AuthVerify
+    
+    subgraph SupabasePlatform ["Supabase Platform"]
+        PostgresDB[("Supabase PostgreSQL")]
+        Storage[("Supabase Storage (CDN & Buckets)")]
+    end
 
-    PostgresDB[("Supabase PostgreSQL (Database)<br/><small>• SQL Transactions (Port 5432)</small>")]
-    SupabaseStorage[("Supabase Storage (File Storage)<br/><small>• Secure file uploads & delivery</small>")]
-
-    BackendApp --> PostgresDB
-    PostgresDB <--> SupabaseStorage
+    Repos --> PostgresDB
+    Repos --> Storage
 ```
 
 ### Key Points
 - **Frontend (React SPA)** hosted on Vercel.
-- **Backend (FastAPI)** hosted on Render.
+- **Backend (FastAPI)** deployed as serverless functions on Vercel (`api/index.py`).
 - **Database** on Supabase PostgreSQL (Port 5432).
 - **File storage** on Supabase Storage.
 - **Authentication** via Firebase (Google Sign-In) with ID token verification in backend.
@@ -252,7 +258,7 @@ graph TD
 
 ```
 tn-board-portal/
-├── backend/                         # FastAPI application (Hosted on Render)
+├── backend/                         # FastAPI application
 │   ├── app/
 │   │   ├── api/v1/                  # Route endpoints
 │   │   │   ├── endpoints/           # Domain endpoints (papers, submissions, community, etc.)
@@ -342,7 +348,7 @@ tn-board-portal/
 | `news-media` | **Public** | Cover images and media for educational news updates |
 
 ### Safe Database Migrations Workflow
-The project manages database schema through version-controlled, forward-only Supabase PostgreSQL migrations in `supabase/migrations/`.
+The project manages database schema through version-controlled, forward-only Supabase PostgreSQL migrations in `supabase/migrations/` (migrations `001` through `025` are fully applied and synchronized with remote production):
 
 1. **Link to Supabase Project**:
    ```bash
@@ -366,11 +372,11 @@ The project manages database schema through version-controlled, forward-only Sup
 ## ⚙️ Environment Variables
 
 ### Client-Side Variables (Frontend)
-Configured in `frontend/.env.local` for development and in the **Vercel Dashboard** for production. These are public build-time values.
+Configured in `frontend/.env.local` for development and in the **Vercel Project Settings** for production. These are public build-time values.
 
 | Variable | Required | Description | Example / Placeholder |
 |---|:---:|---|---|
-| `VITE_API_BASE_URL` | ✅ | Backend API URL | `https://tn-board-portal-api.onrender.com` (or `http://localhost:8000` locally) |
+| `VITE_API_BASE_URL` | Optional | Backend API URL (defaults to same-origin relative `/api/v1` in production on Vercel) | `http://localhost:8000` (locally) / `""` (production) |
 | `VITE_SUPABASE_URL` | ✅ | Supabase project URL | `https://YOUR_PROJECT_ID.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase public anonymous key | `YOUR_SUPABASE_ANON_KEY` |
 | `VITE_FIREBASE_API_KEY` | ✅ | Firebase Web API Key | `YOUR_FIREBASE_API_KEY` |
@@ -382,7 +388,7 @@ Configured in `frontend/.env.local` for development and in the **Vercel Dashboar
 | `VITE_FIREBASE_MEASUREMENT_ID` | Optional | Firebase Analytics Measurement ID | `G-XXXXXXXXXX` |
 
 ### Server-Side Variables (Backend Secrets)
-Configured in `backend/.env` for development and in the **Render Dashboard** for production. **Never commit these values to source control.**
+Configured in `backend/.env` for development and in the **Vercel Project Settings (Environment Variables)** for production. **Never commit these values to source control.**
 
 | Variable | Required | Description | Example / Placeholder |
 |---|:---:|---|---|
@@ -498,23 +504,21 @@ npm run build
 
 ## 🚀 Deployment Architecture
 
-The production environment operates across specialized cloud providers:
+The production environment operates as a unified cloud deployment on Vercel and Supabase:
 
-- **Frontend (Vercel)**:
-  - Repository linked to Vercel.
-  - Automatically builds `frontend/` using Vite.
-  - Single Page Application rewrites configured via `vercel.json` to route traffic to `index.html`.
-  - Environment variables set in Vercel Project Settings (`VITE_API_BASE_URL` pointing to Render).
-
-- **Backend API (Render)**:
-  - Deployed as a Python Web Service on Render.
-  - Build command: `pip install -r backend/requirements.txt`
-  - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (working directory: `backend`)
-  - Health check endpoint: `GET /health`
+- **Frontend & Backend API (Vercel)**:
+  - Unified repository deployed directly on Vercel (`https://tn-board-portal.vercel.app`).
+  - Automatically builds frontend assets (`frontend/dist`) via Vite.
+  - Serverless Python execution for FastAPI routes (`api/index.py` handles `/api/*`, `/health`, `/docs`, `/openapi.json`).
+  - Unified routing configured via root `vercel.json` with Single Page Application rewrites to `index.html`.
+  - Environment variables configured in Vercel Project Settings.
 
 - **Database & Storage (Supabase)**:
-  - Supabase PostgreSQL managed database running version-controlled migrations.
-  - Supabase Storage hosting public PDF assets and private submission queues.
+  - Supabase PostgreSQL managed database running version-controlled migrations (`supabase/migrations/`).
+  - Supabase Storage hosting public PDF assets (`papers`, `official-updates`, `news-media`) and private submission queues (`submissions`).
+
+- **Authentication (Firebase)**:
+  - Google Sign-In managed client-side with ID tokens cryptographically verified on the backend against Google public certificates.
 
 ---
 
