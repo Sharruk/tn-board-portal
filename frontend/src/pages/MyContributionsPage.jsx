@@ -261,45 +261,54 @@ export default function MyContributionsPage() {
                   )}
 
                   {/* Published Papers Section (If approved) */}
-                  {isApproved && sub.published_papers && sub.published_papers.length > 0 && (
-                    <div className="bg-emerald-50/60 rounded-2xl p-4 border border-emerald-100 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
-                          <span>🎉</span> Your contribution is now public!
+                  {isApproved && (
+                    <div className="bg-emerald-50/70 rounded-2xl p-4 border border-emerald-200 text-xs space-y-3">
+                      {/* Thank-You Message Banner */}
+                      <div className="bg-white/90 border border-emerald-200/80 rounded-xl p-3.5 space-y-1 shadow-2xs">
+                        <p className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                          <span>🎉</span> Contribution Approved!
+                        </p>
+                        <p className="text-xs text-emerald-800 leading-relaxed whitespace-pre-line font-medium">
+                          {sub.thank_you_message || "🎉 Your contribution is now public!\nThank you for contributing to the TN Board community. Your contribution may help another student prepare better. ❤️"}
                         </p>
                       </div>
-                      <div className="divide-y divide-emerald-100/80">
-                        {sub.published_papers.map((paper) => (
-                          <div key={paper.id} className="pt-2 first:pt-0 flex items-center justify-between gap-3 flex-wrap">
-                            <div>
-                              <p className="text-xs font-bold text-gray-900">{paper.title}</p>
-                              <p className="text-[11px] text-emerald-700">
-                                {[paper.class_name, paper.subject_name, paper.exam_type, paper.year].filter(Boolean).join(' • ')}
-                              </p>
+
+                      {/* Published Papers Links */}
+                      {sub.published_papers && sub.published_papers.length > 0 && (
+                        <div className="divide-y divide-emerald-100/80 pt-1">
+                          {sub.published_papers.map((paper) => (
+                            <div key={paper.id} className="pt-2 first:pt-0 flex items-center justify-between gap-3 flex-wrap">
+                              <div>
+                                <p className="text-xs font-bold text-gray-900">{paper.title}</p>
+                                <p className="text-[11px] text-emerald-700">
+                                  {[paper.class_name, paper.subject_name, paper.exam_type, paper.year].filter(Boolean).join(' • ')}
+                                </p>
+                              </div>
+                              <Link
+                                to={`/paper/${paper.id}`}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-2xs"
+                              >
+                                <span>📄</span> View Published Paper ↗
+                              </Link>
                             </div>
-                            <Link
-                              to={`/paper/${paper.id}`}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-2xs"
-                            >
-                              <span>📄</span> View Published Paper
-                            </Link>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* Rejected Reason Banner (If rejected) */}
                   {isRejected && (
-                    <div className="bg-red-50 rounded-2xl p-4 border border-red-200 text-xs text-red-800 space-y-1">
-                      <p className="font-bold flex items-center gap-1.5">
-                        <span>⚠️</span> Rejection Information
+                    <div className="bg-red-50 rounded-2xl p-4 border border-red-200 text-xs text-red-800 space-y-1.5">
+                      <p className="font-bold flex items-center gap-1.5 text-red-900">
+                        <span>⚠️</span> Submission Status: Rejected
                       </p>
-                      <p className="text-red-700">
-                        {sub.rejection_reason || 'The material could not be approved due to incomplete metadata, invalid format, or duplicate content.'}
+                      <p className="text-xs text-red-700 leading-relaxed whitespace-pre-line font-medium">
+                        {sub.rejection_reason || 'The material could not be approved due to quality, syllabus alignment, or duplicate content.'}
                       </p>
                     </div>
                   )}
+
 
                   {/* Under Review Notice (If pending) */}
                   {isPending && (

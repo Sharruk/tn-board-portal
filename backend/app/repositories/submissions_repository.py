@@ -159,7 +159,7 @@ class SubmissionsRepository:
             limit,
         )
         sql = """
-            SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+            SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, thank_you_message, reviewed_at, created_at
             FROM submissions
         """
         params: dict[str, Any] = {"limit": limit}
@@ -169,14 +169,35 @@ class SubmissionsRepository:
 
         sql += " ORDER BY created_at DESC LIMIT :limit"
 
-        stmt = text(sql)
-        result = self._db.execute(stmt, params)
-        rows = []
-        for r in result.fetchall():
-            d = dict(r._mapping)
-            d["id"] = str(d["id"])
-            rows.append(d)
-        return rows
+        try:
+            stmt = text(sql)
+            result = self._db.execute(stmt, params)
+            rows = []
+            for r in result.fetchall():
+                d = dict(r._mapping)
+                d["id"] = str(d["id"])
+                rows.append(d)
+            return rows
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "thank_you_message" in err_msg or "undefinedcolumn" in err_msg or "no such column" in err_msg:
+                self._db.rollback()
+                fallback_sql = """
+                    SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+                    FROM submissions
+                """
+                if status:
+                    fallback_sql += " WHERE status = :status"
+                fallback_sql += " ORDER BY created_at DESC LIMIT :limit"
+                result = self._db.execute(text(fallback_sql), params)
+                rows = []
+                for r in result.fetchall():
+                    d = dict(r._mapping)
+                    d["id"] = str(d["id"])
+                    d.setdefault("thank_you_message", None)
+                    rows.append(d)
+                return rows
+            raise
 
     def count_files_for_submissions(
         self, submission_ids: list[str]
@@ -215,17 +236,34 @@ class SubmissionsRepository:
         )
         stmt = text(
             """
-            SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+            SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, thank_you_message, reviewed_at, created_at
             FROM submissions
             WHERE id::text = :submission_id
             """
         )
-        result = self._db.execute(stmt, {"submission_id": submission_id})
-        row = result.fetchone()
+        try:
+            result = self._db.execute(stmt, {"submission_id": submission_id})
+            row = result.fetchone()
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "thank_you_message" in err_msg or "undefinedcolumn" in err_msg or "no such column" in err_msg:
+                self._db.rollback()
+                fallback_stmt = text(
+                    """
+                    SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+                    FROM submissions
+                    WHERE id::text = :submission_id
+                    """
+                )
+                result = self._db.execute(fallback_stmt, {"submission_id": submission_id})
+                row = result.fetchone()
+            else:
+                raise
         if not row:
             return None
         d = dict(row._mapping)
         d["id"] = str(d["id"])
+        d.setdefault("thank_you_message", None)
         return d
 
     def get_file_by_id(self, file_id: str) -> dict[str, Any] | None:
@@ -282,18 +320,37 @@ class SubmissionsRepository:
         stmt = text(
             """
             UPDATE submissions
-            SET status = 'pending', rejection_reason = NULL, reviewed_at = NULL
+            SET status = 'pending', rejection_reason = NULL, thank_you_message = NULL, reviewed_at = NULL
             WHERE id::text = :submission_id
-            RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+            RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, thank_you_message, reviewed_at, created_at
             """
         )
-        result = self._db.execute(stmt, {"submission_id": submission_id})
-        self._db.commit()
-        row = result.fetchone()
+        try:
+            result = self._db.execute(stmt, {"submission_id": submission_id})
+            self._db.commit()
+            row = result.fetchone()
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "thank_you_message" in err_msg or "undefinedcolumn" in err_msg or "no such column" in err_msg:
+                self._db.rollback()
+                fallback_stmt = text(
+                    """
+                    UPDATE submissions
+                    SET status = 'pending', rejection_reason = NULL, reviewed_at = NULL
+                    WHERE id::text = :submission_id
+                    RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+                    """
+                )
+                result = self._db.execute(fallback_stmt, {"submission_id": submission_id})
+                self._db.commit()
+                row = result.fetchone()
+            else:
+                raise
         if not row:
             raise RuntimeError(f"Failed to restore submission {submission_id} — no data returned")
         d = dict(row._mapping)
         d["id"] = str(d["id"])
+        d.setdefault("thank_you_message", None)
         return d
 
     def get_files(self, submission_id: str) -> list[dict[str, Any]]:
@@ -343,6 +400,7 @@ class SubmissionsRepository:
         submission_id: str,
         status: str,
         rejection_reason: str | None = None,
+        thank_you_message: str | None = None,
     ) -> dict[str, Any]:
         """
         Update the status + reviewed_at of a submission.
@@ -356,27 +414,56 @@ class SubmissionsRepository:
         stmt = text(
             """
             UPDATE submissions
-            SET status = :status, reviewed_at = :reviewed_at, rejection_reason = :rejection_reason
+            SET status = :status, reviewed_at = :reviewed_at, rejection_reason = :rejection_reason, thank_you_message = :thank_you_message
             WHERE id::text = :submission_id
-            RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+            RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, thank_you_message, reviewed_at, created_at
             """
         )
-        result = self._db.execute(
-            stmt,
-            {
-                "submission_id": submission_id,
-                "status": status,
-                "reviewed_at": now,
-                "rejection_reason": rejection_reason,
-            },
-        )
-        self._db.commit()
-        row = result.fetchone()
+        try:
+            result = self._db.execute(
+                stmt,
+                {
+                    "submission_id": submission_id,
+                    "status": status,
+                    "reviewed_at": now,
+                    "rejection_reason": rejection_reason,
+                    "thank_you_message": thank_you_message,
+                },
+            )
+            self._db.commit()
+            row = result.fetchone()
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "thank_you_message" in err_msg or "undefinedcolumn" in err_msg or "no such column" in err_msg:
+                self._db.rollback()
+                fallback_stmt = text(
+                    """
+                    UPDATE submissions
+                    SET status = :status, reviewed_at = :reviewed_at, rejection_reason = :rejection_reason
+                    WHERE id::text = :submission_id
+                    RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, reviewed_at, created_at
+                    """
+                )
+                result = self._db.execute(
+                    fallback_stmt,
+                    {
+                        "submission_id": submission_id,
+                        "status": status,
+                        "reviewed_at": now,
+                        "rejection_reason": rejection_reason,
+                    },
+                )
+                self._db.commit()
+                row = result.fetchone()
+            else:
+                raise
         if not row:
             raise RuntimeError(f"Failed to update submission {submission_id} — no data returned")
         d = dict(row._mapping)
         d["id"] = str(d["id"])
+        d.setdefault("thank_you_message", thank_you_message)
         return d
+
 
     # ------------------------------------------------------------------ #
     # Create paper from approved submission (admin)
@@ -636,6 +723,239 @@ class SubmissionsRepository:
                 logger.error("All fallback paper INSERTs failed: %s", leg_err)
                 raise
 
+    def create_paper_from_prepared_file(
+        self,
+        file_bytes: bytes,
+        subject_id: int,
+        exam_type: str,
+        year: int,
+        paper_type: str,
+        month: str | None,
+        district: str | None,
+        submission: dict[str, Any],
+        title: str | None = None,
+        download_filename: str | None = None,
+        description: str | None = None,
+        youtube_url: str | None = None,
+        file_type: str = "pdf",
+    ) -> dict[str, Any]:
+        """
+        Insert one paper row derived from an admin-prepared file (e.g. converted PDF).
+        Directly uploads the prepared bytes to the public 'papers' storage bucket.
+        Preserves original contributor attribution and submission link.
+        """
+        ext = (file_type or "pdf").lstrip(".").lower()
+        new_path = f"{uuid.uuid4()}.{ext}"
+
+        logger.debug(
+            "SubmissionsRepository.create_paper_from_prepared_file: Uploading prepared file to papers/%s",
+            new_path,
+        )
+
+        content_type = "application/pdf"
+        if ext in ["jpg", "jpeg"]:
+            content_type = "image/jpeg"
+        elif ext == "png":
+            content_type = "image/png"
+        elif ext in ["doc", "docx"]:
+            content_type = "application/msword"
+
+        try:
+            self._storage.from_("papers").upload(
+                path=new_path,
+                file=file_bytes,
+                file_options={"content-type": content_type, "upsert": "false"},
+            )
+        except Exception as e:
+            logger.error("Failed to upload prepared file to papers bucket (%s): %s", new_path, e)
+            raise RuntimeError(f"Public storage upload failed for '{new_path}': {e}") from e
+
+        url_response = self._storage.from_("papers").get_public_url(new_path)
+        if isinstance(url_response, str):
+            public_url = url_response
+        elif isinstance(url_response, dict):
+            public_url = url_response.get("publicUrl") or url_response.get("publicURL")
+        else:
+            public_url = None
+
+        # Resolve title
+        final_title = (title or "").strip()
+        if not final_title:
+            class_name = ""
+            subject_name = ""
+            try:
+                subj_stmt = text(
+                    """
+                    SELECT s.name AS subject_name, c.name AS class_name
+                    FROM subjects s
+                    JOIN classes c ON s.class_id = c.id
+                    WHERE s.id = :subject_id
+                    """
+                )
+                subj_row = self._db.execute(subj_stmt, {"subject_id": subject_id}).fetchone()
+                if subj_row:
+                    mapping = dict(subj_row._mapping)
+                    class_name = mapping.get("class_name") or ""
+                    subject_name = mapping.get("subject_name") or ""
+            except Exception as e:
+                logger.warning("Failed to lookup subject/class for canonical title: %s", e)
+
+            type_str = "Question Paper" if paper_type == "question" else "Answer Key"
+            title_parts = [
+                class_name,
+                subject_name,
+                exam_type,
+                month or "",
+                str(year) if year else "",
+                district or "",
+                type_str,
+            ]
+            final_title = " ".join(p for p in title_parts if p).strip()
+            if not final_title:
+                final_title = submission.get("details") or f"Prepared Paper {str(submission['id'])[:8]}"
+
+        # Prevent duplicate title collisions
+        try:
+            chk_stmt = text(
+                """
+                SELECT id FROM papers
+                WHERE subject_id = :subject_id AND title = :title AND year = :year AND exam_type = :exam_type
+                """
+            )
+            existing = self._db.execute(
+                chk_stmt,
+                {"subject_id": subject_id, "title": final_title, "year": year, "exam_type": exam_type},
+            ).fetchall()
+            if existing:
+                final_title = f"{final_title} ({str(submission['id'])[:6]})"
+        except Exception as e:
+            logger.warning("Uniqueness check for paper title query failed: %s", e)
+
+        # Resolve approved download filename
+        clean_dl = (download_filename or "").strip()
+        if clean_dl:
+            if not clean_dl.lower().endswith(f".{ext}"):
+                clean_dl = f"{clean_dl}.{ext}"
+            final_download_filename = clean_dl
+        else:
+            final_download_filename = f"{final_title}.{ext}".replace(" ", "_")
+
+        final_description = (description or "").strip() or None
+        submission_id = str(submission["id"]) if submission.get("id") else None
+        contributor_name = submission.get("publisher_name")
+
+        params = {
+            "subject_id": subject_id,
+            "exam_type": exam_type,
+            "year": year,
+            "title": final_title,
+            "description": final_description,
+            "paper_type": paper_type,
+            "month": month,
+            "district": district,
+            "file_path": new_path,
+            "public_url": public_url,
+            "youtube_url": (youtube_url.strip() if youtube_url else None),
+            "original_filename": final_download_filename,
+            "submission_id": submission_id,
+            "contributor_name": contributor_name,
+        }
+
+        stmt_full = text(
+            """
+            INSERT INTO papers (
+                subject_id, exam_type, year, title, description, paper_type,
+                month, district, file_path, public_url, youtube_url, original_filename,
+                is_visible, download_count, status, submission_id, contributor_name
+            )
+            VALUES (
+                :subject_id, :exam_type, :year, :title, :description, :paper_type,
+                :month, :district, :file_path, :public_url, :youtube_url, :original_filename,
+                true, 0, 'published', :submission_id, :contributor_name
+            )
+            RETURNING id, subject_id, exam_type, year, title, description, paper_type, month, district, file_path, public_url, youtube_url, original_filename, is_visible, download_count, status, submission_id, contributor_name, created_at
+            """
+        )
+
+        try:
+            result = self._db.execute(stmt_full, params)
+            self._db.commit()
+            row = result.fetchone()
+            if not row:
+                raise RuntimeError("Failed to create paper from prepared file — no data returned")
+            d = dict(row._mapping)
+            if d.get("submission_id"):
+                d["submission_id"] = str(d["submission_id"])
+            return d
+        except Exception as e:
+            self._db.rollback()
+            err_msg = str(e).lower()
+            if "does not exist" not in err_msg and "undefinedcolumn" not in err_msg:
+                logger.error("Failed to insert prepared paper record: %s", e)
+                raise
+
+            logger.warning("Primary paper INSERT failed (%s), trying resilient fallback...", e)
+            if "status" in err_msg:
+                try:
+                    stmt_no_status = text(
+                        """
+                        INSERT INTO papers (
+                            subject_id, exam_type, year, title, description, paper_type,
+                            month, district, file_path, public_url, youtube_url, original_filename,
+                            is_visible, download_count, submission_id, contributor_name
+                        )
+                        VALUES (
+                            :subject_id, :exam_type, :year, :title, :description, :paper_type,
+                            :month, :district, :file_path, :public_url, :youtube_url, :original_filename,
+                            true, 0, :submission_id, :contributor_name
+                        )
+                        RETURNING id, subject_id, exam_type, year, title, description, paper_type, month, district, file_path, public_url, youtube_url, original_filename, is_visible, download_count, submission_id, contributor_name, created_at
+                        """
+                    )
+                    result = self._db.execute(stmt_no_status, params)
+                    self._db.commit()
+                    row = result.fetchone()
+                    if row:
+                        d = dict(row._mapping)
+                        d.setdefault("status", "published")
+                        if d.get("submission_id"):
+                            d["submission_id"] = str(d["submission_id"])
+                        return d
+                except Exception as fb_err:
+                    self._db.rollback()
+                    logger.warning("Fallback without status failed: %s", fb_err)
+
+            try:
+                stmt_legacy = text(
+                    """
+                    INSERT INTO papers (
+                        subject_id, exam_type, year, title, paper_type,
+                        month, district, file_path, public_url, youtube_url, original_filename,
+                        is_visible, download_count, submission_id, contributor_name
+                    )
+                    VALUES (
+                        :subject_id, :exam_type, :year, :title, :paper_type,
+                        :month, :district, :file_path, :public_url, :youtube_url, :original_filename,
+                        true, 0, :submission_id, :contributor_name
+                    )
+                    RETURNING id, subject_id, exam_type, year, title, paper_type, month, district, file_path, public_url, youtube_url, original_filename, is_visible, download_count, submission_id, contributor_name, created_at
+                    """
+                )
+                result = self._db.execute(stmt_legacy, params)
+                self._db.commit()
+                row = result.fetchone()
+                if row:
+                    d = dict(row._mapping)
+                    d.setdefault("status", "published")
+                    d.setdefault("description", final_description)
+                    if d.get("submission_id"):
+                        d["submission_id"] = str(d["submission_id"])
+                    return d
+            except Exception as leg_err:
+                self._db.rollback()
+                logger.error("All fallback paper INSERTs failed: %s", leg_err)
+                raise
+
     # ------------------------------------------------------------------ #
     # User's own submissions & contribution history
     # ------------------------------------------------------------------ #
@@ -655,7 +975,7 @@ class SubmissionsRepository:
 
         sql = """
             SELECT s.id, s.publisher_name, s.email, s.firebase_uid, s.details,
-                   s.status, s.rejection_reason, s.reviewed_at, s.created_at
+                   s.status, s.rejection_reason, s.thank_you_message, s.reviewed_at, s.created_at
             FROM submissions s
             WHERE s.firebase_uid = :firebase_uid
         """
@@ -667,13 +987,37 @@ class SubmissionsRepository:
 
         sql += " ORDER BY s.created_at DESC"
 
-        stmt = text(sql)
-        result = self._db.execute(stmt, params)
-        submissions = []
-        for r in result.fetchall():
-            d = dict(r._mapping)
-            d["id"] = str(d["id"])
-            submissions.append(d)
+        try:
+            stmt = text(sql)
+            result = self._db.execute(stmt, params)
+            submissions = []
+            for r in result.fetchall():
+                d = dict(r._mapping)
+                d["id"] = str(d["id"])
+                submissions.append(d)
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "thank_you_message" in err_msg or "undefinedcolumn" in err_msg or "no such column" in err_msg:
+                self._db.rollback()
+                fallback_sql = """
+                    SELECT s.id, s.publisher_name, s.email, s.firebase_uid, s.details,
+                           s.status, s.rejection_reason, s.reviewed_at, s.created_at
+                    FROM submissions s
+                    WHERE s.firebase_uid = :firebase_uid
+                """
+                if email:
+                    fallback_sql += " OR (s.firebase_uid IS NULL AND LOWER(s.email) = LOWER(:email))"
+                fallback_sql += " ORDER BY s.created_at DESC"
+                result = self._db.execute(text(fallback_sql), params)
+                submissions = []
+                for r in result.fetchall():
+                    d = dict(r._mapping)
+                    d["id"] = str(d["id"])
+                    d.setdefault("thank_you_message", None)
+                    submissions.append(d)
+            else:
+                raise
+
 
         if not submissions:
             return []

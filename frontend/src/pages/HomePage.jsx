@@ -63,22 +63,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats bar */}
-      <section className="bg-white border-b border-gray-100">
-        <div className="max-w-5xl mx-auto px-4 py-5 grid grid-cols-3 divide-x divide-gray-100 text-center">
-          {[
-            { label: 'Classes', value: '4' },
-            { label: 'Subjects', value: '32' },
-            { label: 'Free Access', value: '100%' },
-          ].map(s => (
-            <div key={s.label} className="py-1">
-              <p className="text-2xl font-extrabold text-blue-600">{s.value}</p>
-              <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Submit Material CTA */}
       <section className="bg-blue-50 border-b border-blue-100">
         <div className="max-w-4xl mx-auto px-4 py-8 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -93,7 +77,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Top Contributors Spotlight ── */}
-      {!loading && topContributors.length > 0 && (
+      {!loading && topContributors.filter(c => (c.approved_count ?? c.accepted_contributions ?? 0) > 0).length > 0 && (
         <section className="bg-white border-b border-gray-100">
           <div className="max-w-4xl mx-auto px-4 py-8">
             <div className="bg-gradient-to-r from-amber-50/70 via-white to-amber-50/40 rounded-3xl border border-amber-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-5">
@@ -102,13 +86,16 @@ export default function HomePage() {
                   <span className="text-xl">🏆</span>
                   <h2 className="text-lg font-extrabold text-gray-900">Top Contributors</h2>
                 </div>
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1 pt-1 text-xs sm:text-sm text-gray-700">
-                  {topContributors.slice(0, 3).map((c, i) => (
-                    <span key={c.contributor_name} className="flex items-center gap-1.5 font-medium">
-                      <strong className="text-amber-800">{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'} {c.contributor_name}</strong>
-                      <span className="text-gray-400">({c.approved_count ?? c.accepted_contributions} contributions)</span>
-                    </span>
-                  ))}
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1.5 pt-1 text-xs sm:text-sm text-gray-800">
+                  {topContributors
+                    .filter(c => (c.approved_count ?? c.accepted_contributions ?? 0) > 0)
+                    .slice(0, 5)
+                    .map((c, i, arr) => (
+                      <span key={c.contributor_name || i} className="inline-flex items-center font-semibold text-gray-900">
+                        <span>{c.contributor_name}</span>
+                        {i < arr.length - 1 && <span className="ml-3 text-gray-300 font-normal select-none">•</span>}
+                      </span>
+                    ))}
                 </div>
               </div>
               <Link

@@ -59,6 +59,7 @@ class SubmissionListItem(BaseModel):
     status: SubmissionStatus
     file_count: int = Field(default=0, description="Number of files attached")
     rejection_reason: str | None = None
+    thank_you_message: str | None = None
     reviewed_at: datetime | None = None
     created_at: datetime
 
@@ -76,6 +77,7 @@ class SubmissionOut(BaseModel):
     details: str | None = None
     status: SubmissionStatus
     rejection_reason: str | None = None
+    thank_you_message: str | None = None
     reviewed_at: datetime | None = None
     created_at: datetime
     files: list[SubmissionFileOut] = Field(default_factory=list)
@@ -115,6 +117,11 @@ class ApproveRequest(BaseModel):
         None,
         max_length=2000,
         description="Editable description/notes for the published paper",
+    )
+    thank_you_message: str | None = Field(
+        None,
+        max_length=2000,
+        description="Optional thank-you message to the contributor",
     )
     youtube_url: str | None = Field(
         None,
@@ -220,6 +227,7 @@ class UserSubmissionItem(BaseModel):
     details: Optional[str] = None
     status: SubmissionStatus
     rejection_reason: Optional[str] = None
+    thank_you_message: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     created_at: datetime
     files: list[UserSubmissionFile] = Field(default_factory=list)
@@ -231,3 +239,4 @@ class UserSubmissionsResponse(BaseModel):
 
     data: list[UserSubmissionItem] = Field(default_factory=list)
     total: int = Field(default=0)
+

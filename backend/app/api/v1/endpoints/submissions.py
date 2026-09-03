@@ -22,7 +22,7 @@ import logging
 import urllib.parse
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -43,6 +43,7 @@ from app.utils.exceptions import DatabaseError, NotFoundError, ValidationError
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/submissions", tags=["Submissions"])
+
 
 
 # ── POST /api/v1/submissions — authenticated (contributor or higher) ──────────
@@ -258,11 +259,9 @@ async def get_submission(
     summary="Approve a submission (admin)",
     description=(
         "Admin only. Approves a pending submission and creates one published "
-        "paper record in the `papers` table for each submitted file.\n\n"
-        "The request body must supply `subject_id`, `exam_type`, `year`, and "
-        "`paper_type` — the admin fills these in at approval time because the "
-        "public form does not collect subject/class information.\n\n"
-        "The submission status is set to `approved` and `reviewed_at` is set to now."
+        "paper record in the `papers` table (from original files or prepared PDF).\n\n"
+        "Supports both JSON request body (for original-file publication) and "
+        "multipart/form-data (when an admin uploads a prepared PDF)."
     ),
     responses={
         200: {"description": "Approved — paper(s) created"},
@@ -274,13 +273,59 @@ async def get_submission(
 )
 async def approve_submission(
     submission_id: str,
-    req: ApproveRequest,
+    request: Request,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
     """Approve a pending submission and create paper records."""
+    content_type = request.headers.get("content-type", "")
+    prepared_file: UploadFile | None = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        form_dict = dict(form)
+        raw_file = form.get("prepared_file")
+        if isinstance(raw_file, UploadFile) and raw_file.filename:
+            prepared_file = raw_file
+            form_dict.pop("prepared_file", None)
+
+        subject_id_raw = form_dict.get("subject_id")
+        year_raw = form_dict.get("year")
+        if not subject_id_raw or not year_raw or not form_dict.get("exam_type") or not form_dict.get("paper_type"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="subject_id, exam_type, year, and paper_type are required.",
+            )
+
+        try:
+            req = ApproveRequest(
+                title=str(form_dict["title"]).strip() if form_dict.get("title") else None,
+                download_filename=str(form_dict["download_filename"]).strip() if form_dict.get("download_filename") else None,
+                description=str(form_dict["description"]).strip() if form_dict.get("description") else None,
+                thank_you_message=str(form_dict["thank_you_message"]).strip() if form_dict.get("thank_you_message") else None,
+                youtube_url=str(form_dict["youtube_url"]).strip() if form_dict.get("youtube_url") else None,
+                class_id=int(form_dict["class_id"]) if form_dict.get("class_id") else None,
+                subject_id=int(subject_id_raw),
+                exam_type=str(form_dict["exam_type"]),
+                year=int(year_raw),
+                paper_type=str(form_dict["paper_type"]),
+                month=str(form_dict["month"]).strip() if form_dict.get("month") else None,
+                district=str(form_dict["district"]).strip() if form_dict.get("district") else None,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    else:
+        try:
+            body = await request.json()
+            req = ApproveRequest(**body)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
     service = SubmissionsService(db)
-    return service.approve_submission(submission_id, req)
+    return await service.approve_submission(submission_id, req, prepared_file=prepared_file)
+
 
 
 # ── POST /api/v1/submissions/{id}/reject — admin ─────────────────────────────

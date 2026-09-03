@@ -49,6 +49,11 @@ logger = logging.getLogger(__name__)
 # Characters allowed in the stored original filename (for display only)
 _SAFE_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._\- ]")
 
+DEFAULT_THANK_YOU_MESSAGE: str = (
+    "🎉 Your contribution is now public!\n"
+    "Thank you for contributing to the TN Board community. Your contribution may help another student prepare better. ❤️"
+)
+
 # MIME type map for file extension → Content-Type header
 _EXT_TO_MIME: dict[str, str] = {
     "pdf":  "application/pdf",
@@ -58,6 +63,7 @@ _EXT_TO_MIME: dict[str, str] = {
     "jpeg": "image/jpeg",
     "png":  "image/png",
 }
+
 
 
 def _sanitise_filename(name: str) -> str:
@@ -248,23 +254,30 @@ class SubmissionsService:
     # POST /api/v1/submissions/{id}/approve
     # ------------------------------------------------------------------ #
 
-    def approve_submission(
+    async def approve_submission(
         self,
         submission_id: str,
         req: ApproveRequest,
+        prepared_file: UploadFile | tuple[str, bytes, str] | None = None,
     ) -> dict[str, Any]:
         """
         Approve a pending submission:
           1. Load submission — raise 404 if not found
           2. Verify status == 'pending'
-          3. Create one paper record per file in the papers table
-          4. Update submission status → 'approved', set reviewed_at
+          3. If prepared_file is provided:
+             - Validate it and create one paper record directly from the prepared file
+             - Original submission files remain preserved in private bucket
+             If prepared_file is NOT provided:
+             - Create one paper record per file in the original submission_files
+          4. Update submission status → 'approved', set thank_you_message and reviewed_at
 
-        Returns a dict with the submission id and list of created paper ids.
-        Raises ValidationError if submission is not pending.
+        Returns a dict with the submission id, status, paper_ids, and thank_you_message.
+        Raises ValidationError if submission is not pending or file is invalid.
         """
         logger.info(
-            "SubmissionsService.approve_submission(submission_id=%s)", submission_id
+            "SubmissionsService.approve_submission(submission_id=%s, has_prepared_file=%s)",
+            submission_id,
+            prepared_file is not None,
         )
 
         sub = self._repo.get_by_id(submission_id)
@@ -276,12 +289,6 @@ class SubmissionsService:
                 f"Submission is already '{sub['status']}' — only pending submissions can be approved."
             )
 
-        files = self._repo.get_files(submission_id)
-        if not files:
-            raise ValidationError(
-                "Submission has no files — cannot approve a submission without files."
-            )
-
         # Validate YouTube URL if provided
         youtube_url = None
         if req.youtube_url and req.youtube_url.strip():
@@ -290,12 +297,37 @@ class SubmissionsService:
             except ValueError as e:
                 raise ValidationError(str(e))
 
-        # Create paper records for each file
         paper_ids: list[int] = []
-        for file_row in files:
+
+        # ── PATH A: Admin-Prepared File Upload ──────────────────────────
+        if prepared_file is not None:
+            if isinstance(prepared_file, UploadFile):
+                raw_filename = prepared_file.filename or "prepared.pdf"
+                content = await prepared_file.read()
+                content_type = prepared_file.content_type or "application/pdf"
+            elif isinstance(prepared_file, tuple):
+                raw_filename, content, content_type = prepared_file
+            else:
+                raise ValidationError("Invalid prepared file object.")
+
+            size = len(content)
+            if size == 0:
+                raise ValidationError("Prepared file is empty.")
+            if size > MAX_FILE_SIZE_BYTES:
+                mb = MAX_FILE_SIZE_BYTES // (1024 * 1024)
+                raise ValidationError(
+                    f"Prepared file exceeds the {mb} MB size limit ({size / (1024 * 1024):.1f} MB)."
+                )
+
+            ext = raw_filename.rsplit(".", 1)[-1].lower() if "." in raw_filename else "pdf"
+            if ext not in ALLOWED_EXTENSIONS:
+                raise ValidationError(
+                    f"Prepared file has unsupported extension '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}."
+                )
+
             try:
-                paper = self._repo.create_paper_from_file(
-                    file_row=file_row,
+                paper = self._repo.create_paper_from_prepared_file(
+                    file_bytes=content,
                     subject_id=req.subject_id,
                     exam_type=req.exam_type,
                     year=req.year,
@@ -307,40 +339,93 @@ class SubmissionsService:
                     download_filename=req.download_filename,
                     description=req.description,
                     youtube_url=youtube_url,
+                    file_type=ext,
                 )
                 paper_ids.append(paper["id"])
             except Exception as exc:
                 logger.exception(
-                    "Failed to create paper for file %s in submission %s: %s",
-                    file_row.get("id"),
+                    "Failed to create paper from prepared file for submission %s: %s",
                     submission_id,
                     exc,
                 )
-                filename = file_row.get("original_filename") or file_row.get("id")
-                # Format a safe, useful error message
                 err_msg = str(exc).strip()
                 if "duplicate key" in err_msg.lower() or "unique constraint" in err_msg.lower():
                     clean_reason = "A paper with this title, subject, year, and exam type already exists."
                 else:
                     clean_reason = err_msg.split("\n")[0]
                 raise DatabaseError(
-                    f"Failed to publish paper '{filename}': {clean_reason}"
+                    f"Failed to publish prepared paper: {clean_reason}"
                 ) from exc
 
+        # ── PATH B: Original Contributor Uploaded File(s) ───────────────
+        else:
+            files = self._repo.get_files(submission_id)
+            if not files:
+                raise ValidationError(
+                    "Submission has no files — cannot approve a submission without files."
+                )
+
+            for file_row in files:
+                try:
+                    paper = self._repo.create_paper_from_file(
+                        file_row=file_row,
+                        subject_id=req.subject_id,
+                        exam_type=req.exam_type,
+                        year=req.year,
+                        paper_type=req.paper_type,
+                        month=req.month,
+                        district=req.district,
+                        submission=sub,
+                        title=req.title,
+                        download_filename=req.download_filename,
+                        description=req.description,
+                        youtube_url=youtube_url,
+                    )
+                    paper_ids.append(paper["id"])
+                except Exception as exc:
+                    logger.exception(
+                        "Failed to create paper for file %s in submission %s: %s",
+                        file_row.get("id"),
+                        submission_id,
+                        exc,
+                    )
+                    filename = file_row.get("original_filename") or file_row.get("id")
+                    err_msg = str(exc).strip()
+                    if "duplicate key" in err_msg.lower() or "unique constraint" in err_msg.lower():
+                        clean_reason = "A paper with this title, subject, year, and exam type already exists."
+                    else:
+                        clean_reason = err_msg.split("\n")[0]
+                    raise DatabaseError(
+                        f"Failed to publish paper '{filename}': {clean_reason}"
+                    ) from exc
+
+        # Resolve thank-you message
+        thank_you = (req.thank_you_message or "").strip() or DEFAULT_THANK_YOU_MESSAGE
+
         # Mark submission as approved
-        self._repo.update_status(submission_id, "approved")
+        self._repo.update_status(
+            submission_id=submission_id,
+            status="approved",
+            thank_you_message=thank_you,
+        )
 
         logger.info(
             "Submission %s approved — created paper ids: %s",
             submission_id,
             paper_ids,
         )
-        return {"submission_id": submission_id, "status": "approved", "paper_ids": paper_ids}
+        return {
+            "submission_id": submission_id,
+            "status": "approved",
+            "paper_ids": paper_ids,
+            "thank_you_message": thank_you,
+        }
 
     # ------------------------------------------------------------------ #
     # ADMIN: Reject a submission
     # POST /api/v1/submissions/{id}/reject
     # ------------------------------------------------------------------ #
+
 
     def reject_submission(
         self,
@@ -519,6 +604,7 @@ class SubmissionsService:
                     details=r.get("details"),
                     status=r["status"],
                     rejection_reason=r.get("rejection_reason"),
+                    thank_you_message=r.get("thank_you_message"),
                     reviewed_at=r.get("reviewed_at"),
                     created_at=r["created_at"],
                     files=files,
@@ -527,6 +613,7 @@ class SubmissionsService:
             )
 
         return UserSubmissionsResponse(data=items, total=len(items))
+
 
     def get_user_stats(
         self, firebase_uid: str, email: str | None = None

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { NavLink, Outlet, useNavigate, useLocation, ScrollRestoration } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 
 const NAV = [
@@ -63,7 +63,16 @@ const NAV = [
 export default function AdminLayout() {
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const mainRef = useRef(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [pathname])
 
   const handleLogout = () => {
     logout()
@@ -123,6 +132,7 @@ export default function AdminLayout() {
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
+      <ScrollRestoration />
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col md:w-64 shrink-0">
         <Sidebar />
@@ -158,7 +168,7 @@ export default function AdminLayout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main ref={mainRef} className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
       </div>

@@ -15,6 +15,38 @@ import { viewPdf } from '../../utils/download'
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i)
 
+const DEFAULT_THANK_YOU_MESSAGE =
+  "🎉 Your contribution is now public!\nThank you for contributing to the TN Board community. Your contribution may help another student prepare better. ❤️"
+
+const REJECTION_PRESETS = [
+  {
+    id: 'duplicate',
+    label: 'Duplicate Submission',
+    text: 'This paper has already been published through another contributor. Thank you for taking the time to contribute to the TN Board community. ❤️',
+  },
+  {
+    id: 'poor_quality',
+    label: 'Unreadable / Poor Quality',
+    text: 'The uploaded pages or images are blurry, cut off, or difficult to read. Please resubmit with clear, well-lit photos or a scanned PDF.',
+  },
+  {
+    id: 'incomplete',
+    label: 'Incomplete Pages / Missing Sections',
+    text: 'The submission appears to be missing essential pages, questions, or answer keys. Please re-upload the full paper.',
+  },
+  {
+    id: 'incorrect_content',
+    label: 'Incorrect / Unverified Content',
+    text: 'The content could not be verified against the official TN State Board syllabus or exam requirements.',
+  },
+  {
+    id: 'out_of_scope',
+    label: 'Not Relevant / Out of Scope',
+    text: 'This material does not match the TN State Board curriculum (Classes 9–12) or does not meet our publishing guidelines.',
+  },
+]
+
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtDate(iso) {
@@ -316,7 +348,7 @@ function extractYouTubeId(url) {
   return null
 }
 
-function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
+function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onRequestDelete }) {
   const initialFileName = submission.files?.[0]?.original_filename || ''
   const [approveForm, setApproveForm] = useState({
     title: '',
@@ -331,10 +363,14 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
     month: '',
     district: '',
   })
+  const [publishSource, setPublishSource]     = useState('original') // 'original' | 'prepared'
+  const [preparedFile, setPreparedFile]       = useState(null)
+  const [thankYouMessage, setThankYouMessage] = useState(DEFAULT_THANK_YOU_MESSAGE)
   const [titleManuallyEdited, setTitleManuallyEdited] = useState(false)
   const [filenameManuallyEdited, setFilenameManuallyEdited] = useState(Boolean(initialFileName))
   const [subjects, setSubjects]               = useState([])
   const [rejectReason, setRejectReason]       = useState('')
+  const [selectedPresetId, setSelectedPresetId] = useState(null)
   const [showRejectForm, setShowRejectForm]   = useState(false)
   const [showRejectConfirm, setShowRejectConfirm] = useState(false)
   const [loading, setLoading]                 = useState(false)
@@ -394,22 +430,45 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
     if (approveForm.youtubeUrl.trim() && !extractYouTubeId(approveForm.youtubeUrl.trim())) {
       return setError('Please enter a valid YouTube video URL (e.g. https://youtube.com/watch?v=... or https://youtu.be/...) or leave it blank.')
     }
+    if (publishSource === 'prepared' && !preparedFile) {
+      return setError('Please select the prepared publication PDF file to upload.')
+    }
 
     setLoading(true)
     try {
-      await approveSubmission(submission.id, {
-        title:              approveForm.title.trim(),
-        download_filename:  approveForm.downloadFilename.trim(),
-        description:        approveForm.description.trim() || null,
-        youtube_url:        approveForm.youtubeUrl.trim() || null,
-        class_id:           parseInt(approveForm.classId, 10),
-        subject_id:         parseInt(approveForm.subjectId, 10),
-        exam_type:          approveForm.examType,
-        year:               parseInt(approveForm.year, 10),
-        paper_type:         approveForm.paperType,
-        month:              approveForm.month || null,
-        district:           approveForm.district || null,
-      })
+      if (publishSource === 'prepared' && preparedFile) {
+        const formData = new FormData()
+        formData.append('title', approveForm.title.trim())
+        formData.append('download_filename', approveForm.downloadFilename.trim())
+        if (approveForm.description.trim()) formData.append('description', approveForm.description.trim())
+        if (thankYouMessage.trim()) formData.append('thank_you_message', thankYouMessage.trim())
+        if (approveForm.youtubeUrl.trim()) formData.append('youtube_url', approveForm.youtubeUrl.trim())
+        formData.append('class_id', String(approveForm.classId))
+        formData.append('subject_id', String(approveForm.subjectId))
+        formData.append('exam_type', approveForm.examType)
+        formData.append('year', String(approveForm.year))
+        formData.append('paper_type', approveForm.paperType)
+        if (approveForm.month) formData.append('month', approveForm.month)
+        if (approveForm.district) formData.append('district', approveForm.district)
+        formData.append('prepared_file', preparedFile)
+
+        await approveSubmission(submission.id, formData)
+      } else {
+        await approveSubmission(submission.id, {
+          title:              approveForm.title.trim(),
+          download_filename:  approveForm.downloadFilename.trim(),
+          description:        approveForm.description.trim() || null,
+          thank_you_message:  thankYouMessage.trim() || null,
+          youtube_url:        approveForm.youtubeUrl.trim() || null,
+          class_id:           parseInt(approveForm.classId, 10),
+          subject_id:         parseInt(approveForm.subjectId, 10),
+          exam_type:          approveForm.examType,
+          year:               parseInt(approveForm.year, 10),
+          paper_type:         approveForm.paperType,
+          month:              approveForm.month || null,
+          district:           approveForm.district || null,
+        })
+      }
       onReviewed('approved', submission.id)
       onClose()
     } catch (err) {
@@ -449,6 +508,11 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSelectPreset = (preset) => {
+    setSelectedPresetId(preset.id)
+    setRejectReason(preset.text)
   }
 
   const isPending  = submission.status === 'pending'
@@ -498,9 +562,15 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
               <p className="text-sm text-red-700">{submission.rejection_reason}</p>
             </div>
           )}
+          {submission.status === 'approved' && submission.thank_you_message && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+              <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide mb-1">Thank-You Message</p>
+              <p className="text-sm text-emerald-900 whitespace-pre-line">{submission.thank_you_message}</p>
+            </div>
+          )}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Files ({submission.files?.length || 0})
+              Original Files ({submission.files?.length || 0})
             </p>
             {!submission.files?.length ? (
               <p className="text-sm text-gray-400">No files attached.</p>
@@ -522,7 +592,7 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
                     <span>✅</span> Approved &amp; Published
                   </p>
                   <p className="text-xs text-emerald-700 mt-1">
-                    This submission has been approved and published to the public materials catalog.
+                    This submission has been approved and published to the public materials catalog. Contributor attribution remains preserved.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -585,7 +655,7 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
 
           {/* ── PENDING: Approve form & Delete ──────────────────────────── */}
           {isPending && !showRejectForm && !showRejectConfirm && (
-            <div className="border border-emerald-200 bg-emerald-50/70 rounded-2xl p-5 sm:p-6 space-y-4">
+            <div className="border border-emerald-200 bg-emerald-50/70 rounded-2xl p-5 sm:p-6 space-y-5">
               <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
                 <p className="text-base font-bold text-emerald-900 flex items-center gap-2">
                   <span>✅</span> Approve &amp; Publish Paper
@@ -595,18 +665,71 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
                 </span>
               </div>
 
-              {/* ── Source File Identification ── */}
-              <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex items-start gap-3 shadow-2xs">
-                <span className="text-2xl shrink-0 mt-0.5">📄</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Original Uploaded File</p>
-                  <p className="text-sm font-semibold text-gray-900 font-mono break-all mt-0.5">
-                    {submission.files?.[0]?.original_filename || 'Document.pdf'}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Original upload is preserved in metadata. Adjust the public title, download filename, and description below.
-                  </p>
+              {/* ── Publication Choice: Original Files vs Admin Prepared PDF ── */}
+              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-2xs space-y-3">
+                <p className="text-xs font-bold text-gray-800 uppercase tracking-wider">Publication File Choice</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <label
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      publishSource === 'original'
+                        ? 'bg-emerald-50/60 border-emerald-400 ring-1 ring-emerald-400'
+                        : 'bg-white border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="publishSource"
+                      value="original"
+                      checked={publishSource === 'original'}
+                      onChange={() => setPublishSource('original')}
+                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <div className="text-xs">
+                      <p className="font-bold text-gray-900">Use original uploaded file(s)</p>
+                      <p className="text-gray-500 mt-0.5">Publish directly using the contributor's uploaded document.</p>
+                    </div>
+                  </label>
+                  <label
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      publishSource === 'prepared'
+                        ? 'bg-emerald-50/60 border-emerald-400 ring-1 ring-emerald-400'
+                        : 'bg-white border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="publishSource"
+                      value="prepared"
+                      checked={publishSource === 'prepared'}
+                      onChange={() => setPublishSource('prepared')}
+                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <div className="text-xs">
+                      <p className="font-bold text-gray-900">Use prepared publication file (PDF)</p>
+                      <p className="text-gray-500 mt-0.5">Upload a prepared/cleaned PDF. Contributor attribution is fully preserved.</p>
+                    </div>
+                  </label>
                 </div>
+
+                {publishSource === 'prepared' && (
+                  <div className="mt-3 p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2">
+                    <label className="block text-xs font-bold text-blue-900">
+                      Upload Prepared PDF <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={e => {
+                        const f = e.target.files?.[0] || null
+                        setPreparedFile(f)
+                      }}
+                      className="block w-full text-xs text-gray-700 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
+                    />
+                    <p className="text-[11px] text-blue-700">
+                      💡 Original submission files will remain safely archived. The published catalog entry will credit <strong>{submission.publisher_name}</strong>.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* ── 1. Paper Title (Admin Editable) ── */}
@@ -669,7 +792,29 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
                 />
               </div>
 
-              {/* ── 4. YouTube Explanation Video URL (Optional) ── */}
+              {/* ── 4. Approval Thank-You Message (Admin Editable) ── */}
+              <div>
+                <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
+                  <span>Approval Thank-You Message <span className="text-gray-400 font-normal">(shown to contributor)</span></span>
+                  <button
+                    type="button"
+                    onClick={() => setThankYouMessage(DEFAULT_THANK_YOU_MESSAGE)}
+                    className="text-[11px] text-emerald-700 hover:underline font-semibold"
+                  >
+                    Reset to Default
+                  </button>
+                </label>
+                <textarea
+                  rows={3}
+                  value={thankYouMessage}
+                  onChange={e => setThankYouMessage(e.target.value)}
+                  placeholder="Thank-you note displayed to the contributor upon approval…"
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white text-gray-900 placeholder:text-gray-400 shadow-2xs resize-none"
+                  maxLength={2000}
+                />
+              </div>
+
+              {/* ── 5. YouTube Explanation Video URL (Optional) ── */}
               <div>
                 <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
                   <span>YouTube Explanation Video <span className="text-gray-400 font-normal">(optional)</span></span>
@@ -820,19 +965,72 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
 
           {/* ── PENDING: Rejection reason form ──────────────────────────── */}
           {isPending && showRejectForm && !showRejectConfirm && (
-            <div className="border border-red-200 bg-red-50 rounded-2xl p-5">
-              <p className="text-sm font-bold text-red-800 mb-3 flex items-center gap-2"><span>❌</span> Reject Submission</p>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                Rejection Reason <span className="text-gray-400 font-normal">(optional)</span>
-              </label>
-              <textarea
-                value={rejectReason}
-                onChange={e => setRejectReason(e.target.value)}
-                rows={3}
-                placeholder="Explain why the submission was rejected (for internal reference)…"
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-red-500 outline-none resize-none mb-3"
-              />
-              <div className="flex gap-2">
+            <div className="border border-red-200 bg-red-50 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-red-800 flex items-center gap-2">
+                  <span>❌</span> Select or Enter Rejection Reason
+                </p>
+                <span className="text-[11px] font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded-md">
+                  5 Presets + Custom
+                </span>
+              </div>
+
+              {/* ── Preset Buttons ── */}
+              <div>
+                <p className="text-xs font-bold text-gray-700 mb-2">Preset Reasons:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {REJECTION_PRESETS.map(preset => {
+                    const active = selectedPresetId === preset.id
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleSelectPreset(preset)}
+                        className={`text-left text-xs p-2.5 rounded-xl border transition-all ${
+                          active
+                            ? 'bg-red-600 text-white border-red-600 font-semibold shadow-2xs'
+                            : 'bg-white text-gray-800 border-red-200 hover:bg-red-100/60 font-medium'
+                        }`}
+                      >
+                        <p className="font-bold">{preset.label}</p>
+                        <p className={`text-[11px] line-clamp-2 mt-0.5 ${active ? 'text-red-100' : 'text-gray-500'}`}>
+                          {preset.text}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    Reason Message <span className="text-gray-400 font-normal">(editable, visible in rejection history)</span>
+                  </label>
+                  {rejectReason && (
+                    <button
+                      type="button"
+                      onClick={() => { setRejectReason(''); setSelectedPresetId(null) }}
+                      className="text-[11px] text-gray-500 hover:text-red-600 underline"
+                    >
+                      Clear message
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  value={rejectReason}
+                  onChange={e => {
+                    setRejectReason(e.target.value)
+                    setSelectedPresetId(null)
+                  }}
+                  rows={3}
+                  placeholder="Select a preset above or write a custom reason…"
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-red-500 outline-none resize-none bg-white text-gray-900 shadow-2xs"
+                  maxLength={1000}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => { setShowRejectConfirm(true); setError(null) }}
                   disabled={loading}
@@ -894,6 +1092,7 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed }) {
     </div>
   )
 }
+
 
 // ── Delete Confirmation Modal ──────────────────────────────────────────────────
 

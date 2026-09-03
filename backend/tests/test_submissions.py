@@ -1860,6 +1860,189 @@ class TestDeleteSubmission:
             app.dependency_overrides.clear()
 
 
+# ============================================================================
+# Tests: UX Enhancements (Thank-you message, Rejection presets, Prepared PDF)
+# ============================================================================
+
+class TestSubmissionUXEnhancements:
+    """Tests for thank-you messages, rejection presets, and prepared PDF publication workflow."""
+
+    def test_approve_submission_sets_default_thank_you_message(self):
+        """When admin approves without custom thank-you message, default thank-you message is saved."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [MOCK_PAPER],
+        })
+        mock_db.storage = MagicMock()
+        mock_bucket = MagicMock()
+        mock_bucket.download.return_value = b"file content"
+        mock_bucket.upload.return_value = MagicMock()
+        mock_bucket.get_public_url.return_value = MOCK_PAPER["public_url"]
+        mock_db.storage.from_.return_value = mock_bucket
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json={
+                "subject_id": 1,
+                "exam_type": "Annual Exam",
+                "year": 2024,
+                "paper_type": "question",
+            },
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "approved"
+        assert "thank_you_message" in body
+        assert "Thank you for contributing to the TN Board community" in body["thank_you_message"]
+
+    def test_approve_submission_sets_custom_thank_you_message(self):
+        """When admin provides a custom thank-you message, it is stored with the submission."""
+        custom_msg = "Special thanks to Sharruk for providing the authentic 2024 Math question paper! ❤️"
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [MOCK_PAPER],
+        })
+        mock_db.storage = MagicMock()
+        mock_bucket = MagicMock()
+        mock_bucket.download.return_value = b"file content"
+        mock_bucket.upload.return_value = MagicMock()
+        mock_bucket.get_public_url.return_value = MOCK_PAPER["public_url"]
+        mock_db.storage.from_.return_value = mock_bucket
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json={
+                "subject_id": 1,
+                "exam_type": "Annual Exam",
+                "year": 2024,
+                "paper_type": "question",
+                "thank_you_message": custom_msg,
+            },
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["thank_you_message"] == custom_msg
+
+    def test_approve_submission_with_prepared_pdf_multipart(self):
+        """Admin uploads prepared PDF via multipart form data; paper is published using prepared PDF."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [MOCK_PAPER],
+        })
+        mock_db.storage = MagicMock()
+        papers_bucket_mock = MagicMock()
+        papers_bucket_mock.upload.return_value = MagicMock()
+        papers_bucket_mock.get_public_url.return_value = "https://cdn.example.com/papers/prepared_uuid.pdf"
+        mock_db.storage.from_.return_value = papers_bucket_mock
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+
+        form_data = {
+            "title": "Class 10 Science Monthly Test August 2026 - Chennai",
+            "download_filename": "Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf",
+            "subject_id": "1",
+            "exam_type": "Monthly Test",
+            "year": "2026",
+            "paper_type": "question",
+            "month": "August",
+            "district": "Chennai",
+            "thank_you_message": "Thank you for the contribution!",
+        }
+        files = {
+            "prepared_file": ("clean_prepared.pdf", b"%PDF-1.4 simulated prepared PDF bytes", "application/pdf")
+        }
+
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            data=form_data,
+            files=files,
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "approved"
+        assert len(body["paper_ids"]) >= 1
+        assert papers_bucket_mock.upload.called
+
+    def test_reject_submission_with_preset_reason(self):
+        """Admin rejects submission with one of the 5 preset rejection reasons."""
+        duplicate_reason = (
+            "This paper has already been published through another contributor. "
+            "Thank you for taking the time to contribute to the TN Board community. ❤️"
+        )
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+        })
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/reject",
+            json={"rejection_reason": duplicate_reason},
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "rejected"
+        assert body["rejection_reason"] == duplicate_reason
+
+    def test_get_user_submissions_includes_thank_you_message(self):
+        """User can view their approved submissions with thank_you_message returned."""
+        approved_sub = {
+            **MOCK_SUBMISSION,
+            "status": "approved",
+            "firebase_uid": "user-contributor-uid",
+            "thank_you_message": "🎉 Your contribution is now public! Thank you ❤️",
+        }
+        mock_db = _make_table_db({
+            "submissions": [approved_sub],
+            "submission_files": [MOCK_FILE],
+            "papers": [MOCK_PAPER],
+        })
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "CONTRIBUTOR",
+            "firebase_uid": "user-contributor-uid",
+            "email": "sharruk@example.com",
+        }
+        client = TestClient(app)
+        response = client.get(
+            "/api/v1/submissions/my",
+            headers={"Authorization": "Bearer contributor-token"},
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+        assert data[0]["thank_you_message"] == "🎉 Your contribution is now public! Thank you ❤️"
+
+
+
 
 
 

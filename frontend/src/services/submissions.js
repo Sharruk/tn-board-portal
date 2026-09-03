@@ -162,6 +162,30 @@ export async function approveSubmission(tokenOrId, idOrBody, maybeBody) {
   const token = await getFirebaseToken(true)
   if (!token) throw new Error('Authentication required')
 
+  if (body instanceof FormData) {
+    const url = getApiUrl(`/api/v1/submissions/${id}/approve`)
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: body,
+    })
+
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`
+      try {
+        const resBody = await response.json()
+        detail = resBody?.detail || resBody?.message || detail
+      } catch {
+        // ignore JSON parse errors
+      }
+      throw new Error(detail)
+    }
+
+    return response.json()
+  }
+
   return apiFetch(`/api/v1/submissions/${id}/approve`, {
     method: 'POST',
     headers: {
@@ -171,6 +195,7 @@ export async function approveSubmission(tokenOrId, idOrBody, maybeBody) {
     body: JSON.stringify(body),
   })
 }
+
 
 // ── Admin: Reject submission ──────────────────────────────────────────────────
 
