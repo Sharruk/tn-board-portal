@@ -251,8 +251,28 @@ class PapersRepository:
             LIMIT :limit
             """
         )
-        result = self._db.execute(stmt, {"limit": limit})
-        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        try:
+            result = self._db.execute(stmt, {"limit": limit})
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "does not exist" not in err_msg and "undefinedcolumn" not in err_msg and "no such column" not in err_msg:
+                raise
+            self._db.rollback()
+            fallback_stmt = text(
+                """
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, created_at
+                FROM papers
+                WHERE is_visible = true
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """
+            )
+            result = self._db.execute(fallback_stmt, {"limit": limit})
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def list_popular(self, limit: int = 10) -> list[dict[str, Any]]:
         """
@@ -271,8 +291,28 @@ class PapersRepository:
             LIMIT :limit
             """
         )
-        result = self._db.execute(stmt, {"limit": limit})
-        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        try:
+            result = self._db.execute(stmt, {"limit": limit})
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "does not exist" not in err_msg and "undefinedcolumn" not in err_msg and "no such column" not in err_msg:
+                raise
+            self._db.rollback()
+            fallback_stmt = text(
+                """
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, created_at
+                FROM papers
+                WHERE is_visible = true
+                ORDER BY download_count DESC
+                LIMIT :limit
+                """
+            )
+            result = self._db.execute(fallback_stmt, {"limit": limit})
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def list_by_subject(
         self,
@@ -308,8 +348,25 @@ class PapersRepository:
             ORDER BY year DESC
         """
         stmt = text(sql)
-        result = self._db.execute(stmt, params)
-        return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        try:
+            result = self._db.execute(stmt, params)
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
+        except Exception as exc:
+            err_msg = str(exc).lower()
+            if "does not exist" not in err_msg and "undefinedcolumn" not in err_msg and "no such column" not in err_msg:
+                raise
+            self._db.rollback()
+            fallback_sql = f"""
+                SELECT 
+                    id, subject_id, exam_type, year, month, district, title, paper_type,
+                    public_url, youtube_url, original_filename, is_visible,
+                    download_count, created_at
+                FROM papers
+                WHERE {where_clause}
+                ORDER BY year DESC
+            """
+            result = self._db.execute(text(fallback_sql), params)
+            return [_add_status(dict(row._mapping)) for row in result.fetchall()]
 
     def search(
         self,

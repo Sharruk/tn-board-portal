@@ -685,4 +685,184 @@ def test_get_paper_fallback_when_all_optional_columns_undefined():
         app.dependency_overrides.clear()
 
 
+def test_list_recent_and_popular_fallback_when_contributor_columns_undefined():
+    """
+    Regression test verifying that list_recent and list_popular gracefully fall back
+    when contributor_name/submission_id columns are missing in legacy DB schema.
+    """
+    from app.dependencies.supabase import get_db
+
+    mock_db = MagicMock()
+    call_count = {"count": 0}
+
+    core_row = {
+        "id": 101,
+        "subject_id": 8,
+        "exam_type": "Annual Exam",
+        "year": 2026,
+        "month": "March",
+        "district": "Chennai",
+        "title": "Class 10 Maths Annual 2026",
+        "paper_type": "question",
+        "public_url": "https://example.com/p101.pdf",
+        "youtube_url": None,
+        "original_filename": "Maths_Annual.pdf",
+        "is_visible": True,
+        "download_count": 120,
+        "created_at": _NOW,
+    }
+
+    def _execute(stmt, params=None):
+        call_count["count"] += 1
+        sql = str(stmt).lower()
+        if "contributor_name" in sql or "submission_id" in sql:
+            raise Exception("psycopg2.errors.UndefinedColumn: column contributor_name does not exist")
+        return MockResult([core_row])
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        client = TestClient(app)
+        # Test recent
+        resp = client.get("/api/v1/papers?sort=recent&limit=10")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["data"]) == 1
+        assert data["data"][0]["id"] == 101
+        assert data["data"][0]["contributor_name"] is None
+
+        # Test popular
+        resp_pop = client.get("/api/v1/papers?sort=popular&limit=10")
+        assert resp_pop.status_code == 200
+        data_pop = resp_pop.json()
+        assert len(data_pop["data"]) == 1
+        assert data_pop["data"][0]["id"] == 101
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_critical_regression_paper_catalog_and_contributor_isolation():
+    """
+    CRITICAL REGRESSION TEST:
+    Scenario with:
+      A. Existing normal published paper (contributor_name=None, submission_id=None)
+      B. Existing contributor-submitted published paper (contributor_name='Alice', submission_id='...')
+      C. Contributor with zero published contributions ('Bob', 0 approved)
+
+    Expected:
+      - A appears on paper list (GET /api/v1/papers).
+      - B appears on paper list (GET /api/v1/papers) with contributor attribution.
+      - C does not appear in top contributors (GET /api/v1/leaderboard with approved_count > 0 filter).
+      - Contributor filtering logic has NO effect on the paper catalog.
+    """
+    from app.dependencies.supabase import get_db
+
+    mock_db = MagicMock()
+
+    # Paper A: Normal published paper
+    paper_a = {
+        "id": 1,
+        "subject_id": 8,
+        "exam_type": "Annual Exam",
+        "year": 2026,
+        "month": "March",
+        "district": "Chennai",
+        "title": "Standard Admin Uploaded Paper A",
+        "paper_type": "question",
+        "public_url": "https://example.com/p1.pdf",
+        "youtube_url": None,
+        "original_filename": "Paper_A.pdf",
+        "is_visible": True,
+        "download_count": 10,
+        "contributor_name": None,
+        "submission_id": None,
+        "created_at": _NOW,
+    }
+
+    # Paper B: Contributor-submitted published paper
+    paper_b = {
+        "id": 2,
+        "subject_id": 8,
+        "exam_type": "Annual Exam",
+        "year": 2026,
+        "month": "March",
+        "district": "Madurai",
+        "title": "Community Contributed Paper B",
+        "paper_type": "question",
+        "public_url": "https://example.com/p2.pdf",
+        "youtube_url": None,
+        "original_filename": "Paper_B.pdf",
+        "is_visible": True,
+        "download_count": 20,
+        "contributor_name": "Alice Star",
+        "submission_id": "00000000-0000-0000-0000-000000000001",
+        "created_at": _NOW,
+    }
+
+    # Raw submissions for leaderboard
+    # Alice has 1 approved submission.
+    # Bob has 1 pending / 0 approved submissions.
+    leaderboard_raw_subs = [
+        {
+            "publisher_name": "Alice Star",
+            "firebase_uid": "uid_alice",
+            "status": "approved",
+            "file_count": 1,
+        },
+        {
+            "publisher_name": "Bob Zero",
+            "firebase_uid": "uid_bob",
+            "status": "pending",
+            "file_count": 1,
+        },
+    ]
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        if "from papers" in sql:
+            return MockResult([paper_a, paper_b])
+        if "from submissions" in sql:
+            return MockResult(leaderboard_raw_subs)
+        return MockResult([])
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    try:
+        client = TestClient(app)
+
+        # 1. Verify paper catalog returns BOTH Paper A and Paper B
+        papers_resp = client.get("/api/v1/papers?sort=recent&limit=10")
+        assert papers_resp.status_code == 200
+        paper_items = papers_resp.json()["data"]
+        paper_ids = [p["id"] for p in paper_items]
+        assert 1 in paper_ids, "Paper A (normal published paper) must appear in catalog"
+        assert 2 in paper_ids, "Paper B (contributor-submitted paper) must appear in catalog"
+
+        paper_a_item = next(p for p in paper_items if p["id"] == 1)
+        paper_b_item = next(p for p in paper_items if p["id"] == 2)
+        assert paper_a_item["contributor_name"] is None
+        assert paper_b_item["contributor_name"] == "Alice Star"
+
+        # 2. Verify leaderboard / Top Contributors
+        lb_resp = client.get("/api/v1/leaderboard?limit=5")
+        assert lb_resp.status_code == 200
+        contributors = lb_resp.json()["data"]
+
+        # Filter active top contributors as frontend HomePage does: (c.approved_count > 0)
+        active_top_contributors = [
+            c for c in contributors if c.get("approved_count", 0) > 0
+        ]
+        top_names = [c["contributor_name"] for c in active_top_contributors]
+        assert "Alice Star" in top_names, "Alice (with approved paper) must be present in Top Contributors"
+        assert "Bob Zero" not in top_names, "Bob (with 0 approved contributions) must NOT appear in Top Contributors"
+
+        # 3. Prove that paper catalog count is totally unaffected by contributor count
+        assert len(paper_items) == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+
 

@@ -23,21 +23,21 @@ export default function HomePage() {
 
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       getClasses(),
       getRecentPapers(10),
       getPopularPapers(10),
       getRecentNotices(6, true),
       getRecentNews(6),
-      getLeaderboard(5).catch(() => ({ data: [] })),
+      getLeaderboard(5),
     ])
       .then(([clsRes, recentRes, popularRes, noticesRes, newsRes, lbRes]) => {
-        setClasses(clsRes.data || [])
-        setRecentPapers(recentRes.data || [])
-        setPopularPapers(popularRes.data || [])
-        setRecentNotices(noticesRes.data || [])
-        setRecentNews(newsRes.data || [])
-        setTopContributors(lbRes.data || [])
+        if (clsRes.status === 'fulfilled') setClasses(clsRes.value?.data || [])
+        if (recentRes.status === 'fulfilled') setRecentPapers(recentRes.value?.data || [])
+        if (popularRes.status === 'fulfilled') setPopularPapers(popularRes.value?.data || [])
+        if (noticesRes.status === 'fulfilled') setRecentNotices(noticesRes.value?.data || [])
+        if (newsRes.status === 'fulfilled') setRecentNews(newsRes.value?.data || [])
+        if (lbRes.status === 'fulfilled') setTopContributors(lbRes.value?.data || [])
       })
       .finally(() => setLoading(false))
   }, [])
