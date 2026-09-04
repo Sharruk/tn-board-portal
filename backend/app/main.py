@@ -105,7 +105,7 @@ def create_app() -> FastAPI:
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         origin = request.headers.get("origin")
         headers = {}
-        if origin and origin in settings.cors_origins_list:
+        if origin and (origin in settings.cors_origins_list or origin.endswith(".vercel.app")):
             headers["Access-Control-Allow-Origin"] = origin
             headers["Access-Control-Allow-Credentials"] = "true"
 
@@ -123,6 +123,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
+        allow_origin_regex=r"^https:\/\/.*\.vercel\.app$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

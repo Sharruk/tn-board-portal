@@ -21,9 +21,18 @@ def get_engine():
     Uses Supabase Session Pooler (port 5432).
     """
     settings = get_settings()
-    db_url = settings.SUPABASE_DATABASE_URL or settings.DATABASE_URL
+    import os
+    db_url = (
+        settings.SUPABASE_DATABASE_URL
+        or settings.DATABASE_URL
+        or os.getenv("POSTGRES_URL", "")
+        or os.getenv("POSTGRES_PRISMA_URL", "")
+    )
     if not db_url or not db_url.strip():
-        logger.warning("Neither SUPABASE_DATABASE_URL nor DATABASE_URL is set.")
+        logger.error(
+            "CRITICAL: Neither SUPABASE_DATABASE_URL, DATABASE_URL, nor POSTGRES_URL is configured. "
+            "Database connections will fail unless valid connection credentials are provided."
+        )
         db_url = "postgresql://postgres:postgres@localhost:5432/postgres"
 
     # Normalize url scheme if necessary
