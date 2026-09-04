@@ -104,6 +104,11 @@ class SubmissionsService:
             len(files),
         )
 
+        # ── Validate publisher name ─────────────────────────────────────
+        clean_publisher_name = (publisher_name or "").strip()
+        if not (2 <= len(clean_publisher_name) <= 50):
+            raise ValidationError("Publisher name must be between 2 and 50 characters.")
+
         # ── Validate file count ──────────────────────────────────────────
         if not files:
             raise ValidationError("At least one file is required.")
@@ -144,7 +149,7 @@ class SubmissionsService:
         # ── Create submission row ────────────────────────────────────────
         try:
             sub = self._repo.create_submission(
-                publisher_name=publisher_name.strip(),
+                publisher_name=clean_publisher_name,
                 email=email.strip().lower(),
                 firebase_uid=firebase_uid,
                 details=details.strip() if details else None,
@@ -152,6 +157,14 @@ class SubmissionsService:
         except Exception as exc:
             logger.error("Failed to create submission: %s", exc)
             raise DatabaseError("Failed to create submission. Please try again.") from exc
+
+        # ── Synchronize canonical user display_name if authenticated ────
+        if firebase_uid:
+            try:
+                from app.repositories.user_profile_repository import UserProfileRepository
+                UserProfileRepository(self._db).update_display_name(firebase_uid, clean_publisher_name)
+            except Exception as exc:
+                logger.warning("Could not sync display_name for user %s: %s", firebase_uid, exc)
 
         submission_id = sub["id"]
 

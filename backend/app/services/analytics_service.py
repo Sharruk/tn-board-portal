@@ -45,7 +45,7 @@ class AnalyticsService:
             metadata=req.metadata,
         )
 
-    def get_dashboard_data(self) -> AnalyticsDashboardResponse:
+    def get_dashboard_data(self, period: Optional[str] = None) -> AnalyticsDashboardResponse:
         """Generate comprehensive analytics report for admin dashboard."""
         now = datetime.now(timezone.utc)
         start_of_today = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
@@ -56,28 +56,55 @@ class AnalyticsService:
         today_stats = self._repo.get_period_stats(since=start_of_today)
         week_stats = self._repo.get_period_stats(since=seven_days_ago)
         month_stats = self._repo.get_period_stats(since=thirty_days_ago)
+        ninety_stats = self._repo.get_period_stats(since=ninety_days_ago)
         all_time_stats = self._repo.get_period_stats(since=None)
 
-        top_viewed = self._repo.get_top_viewed_papers(limit=5)
-        top_downloaded = self._repo.get_top_downloaded_papers(limit=5)
-        top_classes = self._repo.get_top_classes(limit=5)
-        top_subjects = self._repo.get_top_subjects(limit=5)
-        top_searches = self._repo.get_top_searches(limit=5)
+        # Determine 'since' for top breakdown lists based on selected period
+        selected_since = None
+        period_key = (period or "").strip().lower()
+        if period_key == "today":
+            selected_since = start_of_today
+        elif period_key in ("7d", "week", "this_week"):
+            selected_since = seven_days_ago
+        elif period_key in ("30d", "month", "this_month"):
+            selected_since = thirty_days_ago
+        elif period_key in ("90d", "quarter"):
+            selected_since = ninety_days_ago
+        elif period_key == "all_time":
+            selected_since = None
+
+        top_viewed = self._repo.get_top_viewed_papers(limit=6, since=selected_since)
+        top_downloaded = self._repo.get_top_downloaded_papers(limit=6, since=selected_since)
+        top_classes = self._repo.get_top_classes(limit=6, since=selected_since)
+        top_subjects = self._repo.get_top_subjects(limit=6, since=selected_since)
+        top_searches = self._repo.get_top_searches(limit=6, since=selected_since)
 
         trend_7d_raw = self._repo.get_daily_trends(days=7)
         trend_30d_raw = self._repo.get_daily_trends(days=30)
         trend_90d_raw = self._repo.get_daily_trends(days=90)
+
+        # Select daily_trends corresponding to period
+        if period_key in ("7d", "week"):
+            daily_trends_raw = trend_7d_raw
+        elif period_key in ("90d", "quarter"):
+            daily_trends_raw = trend_90d_raw
+        else:
+            daily_trends_raw = trend_30d_raw
 
         return AnalyticsDashboardResponse(
             today=AnalyticsPeriodStats(**today_stats),
             this_week=AnalyticsPeriodStats(**week_stats),
             this_month=AnalyticsPeriodStats(**month_stats),
             all_time=AnalyticsPeriodStats(**all_time_stats),
+            stat_7d=AnalyticsPeriodStats(**week_stats),
+            stat_30d=AnalyticsPeriodStats(**month_stats),
+            stat_90d=AnalyticsPeriodStats(**ninety_stats),
             top_viewed_papers=[TopItem(**i) for i in top_viewed],
             top_downloaded_papers=[TopItem(**i) for i in top_downloaded],
             top_classes=[TopItem(**i) for i in top_classes],
             top_subjects=[TopItem(**i) for i in top_subjects],
             top_searches=[TopItem(**i) for i in top_searches],
+            daily_trends=[TimeSeriesPoint(**p) for p in daily_trends_raw],
             trend_7d=[TimeSeriesPoint(**p) for p in trend_7d_raw],
             trend_30d=[TimeSeriesPoint(**p) for p in trend_30d_raw],
             trend_90d=[TimeSeriesPoint(**p) for p in trend_90d_raw],

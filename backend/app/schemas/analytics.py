@@ -57,12 +57,22 @@ class AnalyticsDashboardResponse(BaseModel):
     this_month: AnalyticsPeriodStats
     all_time: AnalyticsPeriodStats
 
+    # Additional period keys matching frontend filter IDs ('7d', '30d', '90d')
+    stat_7d: Optional[AnalyticsPeriodStats] = Field(default=None, alias="7d")
+    stat_30d: Optional[AnalyticsPeriodStats] = Field(default=None, alias="30d")
+    stat_90d: Optional[AnalyticsPeriodStats] = Field(default=None, alias="90d")
+
     top_viewed_papers: list[TopItem] = Field(default_factory=list)
     top_downloaded_papers: list[TopItem] = Field(default_factory=list)
     top_classes: list[TopItem] = Field(default_factory=list)
     top_subjects: list[TopItem] = Field(default_factory=list)
     top_searches: list[TopItem] = Field(default_factory=list)
 
+    daily_trends: list[TimeSeriesPoint] = Field(default_factory=list)
     trend_7d: list[TimeSeriesPoint] = Field(default_factory=list)
     trend_30d: list[TimeSeriesPoint] = Field(default_factory=list)
     trend_90d: list[TimeSeriesPoint] = Field(default_factory=list)
+
+    model_config = {
+        "populate_by_name": True,
+    }

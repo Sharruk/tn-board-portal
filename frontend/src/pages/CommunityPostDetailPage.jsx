@@ -13,6 +13,7 @@ import {
 } from '../services/community'
 import UserProfileModal from '../components/UserProfileModal'
 import ReportModal from '../components/ReportModal'
+import UserAvatar from '../components/common/UserAvatar'
 
 function fmtDate(iso) {
   if (!iso) return ''
@@ -51,13 +52,11 @@ function CommentItem({ comment, post, onReply, onDelete, onReport, onUserClick, 
       <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-xs space-y-2.5 hover:border-gray-300 transition">
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
-              {comment.author_avatar ? (
-                <img src={comment.author_avatar} alt="" className="w-full h-full object-cover" />
-              ) : (
-                comment.author_name.charAt(0).toUpperCase()
-              )}
-            </div>
+            <UserAvatar
+              src={comment.author_avatar}
+              name={comment.author_name}
+              size="xs"
+            />
             <button
               type="button"
               onClick={() => onUserClick({ firebase_uid: comment.firebase_uid, author_name: comment.author_name })}
@@ -362,9 +361,11 @@ export default function CommunityPostDetailPage() {
                   onClick={() => setProfileUser({ firebase_uid: post.firebase_uid, author_name: post.author_name })}
                   className="font-semibold text-gray-700 hover:text-blue-600 transition flex items-center gap-1.5"
                 >
-                  <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center overflow-hidden">
-                    {post.author_avatar ? <img src={post.author_avatar} alt="" className="w-full h-full object-cover" /> : post.author_name.charAt(0).toUpperCase()}
-                  </div>
+                  <UserAvatar
+                    src={post.author_avatar}
+                    name={post.author_name}
+                    size="xs"
+                  />
                   {post.author_name}
                 </button>
                 <span>•</span>
@@ -420,13 +421,7 @@ export default function CommunityPostDetailPage() {
               <form onSubmit={e => { e.preventDefault(); handleCommentSubmit() }} className="space-y-3">
                 {/* Authenticated Identity Context */}
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-100">
-                  {user?.photoURL ? (
-                    <img src={user.photoURL} alt={user?.displayName || 'User'} className="w-8 h-8 rounded-full object-cover border border-gray-200" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
-                      {(user?.displayName || user?.email || 'U')[0].toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar user={user} size="sm" />
                   <div className="text-xs">
                     <span className="font-semibold text-gray-800">{user?.displayName || user?.email?.split('@')[0] || 'Community Member'}</span>
                     <span className="text-gray-400 mx-1.5">·</span>

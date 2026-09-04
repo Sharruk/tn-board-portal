@@ -119,3 +119,25 @@ def test_leaderboard_rankings_and_calculations(client):
             assert "id" not in entry
     finally:
         app.dependency_overrides.clear()
+
+
+def test_leaderboard_canonical_user_name_override(client):
+    """Test leaderboard resolves canonical user name for all historical submissions of a user."""
+    mock_db = MagicMock()
+    # Simulate SQL query returning COALESCE(NULLIF(TRIM(u.display_name), ''), s.publisher_name) as publisher_name
+    mock_db.execute.return_value = MockResult([
+        {"publisher_name": "Sharruk CSE", "firebase_uid": "uid1", "status": "approved", "created_at": "2024-01-01T00:00:00Z"},
+        {"publisher_name": "Sharruk CSE", "firebase_uid": "uid1", "status": "approved", "created_at": "2024-01-02T00:00:00Z"},
+    ])
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+    try:
+        response = client.get("/api/v1/leaderboard")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_contributors"] == 1
+        assert data["data"][0]["contributor_name"] == "Sharruk CSE"
+        assert data["data"][0]["accepted_contributions"] == 2
+    finally:
+        app.dependency_overrides.clear()
+

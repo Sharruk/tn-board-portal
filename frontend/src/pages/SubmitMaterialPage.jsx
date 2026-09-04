@@ -49,6 +49,7 @@ function FileTag({ file, onRemove }) {
 
 import { useAuth } from '../contexts/AuthContext'
 import { signInWithGoogle } from '../lib/firebase'
+import { getMyProfile } from '../services/profile'
 
 export default function SubmitMaterialPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -57,12 +58,28 @@ export default function SubmitMaterialPage() {
     details: '',
   })
 
-  // Sync publisher_name when user loads
+  // Sync publisher_name when user loads or profile is fetched
   useEffect(() => {
     if (user && !form.publisher_name) {
       setForm(f => ({ ...f, publisher_name: user.displayName || user.email?.split('@')[0] || '' }))
     }
   }, [user])
+
+  useEffect(() => {
+    let active = true
+    if (isAuthenticated) {
+      getMyProfile()
+        .then(profile => {
+          if (active && profile?.display_name) {
+            setForm(f => ({ ...f, publisher_name: profile.display_name }))
+          }
+        })
+        .catch(err => {
+          console.warn('Could not fetch user profile in SubmitMaterialPage:', err)
+        })
+    }
+    return () => { active = false }
+  }, [isAuthenticated])
 
   const [files, setFiles] = useState([])
   const [fileError, setFileError] = useState(null)
@@ -118,6 +135,12 @@ export default function SubmitMaterialPage() {
     e.preventDefault()
     setError(null)
 
+    const trimmedName = form.publisher_name.trim()
+    if (!trimmedName || trimmedName.length < 2 || trimmedName.length > 50) {
+      setError('Publisher / Contributor name must be between 2 and 50 characters.')
+      return
+    }
+
     if (files.length === 0) {
       setFileError('Please attach at least one file.')
       return
@@ -126,7 +149,7 @@ export default function SubmitMaterialPage() {
     setLoading(true)
     try {
       const formData = new FormData()
-      formData.append('publisher_name', form.publisher_name.trim())
+      formData.append('publisher_name', trimmedName)
       if (form.details.trim()) {
         formData.append('details', form.details.trim())
       }

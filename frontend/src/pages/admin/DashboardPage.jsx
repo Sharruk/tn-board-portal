@@ -128,17 +128,17 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
     }).finally(() => setLoading(false))
   }, [])
 
-  // Load analytics when analytics tab is clicked
+  // Load analytics when analytics tab is clicked or period changes
   useEffect(() => {
-    if (activeTab === 'analytics' && !analyticsData) {
+    if (activeTab === 'analytics') {
       setAnalyticsLoading(true)
       getFirebaseToken()
-        .then(token => getAnalyticsDashboard(token))
+        .then(token => getAnalyticsDashboard(token, analyticsPeriod))
         .then(data => setAnalyticsData(data))
         .catch(err => console.error('Analytics load error:', err))
         .finally(() => setAnalyticsLoading(false))
     }
-  }, [activeTab, analyticsData])
+  }, [activeTab, analyticsPeriod])
 
   // Load moderation reports & requests when moderation tab is clicked
   useEffect(() => {
@@ -198,7 +198,9 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
   const recent5 = papers.slice(0, 5)
   const fmt = (n) => n == null ? '0' : Number(n).toLocaleString()
 
-  const currentPeriodStats = analyticsData ? analyticsData[analyticsPeriod] : null
+  const currentPeriodStats = analyticsData
+    ? (analyticsData[analyticsPeriod] || analyticsData.today || null)
+    : null
 
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-8">

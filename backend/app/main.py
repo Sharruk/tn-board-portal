@@ -25,6 +25,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import router as api_v1_router
 from app.config.settings import get_settings
 from app.schemas.root import RootResponse
+import starlette.formparsers
+
+# Configure Starlette multipart parser to allow uploads up to 50MB (default is 1MB)
+starlette.formparsers.MultiPartParser.max_file_size = 50 * 1024 * 1024
 
 
 # ------------------------------------------------------------------ #

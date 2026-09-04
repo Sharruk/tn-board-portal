@@ -5,8 +5,8 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import { globalSearch } from '../services/search'
 import { downloadPaper } from '../utils/download'
 import { CATEGORY_ICONS } from '../services/notices'
-import { NEWS_CATEGORY_ICONS, formatPublishedDate } from '../services/news'
 import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../services/papers'
+import { trackSearch, trackDownload } from '../services/analytics'
 
 // ── Suggestion chips ──────────────────────────────────────────────────────────
 
@@ -59,7 +59,12 @@ function PaperResult({ r }) {
       <div className="flex items-center gap-3 shrink-0">
         {r.public_url && (
           <button
-            onClick={e => { e.preventDefault(); e.stopPropagation(); downloadPaper(r.public_url, r.title, r.original_filename) }}
+            onClick={e => {
+              e.preventDefault();
+              e.stopPropagation();
+              trackDownload(r.id);
+              downloadPaper(r.public_url, r.title, r.original_filename);
+            }}
             className="btn-secondary text-sm px-3 py-1.5"
           >
             Download
@@ -180,7 +185,11 @@ export default function SearchPage() {
     if (filterMonth)    params.month      = filterMonth
     if (filterDistrict) params.district   = filterDistrict
     globalSearch(params)
-      .then(res => setResults(res.data))
+      .then(res => {
+        setResults(res.data)
+        const total = (res.data?.papers?.length || 0) + (res.data?.notices?.length || 0) + (res.data?.news?.length || 0)
+        trackSearch(query, total)
+      })
       .catch(err => setError(err.message || 'Search failed'))
       .finally(() => setLoading(false))
   }, [query, filterClass, filterType, filterExam, filterMonth, filterDistrict])

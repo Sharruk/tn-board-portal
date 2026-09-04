@@ -47,12 +47,15 @@ class PapersRepository:
                 p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.description, p.paper_type,
                 p.file_path, p.public_url, p.youtube_url, p.original_filename, p.is_visible,
                 p.download_count, p.created_at,
-                p.submission_id, p.contributor_name,
+                p.submission_id, 
+                COALESCE(NULLIF(TRIM(u.display_name), ''), p.contributor_name) AS contributor_name,
                 s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
                 c.id AS class_id, c.name AS class_name, c.slug AS class_slug
             FROM papers p
             JOIN subjects s ON p.subject_id = s.id
             JOIN classes c ON s.class_id = c.id
+            LEFT JOIN submissions sub ON p.submission_id = sub.id
+            LEFT JOIN users u ON sub.firebase_uid = u.firebase_uid
             WHERE p.id = :paper_id
         """
         if published_only:
@@ -76,12 +79,15 @@ class PapersRepository:
                         p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
                         p.file_path, p.public_url, p.youtube_url, p.original_filename, p.is_visible,
                         p.download_count, p.created_at,
-                        p.submission_id, p.contributor_name,
+                        p.submission_id, 
+                        COALESCE(NULLIF(TRIM(u.display_name), ''), p.contributor_name) AS contributor_name,
                         s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
                         c.id AS class_id, c.name AS class_name, c.slug AS class_slug
                     FROM papers p
                     JOIN subjects s ON p.subject_id = s.id
                     JOIN classes c ON s.class_id = c.id
+                    LEFT JOIN submissions sub ON p.submission_id = sub.id
+                    LEFT JOIN users u ON sub.firebase_uid = u.firebase_uid
                     WHERE p.id = :paper_id
                 """
                 if published_only:
@@ -419,12 +425,16 @@ class PapersRepository:
         sql = f"""
             SELECT 
                 p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
-                p.public_url, p.youtube_url, p.original_filename, p.is_visible, p.download_count, p.contributor_name, p.submission_id, p.created_at,
+                p.public_url, p.youtube_url, p.original_filename, p.is_visible, p.download_count, 
+                COALESCE(NULLIF(TRIM(u.display_name), ''), p.contributor_name) AS contributor_name, 
+                p.submission_id, p.created_at,
                 s.name AS subject_name,
                 c.id AS class_id, c.name AS class_name
             FROM papers p
             JOIN subjects s ON p.subject_id = s.id
             JOIN classes c ON s.class_id = c.id
+            LEFT JOIN submissions sub ON p.submission_id = sub.id
+            LEFT JOIN users u ON sub.firebase_uid = u.firebase_uid
             WHERE {where_clause}
             ORDER BY p.created_at DESC
             LIMIT 50
@@ -473,6 +483,17 @@ class PapersRepository:
             except Exception as e:
                 logger.warning("Failed to insert download_log: %s", e)
 
+        # Also log download event to analytics_events
+        try:
+            from app.repositories.analytics_repository import AnalyticsRepository
+            AnalyticsRepository(self._db).insert_event(
+                event_type="download",
+                firebase_uid=user_id,
+                paper_id=paper_id,
+            )
+        except Exception as exc:
+            logger.debug("Analytics event recording skipped in record_download: %s", exc)
+
         self._db.commit()
 
     # ── Paper Likes ───────────────────────────────────────────────────────────
@@ -496,6 +517,16 @@ class PapersRepository:
                 {"paper_id": paper_id, "firebase_uid": firebase_uid},
             )
             has_liked = True
+            # Also log like event to analytics_events
+            try:
+                from app.repositories.analytics_repository import AnalyticsRepository
+                AnalyticsRepository(self._db).insert_event(
+                    event_type="like",
+                    firebase_uid=firebase_uid,
+                    paper_id=paper_id,
+                )
+            except Exception as exc:
+                logger.debug("Analytics event recording skipped in toggle_like: %s", exc)
 
         cnt_stmt = text("SELECT COUNT(*)::int FROM paper_likes WHERE paper_id = :paper_id")
         likes_count = self._db.execute(cnt_stmt, {"paper_id": paper_id}).scalar() or 0
@@ -520,13 +551,17 @@ class PapersRepository:
     # ── Paper Comments ────────────────────────────────────────────────────────
 
     def get_comments_for_paper(self, paper_id: int) -> list[dict[str, Any]]:
-        """Fetch all non-deleted comments for a paper."""
+        """Fetch all non-deleted comments for a paper with dynamically resolved author info."""
         stmt = text(
             """
-            SELECT id, paper_id, firebase_uid, author_name, author_avatar, parent_id, content, is_deleted, created_at, updated_at
-            FROM paper_comments
-            WHERE paper_id = :paper_id AND is_deleted = false
-            ORDER BY created_at ASC
+            SELECT pc.id, pc.paper_id, pc.firebase_uid, 
+                   COALESCE(NULLIF(TRIM(u.display_name), ''), pc.author_name) AS author_name, 
+                   COALESCE(NULLIF(TRIM(u.photo_url), ''), pc.author_avatar) AS author_avatar, 
+                   pc.parent_id, pc.content, pc.is_deleted, pc.created_at, pc.updated_at
+            FROM paper_comments pc
+            LEFT JOIN users u ON pc.firebase_uid = u.firebase_uid
+            WHERE pc.paper_id = :paper_id AND pc.is_deleted = false
+            ORDER BY pc.created_at ASC
             """
         )
         result = self._db.execute(stmt, {"paper_id": paper_id})
@@ -567,6 +602,17 @@ class PapersRepository:
                 "content": content,
             },
         )
+        # Also log comment event to analytics_events
+        try:
+            from app.repositories.analytics_repository import AnalyticsRepository
+            AnalyticsRepository(self._db).insert_event(
+                event_type="comment",
+                firebase_uid=firebase_uid,
+                paper_id=paper_id,
+            )
+        except Exception as exc:
+            logger.debug("Analytics event recording skipped in add_paper_comment: %s", exc)
+
         self._db.commit()
         row = result.fetchone()
         if not row:

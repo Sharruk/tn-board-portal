@@ -21,6 +21,7 @@ import { signInWithGoogle } from '../lib/firebase'
 import { trackPaperView, trackDownload } from '../services/analytics'
 import ReportModal from '../components/ReportModal'
 import UserProfileModal from '../components/UserProfileModal'
+import UserAvatar from '../components/common/UserAvatar'
 
 function fmtDate(iso) {
   if (!iso) return ''
@@ -110,13 +111,11 @@ function PaperCommentItem({ comment, onReply, onDelete, onReport, onUserClick, c
       <div className="bg-gray-50/70 rounded-2xl border border-gray-100 p-4 space-y-2 hover:border-gray-200 transition">
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 overflow-hidden shadow-2xs">
-              {comment.author_avatar ? (
-                <img src={comment.author_avatar} alt="" className="w-full h-full object-cover" />
-              ) : (
-                (comment.author_name || 'U').charAt(0).toUpperCase()
-              )}
-            </div>
+            <UserAvatar
+              src={comment.author_avatar}
+              name={comment.author_name}
+              size="xs"
+            />
             <button
               type="button"
               onClick={() => onUserClick({ firebase_uid: comment.firebase_uid, author_name: comment.author_name })}
@@ -271,7 +270,7 @@ export default function PaperDetailPage() {
         }
 
         // Anonymous Analytics Tracking
-        trackPaperView(p.id, p.subjects?.class_id, p.subject_id)
+        trackPaperView(p.id, p.class_id || p.subjects?.class_id, p.subject_id)
 
         // Load interactions
         loadLikesAndComments(p.id)
@@ -566,13 +565,7 @@ export default function PaperDetailPage() {
           <form onSubmit={e => { e.preventDefault(); handlePostComment() }} className="space-y-3">
             {/* Authenticated Identity Context */}
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-100">
-              {user?.photoURL ? (
-                <img src={user.photoURL} alt={user?.displayName || 'User'} className="w-8 h-8 rounded-full object-cover border border-gray-200" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
-                  {(user?.displayName || user?.email || 'U')[0].toUpperCase()}
-                </div>
-              )}
+              <UserAvatar user={user} size="sm" />
               <div className="text-xs">
                 <span className="font-semibold text-gray-800">{user?.displayName || user?.email?.split('@')[0] || 'Student'}</span>
                 <span className="text-gray-400 mx-1.5">·</span>

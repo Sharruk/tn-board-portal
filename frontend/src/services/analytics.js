@@ -31,17 +31,12 @@ export async function logAnalyticsEvent(eventType, { paperId, classId, subjectId
 
     const url = `${API_BASE}/analytics/event`
 
-    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
-      navigator.sendBeacon(url, blob)
-    } else {
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true,
-      }).catch(() => {})
-    }
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {})
   } catch (err) {
     // Non-blocking telemetry — ignore errors silently
   }
@@ -67,14 +62,16 @@ export function trackSearch(query, resultCount) {
 /**
  * Fetch Analytics Dashboard for Admin.
  */
-export async function getAnalyticsDashboard(token) {
+export async function getAnalyticsDashboard(token, period) {
   const headers = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${API_BASE}/analytics/dashboard`, { headers })
+  const query = period ? `?period=${encodeURIComponent(period)}` : ''
+  const res = await fetch(`${API_BASE}/analytics/dashboard${query}`, { headers })
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}))
     throw new Error(errorData.detail || 'Failed to load analytics dashboard')
   }
   return res.json()
 }
+

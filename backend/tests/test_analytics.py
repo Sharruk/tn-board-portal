@@ -120,7 +120,17 @@ def test_get_analytics_dashboard_admin(client):
         assert data["today"]["visitors"] == 150
         assert data["today"]["paper_views"] == 320
         assert data["today"]["downloads"] == 110
+        assert data["7d"]["visitors"] == 150
+        assert data["30d"]["downloads"] == 110
+        assert data["90d"]["page_views"] == 850
+        assert len(data["daily_trends"]) == 1
         assert len(data["top_viewed_papers"]) == 1
         assert data["top_viewed_papers"][0]["name"] == "Class 10 Maths"
+
+        # Test with period parameter
+        res_period = client.get("/api/v1/analytics/dashboard?period=7d")
+        assert res_period.status_code == 200
+        data_period = res_period.json()
+        assert data_period["7d"]["visitors"] == 150
     finally:
         app.dependency_overrides.clear()

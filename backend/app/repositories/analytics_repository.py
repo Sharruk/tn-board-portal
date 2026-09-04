@@ -38,7 +38,7 @@ class AnalyticsRepository:
                 event_type, session_id, firebase_uid, paper_id, class_id, subject_id, metadata, created_at
             )
             VALUES (
-                :event_type, :session_id, :firebase_uid, :paper_id, :class_id, :subject_id, :metadata::jsonb, NOW()
+                :event_type, :session_id, :firebase_uid, :paper_id, :class_id, :subject_id, CAST(:metadata AS jsonb), NOW()
             )
             """
         )
@@ -83,12 +83,39 @@ class AnalyticsRepository:
         )
         try:
             result = self._db.execute(stmt, params).fetchone()
-            if not result:
-                return {"visitors": 0, "page_views": 0, "paper_views": 0, "downloads": 0, "searches": 0, "likes": 0, "comments": 0}
-            return dict(result._mapping)
+            stats = dict(result._mapping) if result else {
+                "visitors": 0, "page_views": 0, "paper_views": 0, "downloads": 0, "searches": 0, "likes": 0, "comments": 0
+            }
         except Exception as e:
             logger.warning("Period stats aggregation failed: %s", e)
-            return {"visitors": 0, "page_views": 0, "paper_views": 0, "downloads": 0, "searches": 0, "likes": 0, "comments": 0}
+            stats = {"visitors": 0, "page_views": 0, "paper_views": 0, "downloads": 0, "searches": 0, "likes": 0, "comments": 0}
+
+        # Seamlessly incorporate downloads, likes, and comments from primary tables if available
+        try:
+            dl_where = "WHERE downloaded_at >= :since" if since else ""
+            dl_stmt = text(f"SELECT COUNT(*)::int FROM download_logs {dl_where}")
+            dl_count = self._db.execute(dl_stmt, params).scalar() or 0
+            stats["downloads"] = max(stats.get("downloads", 0), dl_count)
+        except Exception:
+            pass
+
+        try:
+            pl_where = "WHERE created_at >= :since" if since else ""
+            pl_stmt = text(f"SELECT COUNT(*)::int FROM paper_likes {pl_where}")
+            pl_count = self._db.execute(pl_stmt, params).scalar() or 0
+            stats["likes"] = max(stats.get("likes", 0), pl_count)
+        except Exception:
+            pass
+
+        try:
+            pc_where = "WHERE is_deleted = false" + (" AND created_at >= :since" if since else "")
+            pc_stmt = text(f"SELECT COUNT(*)::int FROM paper_comments {pc_where}")
+            pc_count = self._db.execute(pc_stmt, params).scalar() or 0
+            stats["comments"] = max(stats.get("comments", 0), pc_count)
+        except Exception:
+            pass
+
+        return stats
 
     def get_top_viewed_papers(self, limit: int = 5, since: Optional[datetime] = None) -> list[dict[str, Any]]:
         """Get top viewed papers from analytics joined with papers table."""
@@ -135,64 +162,96 @@ class AnalyticsRepository:
         )
         try:
             res = self._db.execute(stmt, params).fetchall()
+            if not res:
+                fb_stmt = text(
+                    """
+                    SELECT p.id, p.title AS name, p.download_count::int AS count
+                    FROM papers p
+                    WHERE p.download_count > 0 AND p.is_visible = true
+                    ORDER BY p.download_count DESC
+                    LIMIT :limit
+                    """
+                )
+                fb_res = self._db.execute(fb_stmt, {"limit": limit}).fetchall()
+                return [dict(r._mapping) for r in fb_res]
             return [dict(r._mapping) for r in res]
         except Exception as e:
             logger.warning("Top downloaded papers query failed: %s", e)
             return []
 
-    def get_top_classes(self, limit: int = 5) -> list[dict[str, Any]]:
+    def get_top_classes(self, limit: int = 5, since: Optional[datetime] = None) -> list[dict[str, Any]]:
         """Top classes by page/paper views."""
+        where_ae = "WHERE ae.created_at >= :since" if since else ""
+        params: dict[str, Any] = {"limit": limit}
+        if since:
+            params["since"] = since
+
         stmt = text(
-            """
+            f"""
             SELECT c.id, c.name, COUNT(ae.id)::int AS count
             FROM analytics_events ae
             JOIN classes c ON ae.class_id = c.id
+            {where_ae}
             GROUP BY c.id, c.name
             ORDER BY count DESC
             LIMIT :limit
             """
         )
         try:
-            res = self._db.execute(stmt, {"limit": limit}).fetchall()
+            res = self._db.execute(stmt, params).fetchall()
             return [dict(r._mapping) for r in res]
         except Exception as e:
             logger.warning("Top classes query failed: %s", e)
             return []
 
-    def get_top_subjects(self, limit: int = 5) -> list[dict[str, Any]]:
+    def get_top_subjects(self, limit: int = 5, since: Optional[datetime] = None) -> list[dict[str, Any]]:
         """Top subjects by page/paper views."""
+        where_ae = "WHERE ae.created_at >= :since" if since else ""
+        params: dict[str, Any] = {"limit": limit}
+        if since:
+            params["since"] = since
+
         stmt = text(
-            """
+            f"""
             SELECT s.id, s.name, COUNT(ae.id)::int AS count
             FROM analytics_events ae
             JOIN subjects s ON ae.subject_id = s.id
+            {where_ae}
             GROUP BY s.id, s.name
             ORDER BY count DESC
             LIMIT :limit
             """
         )
         try:
-            res = self._db.execute(stmt, {"limit": limit}).fetchall()
+            res = self._db.execute(stmt, params).fetchall()
             return [dict(r._mapping) for r in res]
         except Exception as e:
             logger.warning("Top subjects query failed: %s", e)
             return []
 
-    def get_top_searches(self, limit: int = 5) -> list[dict[str, Any]]:
+    def get_top_searches(self, limit: int = 5, since: Optional[datetime] = None) -> list[dict[str, Any]]:
         """Top search terms."""
+        where_ae = "AND created_at >= :since" if since else ""
+        params: dict[str, Any] = {"limit": limit}
+        if since:
+            params["since"] = since
+
         stmt = text(
-            """
+            f"""
             SELECT LOWER(TRIM(metadata->>'q')) AS name, COUNT(*)::int AS count
             FROM analytics_events
-            WHERE event_type = 'search' AND metadata->>'q' IS NOT NULL AND TRIM(metadata->>'q') != ''
+            WHERE event_type = 'search' AND metadata->>'q' IS NOT NULL AND TRIM(metadata->>'q') != '' {where_ae}
             GROUP BY LOWER(TRIM(metadata->>'q'))
             ORDER BY count DESC
             LIMIT :limit
             """
         )
         try:
-            res = self._db.execute(stmt, {"limit": limit}).fetchall()
+            res = self._db.execute(stmt, params).fetchall()
             return [dict(r._mapping) for r in res]
+        except Exception as e:
+            logger.warning("Top searches query failed: %s", e)
+            return []
         except Exception as e:
             logger.warning("Top searches query failed: %s", e)
             return []
