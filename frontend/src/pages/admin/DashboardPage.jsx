@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../../contexts/AuthContext'
+import UserAvatar from '../../components/common/UserAvatar'
+import AdminUsersTab from '../../components/admin/AdminUsersTab'
+import AdminInboxTab from '../../components/admin/AdminInboxTab'
+import { getAdminConversationStats } from '../../services/adminConversations'
 import { getAdminPapers, getAdminStats, getSearchAnalytics, getRecentUploads, getAdminMe, getAuditLogs } from '../../services/admin'
 import { getAnalyticsDashboard } from '../../services/analytics'
 import {
@@ -69,8 +74,20 @@ function StatCard({ label, value, color, icon }) {
   )
 }
 
-export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState('overview') // 'overview' | 'analytics' | 'moderation'
+export default function DashboardPage({ defaultTab = 'overview' }) {
+  const { user } = useAuth()
+  const [activeTab, setActiveTab] = useState(defaultTab) // 'overview' | 'users' | 'inbox' | 'analytics' | 'moderation'
+  const [inboxUnread, setInboxUnread] = useState(0)
+
+  useEffect(() => {
+    setActiveTab(defaultTab)
+  }, [defaultTab])
+
+  useEffect(() => {
+    getAdminConversationStats()
+      .then(res => setInboxUnread(res.unread_count || 0))
+      .catch(() => {})
+  }, [])
 
   // Overview state
   const [papers, setPapers]             = useState([])
@@ -190,23 +207,19 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">Admin Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">Platform management, telemetry analytics, and community moderation</p>
+          <p className="text-gray-500 text-sm mt-1">Platform management, users &amp; contributors, messaging, telemetry, and moderation</p>
         </div>
-        {adminMe && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm">
-              {(adminMe.email || adminMe.username || 'A')[0].toUpperCase()}
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-800">{adminMe.email || adminMe.username}</p>
-              <p className="text-xs text-gray-400">Admin Session</p>
-            </div>
+        <div className="flex items-center gap-2.5">
+          <UserAvatar user={user} name={user?.displayName || adminMe?.email} size="md" className="border border-gray-200" />
+          <div>
+            <p className="text-sm font-semibold text-gray-800">{user?.displayName || adminMe?.email || 'Admin'}</p>
+            <p className="text-xs text-gray-400">{user?.email || 'Admin Session'}</p>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-gray-200 pb-1">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-1">
         <button
           onClick={() => setActiveTab('overview')}
           className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
@@ -216,6 +229,31 @@ export default function DashboardPage() {
           }`}
         >
           <span>📊</span> Overview &amp; Papers
+        </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+            activeTab === 'users'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <span>👥</span> Users &amp; Contributors
+        </button>
+        <button
+          onClick={() => setActiveTab('inbox')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+            activeTab === 'inbox'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <span>💬</span> Messages &amp; Inbox
+          {inboxUnread > 0 && (
+            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-extrabold animate-pulse">
+              {inboxUnread}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('analytics')}
@@ -391,6 +429,12 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* ── TAB: USERS & CONTRIBUTORS ── */}
+      {activeTab === 'users' && <AdminUsersTab />}
+
+      {/* ── TAB: MESSAGES & INBOX ── */}
+      {activeTab === 'inbox' && <AdminInboxTab />}
 
       {/* ── TAB 2: ANALYTICS & TELEMETRY ── */}
       {activeTab === 'analytics' && (

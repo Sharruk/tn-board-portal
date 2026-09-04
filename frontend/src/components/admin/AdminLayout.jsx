@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation, ScrollRestoration } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import UserAvatar from '../common/UserAvatar'
 
 const NAV = [
   {
@@ -9,6 +10,24 @@ const NAV = [
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      </svg>
+    ),
+  },
+  {
+    to: '/admin/users',
+    label: 'Users',
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    ),
+  },
+  {
+    to: '/admin/messages',
+    label: 'Messages',
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
       </svg>
     ),
   },
@@ -59,9 +78,8 @@ const NAV = [
   },
 ]
 
-
 export default function AdminLayout() {
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const mainRef = useRef(null)
@@ -161,9 +179,12 @@ export default function AdminLayout() {
             </svg>
           </button>
           <div className="flex-1" />
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <div className="w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">A</div>
-            <span className="hidden sm:block font-medium text-gray-700">Admin</span>
+          <div className="flex items-center gap-2.5 text-sm text-gray-500">
+            <UserAvatar user={user} size="sm" className="border border-gray-200" />
+            <div className="hidden sm:block text-left">
+              <p className="font-semibold text-gray-800 text-xs leading-tight">{user?.displayName || 'Admin'}</p>
+              <p className="text-[10px] text-gray-400 leading-tight">{user?.email || 'admin@tnboard.in'}</p>
+            </div>
           </div>
         </header>
 

@@ -68,9 +68,15 @@ async def get_current_user(
 
     # Fetch user from PostgreSQL
     stmt = text(
-        "SELECT id, firebase_uid, email, display_name, role, is_active, created_at FROM users WHERE firebase_uid = :uid"
+        """
+        SELECT id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at
+        FROM users
+        WHERE firebase_uid = :uid
+        """
     )
     row = db.execute(stmt, {"uid": firebase_uid}).fetchone()
+
+    picture = decoded_token.get("picture")
 
     # If the user doesn't exist yet, auto-create their profile with the appropriate role.
     if not row:
@@ -78,16 +84,16 @@ async def get_current_user(
         display_name = decoded_token.get("name")
         ins_stmt = text(
             """
-            INSERT INTO users (firebase_uid, email, display_name, role, is_active)
-            VALUES (:uid, :email, :display_name, :role, true)
+            INSERT INTO users (firebase_uid, email, display_name, role, is_active, photo_url, last_active_at)
+            VALUES (:uid, :email, :display_name, :role, true, :photo_url, NOW())
             ON CONFLICT (firebase_uid) DO NOTHING
-            RETURNING id, firebase_uid, email, display_name, role, is_active, created_at
+            RETURNING id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at
             """
         )
         try:
             ins_res = db.execute(
                 ins_stmt,
-                {"uid": firebase_uid, "email": email, "display_name": display_name, "role": role},
+                {"uid": firebase_uid, "email": email, "display_name": display_name, "role": role, "photo_url": picture},
             )
             db.commit()
             row = ins_res.fetchone()
@@ -102,13 +108,44 @@ async def get_current_user(
         if not row:
             logger.error("Failed to create or retrieve user profile for firebase_uid=%s", firebase_uid)
             raise HTTPException(status_code=500, detail="Failed to create user profile")
+    else:
+        # Existing user: update last_active_at, photo_url, and ensure ADMIN_EMAIL has SUPER_ADMIN role.
+        # CRITICAL: We DO NOT overwrite display_name (preserves user's saved Public Contribution Name).
+        should_update = False
+        updates = ["last_active_at = NOW()"]
+        update_params = {"uid": firebase_uid}
+
+        if picture and picture != row._mapping.get("photo_url"):
+            updates.append("photo_url = :photo_url")
+            update_params["photo_url"] = picture
+            should_update = True
+
+        if email == settings.ADMIN_EMAIL and row._mapping.get("role") != "SUPER_ADMIN":
+            updates.append("role = 'SUPER_ADMIN'")
+            should_update = True
+
+        # If display_name is completely empty in the DB, backfill it from the Google account
+        if not row._mapping.get("display_name") and decoded_token.get("name"):
+            updates.append("display_name = :g_name")
+            update_params["g_name"] = decoded_token.get("name")
+            should_update = True
+
+        try:
+            upd_stmt = text(f"UPDATE users SET {', '.join(updates)} WHERE firebase_uid = :uid RETURNING id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at")
+            upd_res = db.execute(upd_stmt, update_params)
+            db.commit()
+            row = upd_res.fetchone() or row
+        except Exception as exc:
+            db.rollback()
+            logger.debug("Non-critical user touch failed: %s", exc)
 
     user = dict(row._mapping)
 
     # Ensure display_name and photo_url from verified Firebase token are present
     if not user.get("display_name") and decoded_token.get("name"):
         user["display_name"] = decoded_token.get("name")
-    user["photo_url"] = decoded_token.get("picture")
+    if not user.get("photo_url") and picture:
+        user["photo_url"] = picture
 
     if not user.get("is_active", True):
         raise HTTPException(

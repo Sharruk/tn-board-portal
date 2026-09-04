@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { signInWithGoogle } from '../lib/firebase'
 import { getMyProfile, updateContributionName } from '../services/profile'
+import UserAvatar from '../components/common/UserAvatar'
 
 export default function ProfilePage() {
   const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth()
@@ -142,17 +143,13 @@ export default function ProfilePage() {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 sm:gap-6 text-center sm:text-left">
             {/* Avatar */}
             <div className="relative shrink-0">
-              {user?.photoURL ? (
-                <img
-                  src={user.photoURL}
-                  alt={profile?.display_name || user?.displayName || 'User'}
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-blue-50 shadow-md"
-                />
-              ) : (
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-3xl flex items-center justify-center shadow-md">
-                  {(profile?.display_name || user?.displayName || user?.email || 'U')[0].toUpperCase()}
-                </div>
-              )}
+              <UserAvatar
+                user={user}
+                src={profile?.photo_url || user?.photoURL}
+                name={profile?.display_name || user?.displayName}
+                size="xl"
+                className="border-4 border-blue-50 shadow-md"
+              />
               <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1.5 rounded-full border-2 border-white text-[10px]" title="Authenticated via Google">
                 ✓
               </div>
@@ -192,6 +189,12 @@ export default function ProfilePage() {
                 className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-bold rounded-xl transition"
               >
                 <span>📤</span> Submit Material
+              </Link>
+              <Link
+                to="/messages"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl transition"
+              >
+                <span>💬</span> Messages &amp; Support
               </Link>
             </div>
             <button

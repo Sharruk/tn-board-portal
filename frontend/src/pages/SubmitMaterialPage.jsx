@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { createSubmission } from '../services/submissions'
+import UserAvatar from '../components/common/UserAvatar'
 
 
 const ALLOWED_TYPES = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']
@@ -263,13 +264,12 @@ export default function SubmitMaterialPage() {
             {/* Authenticated User Identity Card */}
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50/40 border border-blue-100 rounded-2xl p-4 sm:p-5 flex items-center justify-between">
               <div className="flex items-center gap-3.5">
-                {user?.photoURL ? (
-                  <img src={user.photoURL} alt={user?.displayName || 'User'} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-xs" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-lg shadow-xs">
-                    {(user?.displayName || user?.email || 'U')[0].toUpperCase()}
-                  </div>
-                )}
+                <UserAvatar
+                  user={user}
+                  name={user?.displayName}
+                  size="lg"
+                  className="border-2 border-white shadow-xs"
+                />
                 <div>
                   <div className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Authenticated Contributor</div>
                   <div className="text-base font-bold text-gray-900">{user?.displayName || user?.email?.split('@')[0] || 'Contributor'}</div>

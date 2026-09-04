@@ -28,7 +28,7 @@ import AdminOfficialNoticesPage from '../pages/admin/OfficialNoticesPage'
 import AdminNewsPage from '../pages/admin/NewsPage'
 import ContentStatusPage from '../pages/admin/ContentStatusPage'
 import SubmissionsPage from '../pages/admin/SubmissionsPage'
-
+import MessagesPage from '../pages/MessagesPage'
 
 const router = createBrowserRouter([
   // ── Public routes ──────────────────────────────────────
@@ -53,10 +53,10 @@ const router = createBrowserRouter([
       { path: 'submit-material', element: <SubmitMaterialPage /> },
       { path: 'profile', element: <ProfilePage /> },
       { path: 'my-contributions', element: <MyContributionsPage /> },
+      { path: 'messages', element: <MessagesPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
-
 
   // ── Admin login (standalone, no layout) ───────────────
   { path: '/admin/login', element: <LoginPage /> },
@@ -72,6 +72,8 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'users', element: <DashboardPage defaultTab="users" /> },
+      { path: 'messages', element: <DashboardPage defaultTab="inbox" /> },
       { path: 'papers', element: <PapersPage /> },
       { path: 'official-notices', element: <AdminOfficialNoticesPage /> },
       { path: 'news', element: <AdminNewsPage /> },
