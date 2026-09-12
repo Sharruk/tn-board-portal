@@ -74,6 +74,10 @@ class AdminUsersService:
                     leaderboard_rank=rank,
                     acceptance_rate=rate,
                     badges=badges,
+                    is_verified_teacher=bool(r.get("is_verified_teacher", False)),
+                    governance_status=r.get("governance_status") or "ACTIVE",
+                    admin_added_by_uid=r.get("admin_added_by_uid"),
+                    admin_added_at=r.get("admin_added_at"),
                 )
             )
 
@@ -122,6 +126,10 @@ class AdminUsersService:
             leaderboard_rank=rank,
             acceptance_rate=rate,
             badges=badges,
+            is_verified_teacher=bool(user_row.get("is_verified_teacher", False)),
+            governance_status=user_row.get("governance_status") or "ACTIVE",
+            admin_added_by_uid=user_row.get("admin_added_by_uid"),
+            admin_added_at=user_row.get("admin_added_at"),
         )
 
         # User Submissions

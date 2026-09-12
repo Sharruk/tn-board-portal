@@ -76,6 +76,8 @@ class UserProfileService:
             display_name=display_name,
             photo_url=current_user.get("photo_url"),
             role=user_row.get("role", "USER"),
+            is_verified_teacher=bool(user_row.get("is_verified_teacher", False)),
+            governance_status=user_row.get("governance_status", "active"),
             badge=badge,
             rank=rank,
             stats=stats,

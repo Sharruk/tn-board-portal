@@ -13,6 +13,8 @@ import {
   getPaperComments,
   addPaperComment,
   deletePaperComment,
+  verifyPaper,
+  revokePaperVerification,
 } from '../services/papers'
 import { getPapersForSubject } from '../services/subjects'
 import { downloadPaper, viewPdf } from '../utils/download'
@@ -213,7 +215,7 @@ function PaperCommentItem({ comment, onReply, onDelete, onReport, onUserClick, c
 
 export default function PaperDetailPage() {
   const { id } = useParams()
-  const { user, isAuthenticated, isAdmin } = useAuth()
+  const { user, isAuthenticated, isAdmin, isSuperAdmin, isVerifiedTeacher } = useAuth()
 
   const [paper, setPaper] = useState(null)
   const [related, setRelated] = useState([])
@@ -236,9 +238,42 @@ export default function PaperDetailPage() {
 
   // Modals state
   const [reportCommentId, setReportCommentId] = useState(null)
+  const [reportPaperOpen, setReportPaperOpen] = useState(false)
   const [profileUser, setProfileUser] = useState(null)
+  const [verifying, setVerifying] = useState(false)
 
   const showToast = useCallback((msg) => setToast(msg), [])
+
+  const handleVerify = async () => {
+    if (!paper) return
+    const note = window.prompt('Optional verification note (e.g. "Reviewed syllabus and answer key"):')
+    if (note === null) return // user cancelled prompt
+    setVerifying(true)
+    try {
+      const updated = await verifyPaper(paper.id, note || null)
+      setPaper(prev => ({ ...prev, ...updated }))
+      showToast('Paper successfully verified as educational standard!')
+    } catch (err) {
+      showToast(err.message || 'Failed to verify paper.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const handleRevokeVerification = async () => {
+    if (!paper) return
+    if (!window.confirm('Are you sure you want to revoke verification for this paper?')) return
+    setVerifying(true)
+    try {
+      const updated = await revokePaperVerification(paper.id)
+      setPaper(prev => ({ ...prev, ...updated }))
+      showToast('Verification revoked.')
+    } catch (err) {
+      showToast(err.message || 'Failed to revoke verification.')
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   const loadLikesAndComments = useCallback(async (paperId) => {
     try {
@@ -418,6 +453,15 @@ export default function PaperDetailPage() {
         />
       )}
 
+      {reportPaperOpen && (
+        <ReportModal
+          targetType="paper"
+          targetId={paper.id}
+          onClose={() => setReportPaperOpen(false)}
+          onSuccess={() => showToast('Paper report submitted for review.')}
+        />
+      )}
+
       {/* Breadcrumb */}
       {paper.subjects && (
         <Breadcrumb items={[
@@ -444,6 +488,12 @@ export default function PaperDetailPage() {
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200/70 rounded-full">
                   <span>🏆 Contributed by:</span>
                   <strong className="text-amber-900">{paper.contributor_name}</strong>
+                </span>
+              )}
+              {paper.verification_status === 'VERIFIED' && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full shadow-2xs">
+                  <span>🛡️ Verified by:</span>
+                  <strong className="text-emerald-900">{paper.verified_by_name || 'Verified Teacher'}</strong>
                 </span>
               )}
             </div>
@@ -529,6 +579,42 @@ export default function PaperDetailPage() {
             </svg>
             <span>Share</span>
           </button>
+
+          {/* Report Paper */}
+          <button
+            onClick={() => setReportPaperOpen(true)}
+            className="inline-flex items-center justify-center gap-1.5 bg-white hover:bg-red-50 text-gray-600 hover:text-red-600 font-semibold px-4 py-3 rounded-xl border border-gray-200 hover:border-red-200 transition-colors text-sm"
+            title="Report an issue with this paper"
+          >
+            <span>🚩</span>
+            <span>Report</span>
+          </button>
+
+          {/* Verified Teacher / Super Admin: Verify Paper */}
+          {(isVerifiedTeacher || isSuperAdmin) && paper.verification_status !== 'VERIFIED' && paper.submission_uid !== user?.uid && (
+            <button
+              onClick={handleVerify}
+              disabled={verifying}
+              className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold px-4 py-3 rounded-xl transition shadow-xs text-sm disabled:opacity-50"
+              title="Verify educational accuracy of this material"
+            >
+              <span>🛡️</span>
+              <span>{verifying ? 'Verifying…' : 'Verify Paper'}</span>
+            </button>
+          )}
+
+          {/* Super Admin: Revoke Verification */}
+          {isSuperAdmin && paper.verification_status === 'VERIFIED' && (
+            <button
+              onClick={handleRevokeVerification}
+              disabled={verifying}
+              className="inline-flex items-center justify-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold px-3 py-3 rounded-xl border border-amber-200 transition text-sm disabled:opacity-50"
+              title="Revoke verified status"
+            >
+              <span>⚠️</span>
+              <span>Revoke Verification</span>
+            </button>
+          )}
         </div>
 
         {/* Download count */}

@@ -262,3 +262,70 @@ export const deletePaperComment = async (commentId) => {
   })
 }
 
+/**
+ * Verify paper accuracy (Verified Teacher or Super Admin).
+ */
+export const verifyPaper = async (paperId, note = null) => {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required')
+
+  return apiFetch(`/api/v1/papers/${paperId}/verify`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ note }),
+  })
+}
+
+/**
+ * Revoke paper verification (Super Admin only).
+ */
+export const revokePaperVerification = async (paperId, note = null) => {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required')
+
+  return apiFetch(`/api/v1/papers/${paperId}/revoke-verification`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ note }),
+  })
+}
+
+/**
+ * Update paper visibility status (publish or unpublish/archive).
+ */
+export const updatePaperStatus = async (paperId, status) => {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required')
+
+  return apiFetch(`/api/v1/papers/${paperId}/status`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status }),
+  })
+}
+
+/**
+ * Permanently delete paper (Super Admin only).
+ */
+export const deletePaper = async (paperId) => {
+  const token = await getFirebaseToken()
+  if (!token) throw new Error('Authentication required')
+
+  return apiFetch(`/api/v1/papers/${paperId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  })
+}
+
+

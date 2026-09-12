@@ -58,3 +58,14 @@ class UnauthorizedError(HTTPException):
             detail=detail,
         )
 
+
+class ConflictError(HTTPException):
+    """Conflict with current state of resource (e.g. duplicate active report)."""
+
+    def __init__(self, detail: str = "Conflict with current state of resource.") -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail,
+        )
+
+

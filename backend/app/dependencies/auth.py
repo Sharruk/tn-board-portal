@@ -56,6 +56,7 @@ async def get_current_user(
 ) -> dict:
     """
     Retrieves the current application user from PostgreSQL using the verified Firebase UID.
+    Handles seamless binding of pre-provisioned 'pending_{email}' invitations upon first login.
     """
     firebase_uid = decoded_token.get("uid")
     if not firebase_uid:
@@ -65,20 +66,63 @@ async def get_current_user(
         )
 
     email = decoded_token.get("email")
+    picture = decoded_token.get("picture")
 
-    # Fetch user from PostgreSQL
+    # Fetch user from PostgreSQL with live governance columns
     stmt = text(
         """
-        SELECT id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at
+        SELECT id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at,
+               is_verified_teacher, governance_status
         FROM users
         WHERE firebase_uid = :uid
         """
     )
     row = db.execute(stmt, {"uid": firebase_uid}).fetchone()
 
-    picture = decoded_token.get("picture")
+    # If no record found by UID, check if this user has a pre-provisioned pending invitation
+    if not row and email:
+        clean_email = email.strip().lower()
+        stmt_pending = text(
+            """
+            SELECT id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at,
+                   is_verified_teacher, governance_status
+            FROM users
+            WHERE LOWER(email) = :email
+              AND firebase_uid LIKE 'pending_%'
+            ORDER BY created_at ASC
+            LIMIT 1
+            """
+        )
+        pending_row = db.execute(stmt_pending, {"email": clean_email}).fetchone()
+        if pending_row:
+            pending_id = str(pending_row._mapping["id"])
+            stmt_claim = text(
+                """
+                UPDATE users
+                SET firebase_uid = :real_uid,
+                    photo_url = COALESCE(:photo_url, photo_url),
+                    display_name = COALESCE(display_name, :g_name),
+                    last_active_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = :id::uuid
+                RETURNING id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at,
+                          is_verified_teacher, governance_status
+                """
+            )
+            claim_res = db.execute(
+                stmt_claim,
+                {
+                    "id": pending_id,
+                    "real_uid": firebase_uid,
+                    "photo_url": picture,
+                    "g_name": decoded_token.get("name"),
+                },
+            )
+            db.commit()
+            row = claim_res.fetchone()
+            logger.info("Successfully bound pre-provisioned admin invitation for %s to UID %s", clean_email, firebase_uid)
 
-    # If the user doesn't exist yet, auto-create their profile with the appropriate role.
+    # If the user still doesn't exist, auto-create their profile with appropriate role.
     if not row:
         role = "SUPER_ADMIN" if email == settings.ADMIN_EMAIL else "USER"
         display_name = decoded_token.get("name")
@@ -87,7 +131,8 @@ async def get_current_user(
             INSERT INTO users (firebase_uid, email, display_name, role, is_active, photo_url, last_active_at)
             VALUES (:uid, :email, :display_name, :role, true, :photo_url, NOW())
             ON CONFLICT (firebase_uid) DO NOTHING
-            RETURNING id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at
+            RETURNING id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at,
+                      is_verified_teacher, governance_status
             """
         )
         try:
@@ -131,7 +176,10 @@ async def get_current_user(
             should_update = True
 
         try:
-            upd_stmt = text(f"UPDATE users SET {', '.join(updates)} WHERE firebase_uid = :uid RETURNING id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at")
+            upd_stmt = text(
+                f"UPDATE users SET {', '.join(updates)} WHERE firebase_uid = :uid "
+                "RETURNING id, firebase_uid, email, display_name, role, is_active, created_at, photo_url, last_active_at, is_verified_teacher, governance_status"
+            )
             upd_res = db.execute(upd_stmt, update_params)
             db.commit()
             row = upd_res.fetchone() or row
@@ -140,6 +188,8 @@ async def get_current_user(
             logger.debug("Non-critical user touch failed: %s", exc)
 
     user = dict(row._mapping)
+    user.setdefault("is_verified_teacher", False)
+    user.setdefault("governance_status", "active")
 
     # Ensure display_name and photo_url from verified Firebase token are present
     if not user.get("display_name") and decoded_token.get("name"):
@@ -153,8 +203,13 @@ async def get_current_user(
             detail="Account is disabled.",
         )
 
-    return user
+    if user.get("governance_status") == "suspended":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is currently suspended.",
+        )
 
+    return user
 
 
 def require_role(allowed_roles: list[str]):
@@ -190,6 +245,32 @@ async def require_super_admin(current_user: dict = Depends(require_role(["SUPER_
     return current_user
 
 
+def can_govern_admins(user: dict) -> bool:
+    """Return True if user is Super Admin or Super-Admin-Verified Teacher."""
+    return user.get("role") == "SUPER_ADMIN" or (user.get("role") == "ADMIN" and bool(user.get("is_verified_teacher")))
+
+
+async def require_verified_teacher(current_user: dict = Depends(get_current_user)):
+    """Dependency requiring Super-Admin-Verified Teacher or Super Admin status."""
+    if not can_govern_admins(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super-Admin-Verified Teacher or Super Admin privileges required.",
+        )
+    return current_user
+
+
+async def require_contributor(current_user: dict = Depends(get_current_user)):
+    """Dependency requiring at least Contributor status or higher."""
+    user_role = current_user.get("role")
+    if user_role in ("CONTRIBUTOR", "ADMIN", "SUPER_ADMIN"):
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Contributor privileges required.",
+    )
+
+
 async def get_current_user_optional(
     authorization: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db),
@@ -203,9 +284,13 @@ async def get_current_user_optional(
         uid = decoded.get("uid")
         if not uid:
             return None
-        stmt = text("SELECT id, firebase_uid, email, display_name, role FROM users WHERE firebase_uid = :uid")
+        stmt = text("SELECT id, firebase_uid, email, display_name, role, is_verified_teacher, governance_status FROM users WHERE firebase_uid = :uid")
         row = db.execute(stmt, {"uid": uid}).fetchone()
-        return dict(row._mapping) if row else {"firebase_uid": uid, "display_name": decoded.get("name")}
+        if row:
+            d = dict(row._mapping)
+            d.setdefault("is_verified_teacher", False)
+            d.setdefault("governance_status", "active")
+            return d
+        return {"firebase_uid": uid, "display_name": decoded.get("name"), "is_verified_teacher": False, "governance_status": "active"}
     except Exception:
         return None
-

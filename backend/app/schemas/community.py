@@ -36,11 +36,13 @@ class CommentCreate(BaseModel):
 
 
 class ReportCreate(BaseModel):
-    """Payload for reporting inappropriate content."""
+    """Payload for reporting inappropriate content or paper issues."""
 
-    target_type: str = Field(..., description="'post', 'comment', 'paper_comment', 'request'")
+    target_type: str = Field(..., description="'post', 'comment', 'paper_comment', 'request', 'paper'")
     target_id: str = Field(..., description="Target entity ID")
-    reason: str = Field(..., min_length=3, max_length=500, description="Reason for report")
+    reason: str = Field(..., min_length=3, max_length=1000, description="Reason for report")
+    report_category: Optional[str] = Field("other", description="Category: wrong_class, wrong_subject, wrong_exam_type, incorrect_metadata, duplicate_paper, missing_pages, unreadable_content, incorrect_content, inappropriate_content, copyright_issue, other")
+    details: Optional[dict] = Field(default_factory=dict, description="Additional context or form fields")
 
 
 class PaperRequestCreate(BaseModel):

@@ -8,12 +8,14 @@ To add a new resource:
 
 from fastapi import APIRouter
 
+from app.api.v1.endpoints.admin_activity import router as admin_activity_router
+from app.api.v1.endpoints.admin_conversations import router as admin_conversations_router
+from app.api.v1.endpoints.admin_governance import router as admin_governance_router
+from app.api.v1.endpoints.admin_users import router as admin_users_router
 from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.classes import router as classes_router
 from app.api.v1.endpoints.community import router as community_router
 from app.api.v1.endpoints.conversations import router as conversations_router
-from app.api.v1.endpoints.admin_conversations import router as admin_conversations_router
-from app.api.v1.endpoints.admin_users import router as admin_users_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.leaderboard import router as leaderboard_router
 from app.api.v1.endpoints.papers import router as papers_router
@@ -38,5 +40,8 @@ router.include_router(user_profile_router)
 router.include_router(conversations_router)
 router.include_router(admin_conversations_router)
 router.include_router(admin_users_router)
+router.include_router(admin_activity_router)
+router.include_router(admin_governance_router)
+
 
 

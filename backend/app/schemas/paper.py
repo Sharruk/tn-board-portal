@@ -54,7 +54,20 @@ class PaperBase(BaseModel):
     download_count: int = Field(default=0, description="Total download count")
     submission_id: str | None = Field(None, description="Origin material submission UUID")
     contributor_name: str | None = Field(None, description="Contributor display name")
+    verification_status: str = Field("NOT_VERIFIED", description="Verification status: NOT_VERIFIED, PENDING_VERIFICATION, VERIFIED, VERIFICATION_REVOKED")
+    verified_by_name: str | None = Field(None, description="Display name of verified teacher who verified the paper")
+    verified_at: datetime | None = Field(None, description="Verification timestamp")
+    verification_note: str | None = Field(None, description="Verification review note")
     created_at: datetime = Field(..., description="Upload timestamp")
+
+
+class PaperStatusUpdate(BaseModel):
+    status: PaperStatus = Field(..., description="New paper status: published | archived")
+
+
+class PaperVerifyRequest(BaseModel):
+    verification_note: str | None = Field(None, max_length=500, description="Optional verification note")
+
 
 
 class PaperResponse(PaperBase):

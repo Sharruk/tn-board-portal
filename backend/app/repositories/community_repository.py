@@ -353,25 +353,60 @@ class CommunityRepository:
         target_type: str,
         target_id: str,
         reason: str,
+        report_category: str = "other",
+        details: dict | None = None,
     ) -> dict[str, Any]:
-        """File a report against inappropriate content."""
+        """File a report against inappropriate content or paper issues with active spam prevention."""
+        import json
+        from app.utils.exceptions import ConflictError
+
+        check_stmt = text(
+            """
+            SELECT id FROM content_reports
+            WHERE reporter_uid = :reporter_uid
+              AND target_type = :target_type
+              AND target_id = :target_id
+              AND status = 'pending'
+            LIMIT 1
+            """
+        )
+        existing = self._db.execute(
+            check_stmt,
+            {"reporter_uid": reporter_uid, "target_type": target_type, "target_id": str(target_id)},
+        ).fetchone()
+
+        if existing:
+            raise ConflictError("You have already submitted a report for this item. Our moderation team is currently reviewing it.")
+
+        json_details = json.dumps(details or {})
         stmt = text(
             """
-            INSERT INTO content_reports (reporter_uid, target_type, target_id, reason, status, created_at)
-            VALUES (:reporter_uid, :target_type, :target_id, :reason, 'pending', NOW())
+            INSERT INTO content_reports (reporter_uid, target_type, target_id, reason, status, report_category, details, created_at)
+            VALUES (:reporter_uid, :target_type, :target_id, :reason, 'pending', :report_category, :details, NOW())
             RETURNING id, reporter_uid, target_type, target_id, reason, status, created_at
             """
         )
-        result = self._db.execute(
-            stmt,
-            {
-                "reporter_uid": reporter_uid,
-                "target_type": target_type,
-                "target_id": target_id,
-                "reason": reason,
-            },
-        )
-        self._db.commit()
+        try:
+            result = self._db.execute(
+                stmt,
+                {
+                    "reporter_uid": reporter_uid,
+                    "target_type": target_type,
+                    "target_id": str(target_id),
+                    "reason": reason,
+                    "report_category": report_category,
+                    "details": json_details,
+                },
+            )
+            self._db.commit()
+        except Exception as exc:
+            self._db.rollback()
+            err_str = str(exc).lower()
+            if "unique" in err_str or "duplicate" in err_str or "conflict" in err_str:
+                raise ConflictError("You have already submitted a report for this item. Our moderation team is currently reviewing it.") from exc
+            logger.error("Failed to insert content report: %s", exc)
+            raise
+
         row = result.fetchone()
         if not row:
             raise RuntimeError("Failed to create report")

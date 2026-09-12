@@ -199,7 +199,7 @@ class CommunityService:
         if not post:
             raise NotFoundError(resource="Post", identifier=post_id)
 
-        is_admin = current_user.get("role") == "ADMIN"
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
         is_owner = current_user.get("firebase_uid") == post.get("firebase_uid")
         if not (is_admin or is_owner):
             raise ForbiddenError("You can only edit your own posts.")
@@ -224,7 +224,7 @@ class CommunityService:
         if not post:
             raise NotFoundError(resource="Post", identifier=post_id)
 
-        is_admin = current_user.get("role") == "ADMIN"
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
         is_owner = current_user.get("firebase_uid") == post.get("firebase_uid")
         if not (is_admin or is_owner):
             raise ForbiddenError("You can only delete your own posts.")
@@ -248,12 +248,10 @@ class CommunityService:
         if not content:
             raise ValidationError("Comment cannot be empty.")
 
-        display_name = (author_name or "").strip() or "Student"
-
-        row = self._repo.create_comment(
+        row = self._repo.add_comment(
             post_id=post_id,
             firebase_uid=firebase_uid,
-            author_name=display_name,
+            author_name=author_name or "Student",
             content=content,
             parent_id=req.parent_id,
             author_avatar=req.author_avatar,
@@ -262,10 +260,10 @@ class CommunityService:
         return CommentOut(
             id=str(row["id"]),
             post_id=str(row["post_id"]),
-            firebase_uid=row.get("firebase_uid"),
             author_name=row["author_name"],
             author_avatar=row.get("author_avatar"),
-            parent_id=row.get("parent_id"),
+            firebase_uid=row.get("firebase_uid"),
+            parent_id=str(row["parent_id"]) if row.get("parent_id") else None,
             content=row["content"],
             created_at=row["created_at"],
             replies=[],
@@ -278,7 +276,7 @@ class CommunityService:
         hard_delete: bool = False,
     ) -> dict[str, Any]:
         """Delete a comment (author or admin)."""
-        is_admin = current_user.get("role") == "ADMIN"
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
         self._repo.delete_comment(comment_id, hard_delete=hard_delete and is_admin)
         return {"success": True, "message": "Comment deleted"}
 
@@ -293,14 +291,16 @@ class CommunityService:
     # ── Moderation & Reports ──────────────────────────────────────────────────
 
     def create_report(self, req: ReportCreate, reporter_uid: str) -> dict[str, Any]:
-        """File a report against inappropriate content."""
+        """File a report against inappropriate content or paper issues."""
         if not req.reason.strip():
             raise ValidationError("Report reason is required.")
         return self._repo.create_report(
             reporter_uid=reporter_uid,
             target_type=req.target_type,
-            target_id=req.target_id,
+            target_id=str(req.target_id),
             reason=req.reason.strip(),
+            report_category=req.report_category or "other",
+            details=req.details or {},
         )
 
     def list_reports(self, status: Optional[str] = None) -> list[dict[str, Any]]:

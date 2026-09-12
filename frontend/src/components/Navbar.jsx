@@ -8,7 +8,7 @@ import { getUnreadConversationCount } from '../services/conversations'
 const CLASSES = [9, 10, 11, 12]
 
 export default function Navbar() {
-  const { user, isAuthenticated, logout } = useAuth()
+  const { user, isAuthenticated, logout, isAdmin, isSuperAdmin, isVerifiedTeacher } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const [classesOpen, setClassesOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -140,10 +140,36 @@ export default function Navbar() {
                     <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-3">
                       <UserAvatar user={user} size="sm" />
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-gray-900 truncate">{user?.displayName || 'Contributor'}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs font-bold text-gray-900 truncate">{user?.displayName || 'Contributor'}</p>
+                          {isSuperAdmin && (
+                            <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                              👑 Super Admin
+                            </span>
+                          )}
+                          {!isSuperAdmin && isVerifiedTeacher && (
+                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                              🛡️ Verified Teacher
+                            </span>
+                          )}
+                          {!isSuperAdmin && !isVerifiedTeacher && isAdmin && (
+                            <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                              ⚡ Admin
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[11px] text-gray-500 truncate">{user?.email}</p>
                       </div>
                     </div>
+                    {isAdmin && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-4 py-2 text-xs font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 transition"
+                      >
+                        <span>⚡</span> Admin Dashboard
+                      </Link>
+                    )}
                     <Link
                       to="/profile"
                       onClick={() => setUserMenuOpen(false)}
@@ -232,7 +258,24 @@ export default function Navbar() {
           {isAuthenticated && (
             <div className="p-3 bg-blue-50/70 rounded-2xl border border-blue-100 flex items-center justify-between mb-2">
               <div className="truncate">
-                <p className="text-xs font-bold text-gray-900 truncate">{user?.displayName || 'Contributor'}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-xs font-bold text-gray-900 truncate">{user?.displayName || 'Contributor'}</p>
+                  {isSuperAdmin && (
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                      👑 Super Admin
+                    </span>
+                  )}
+                  {!isSuperAdmin && isVerifiedTeacher && (
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                      🛡️ Verified Teacher
+                    </span>
+                  )}
+                  {!isSuperAdmin && !isVerifiedTeacher && isAdmin && (
+                    <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                      ⚡ Admin
+                    </span>
+                  )}
+                </div>
                 <p className="text-[11px] text-gray-500 truncate">{user?.email}</p>
               </div>
               <Link
@@ -260,6 +303,11 @@ export default function Navbar() {
 
           {isAuthenticated ? (
             <>
+              {isAdmin && (
+                <Link to="/admin" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-xl text-sm font-bold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100">
+                  ⚡ Admin Dashboard
+                </Link>
+              )}
               <Link to="/my-contributions" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-xl text-sm font-medium text-blue-600 hover:bg-blue-50">
                 📂 My Contributions
               </Link>

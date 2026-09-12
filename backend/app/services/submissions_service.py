@@ -183,10 +183,22 @@ class SubmissionsService:
             logger.error(
                 "File upload failed for submission %s: %s", submission_id, exc
             )
-            # The submission row exists but files failed — surface a clear error
+            # Clean up the orphaned submission row so incomplete submissions don't persist
+            try:
+                self._repo.delete_submission(submission_id)
+            except Exception as clean_err:
+                logger.warning("Failed to clean up orphaned submission %s: %s", submission_id, clean_err)
             raise DatabaseError(
                 "Submission was created but file upload failed. Please try again."
             ) from exc
+
+        # ── Atomically promote USER to CONTRIBUTOR upon successful submission ─
+        if firebase_uid:
+            try:
+                from app.repositories.user_profile_repository import UserProfileRepository
+                UserProfileRepository(self._db).promote_to_contributor(firebase_uid, auto_commit=True)
+            except Exception as exc:
+                logger.warning("Could not transition user %s to CONTRIBUTOR: %s", firebase_uid, exc)
 
         logger.info("Submission %s created successfully", submission_id)
         return SubmissionCreateResponse(id=submission_id, status="pending")

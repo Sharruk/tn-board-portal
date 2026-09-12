@@ -3,6 +3,7 @@ import { getAdminPapers, uploadPaper, deletePaper, updatePaper } from '../../ser
 import { getClasses, getSubjectsForClass } from '../../services/classes'
 import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../../services/papers'
 import { viewPdf, downloadPaper } from '../../utils/download'
+import { useAuth } from '../../contexts/AuthContext'
 import BulkUploadTab from './BulkUploadTab'
 
 const CURRENT_YEAR = new Date().getFullYear()
@@ -199,6 +200,7 @@ const inputCls = "w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm t
 const inputErrCls = "w-full px-3 py-2.5 border border-red-300 rounded-xl text-sm text-gray-800 outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 transition bg-white"
 
 export default function PapersPage() {
+  const { isSuperAdmin } = useAuth()
   const [papers, setPapers] = useState([])
   const [classes, setClasses] = useState([])
   const [subjectsCache, setSubjectsCache] = useState({})
@@ -361,6 +363,16 @@ export default function PapersPage() {
       showToast(err.message || 'Delete failed', 'error')
     } finally {
       setDeleteLoading(false)
+    }
+  }
+
+  const handleToggleVisibility = async (paper, makeVisible) => {
+    try {
+      await updatePaper(paper.id, { is_visible: makeVisible })
+      setPapers(prev => prev.map(p => p.id === paper.id ? { ...p, is_visible: makeVisible } : p))
+      showToast(makeVisible ? 'Paper published to public catalog.' : 'Paper unpublished/archived.')
+    } catch (err) {
+      showToast(err.message || 'Failed to change paper visibility.', 'error')
     }
   }
 
@@ -576,9 +588,34 @@ export default function PapersPage() {
                             }
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                               <button onClick={() => openEdit(p)} className="text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">Edit</button>
-                              <button onClick={() => setPaperToDelete(p)} className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Delete</button>
+                              {p.is_visible ? (
+                                <button
+                                  onClick={() => handleToggleVisibility(p, false)}
+                                  className="text-xs font-medium text-amber-600 hover:text-amber-800 px-2 py-1 rounded-lg hover:bg-amber-50 transition-colors"
+                                  title="Unpublish / archive paper from public view"
+                                >
+                                  Unpublish
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleToggleVisibility(p, true)}
+                                  className="text-xs font-medium text-emerald-600 hover:text-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors"
+                                  title="Restore paper to public view"
+                                >
+                                  Publish
+                                </button>
+                              )}
+                              {isSuperAdmin && (
+                                <button
+                                  onClick={() => setPaperToDelete(p)}
+                                  className="text-xs font-medium text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                                  title="Permanently delete paper (Super Admin only)"
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

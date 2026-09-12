@@ -28,7 +28,7 @@ from app.schemas.paper import (
     PaperSummary,
     SearchResponse,
 )
-from app.utils.exceptions import NotFoundError
+from app.utils.exceptions import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -254,10 +254,11 @@ class PapersService:
     def delete_paper(self, paper_id: int, current_user: dict | None = None) -> PaperDeleteResponse:
         """
         Permanently delete a paper and its associated storage file in the 'papers' bucket.
+        Only SUPER_ADMIN is allowed to permanently delete published papers.
 
         Args:
             paper_id: Primary key of the paper.
-            current_user: Admin user dict from require_admin dependency.
+            current_user: User dict from require_super_admin dependency.
 
         Raises:
             NotFoundError if the paper does not exist.
@@ -265,6 +266,7 @@ class PapersService:
         logger.info("PapersService.delete_paper(paper_id=%s)", paper_id)
         admin_id = current_user.get("firebase_uid") if current_user else None
         admin_email = current_user.get("email") if current_user else None
+        paper_to_delete = self._repo.get_by_id(paper_id, published_only=False)
 
         db_deleted, storage_deleted = self._repo.delete_paper(
             paper_id=paper_id,
@@ -273,6 +275,24 @@ class PapersService:
         )
         if not db_deleted:
             raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        # Log to Admin Activity
+        if current_user:
+            try:
+                from app.repositories.admin_activity_repository import AdminActivityRepository
+                AdminActivityRepository(self._db).log_activity(
+                    actor_uid=current_user["firebase_uid"],
+                    actor_name=current_user.get("display_name"),
+                    actor_email=current_user.get("email"),
+                    actor_role=current_user.get("role", "SUPER_ADMIN"),
+                    action="paper_delete",
+                    target_type="paper",
+                    target_id=str(paper_id),
+                    target_title=paper_to_delete.get("title") if paper_to_delete else f"Paper #{paper_id}",
+                    metadata={"storage_deleted": storage_deleted},
+                )
+            except Exception as e:
+                logger.warning("Failed to log admin activity for paper delete: %s", e)
 
         msg = (
             "Paper and its uploaded file deleted successfully."
@@ -285,6 +305,125 @@ class PapersService:
             storage_deleted=storage_deleted,
             message=msg,
         )
+
+    def update_paper_status(
+        self,
+        paper_id: int,
+        status: str,
+        current_user: dict,
+    ) -> PaperResponse:
+        """Publish or unpublish/archive a paper."""
+        is_visible = (status.lower() == "published")
+        updated = self._repo.update_status(paper_id, is_visible)
+        if not updated:
+            raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        # If unpublished, automatically invalidate verification if it was verified
+        if not is_visible:
+            try:
+                self._repo.invalidate_verification(paper_id, reason="Paper was unpublished for review")
+            except Exception as inv_err:
+                logger.warning("Could not invalidate verification for unpublished paper %s: %s", paper_id, inv_err)
+
+        # Log activity
+        try:
+            from app.repositories.admin_activity_repository import AdminActivityRepository
+            AdminActivityRepository(self._db).log_activity(
+                actor_uid=current_user["firebase_uid"],
+                actor_name=current_user.get("display_name"),
+                actor_email=current_user.get("email"),
+                actor_role=current_user.get("role", "ADMIN"),
+                action="paper_publish" if is_visible else "paper_unpublish",
+                target_type="paper",
+                target_id=str(paper_id),
+                target_title=updated.get("title"),
+                metadata={"status": status, "is_visible": is_visible},
+            )
+        except Exception as e:
+            logger.warning("Failed to log admin activity for paper status: %s", e)
+
+        return PaperResponse(**updated)
+
+    def verify_paper(
+        self,
+        paper_id: int,
+        current_user: dict,
+        note: str | None = None,
+    ) -> PaperResponse:
+        """Verify a paper as a Verified Teacher or Super Admin. Prohibits self-verification."""
+        paper = self._repo.get_by_id(paper_id, published_only=False)
+        if not paper:
+            raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        verifier_uid = current_user["firebase_uid"]
+        # Enforce self-verification prohibition
+        if paper.get("submission_uid") and paper.get("submission_uid") == verifier_uid:
+            raise ValidationError("You cannot verify your own submitted materials.")
+
+        verifier_name = current_user.get("display_name") or current_user.get("email", "Verified Teacher")
+        updated = self._repo.verify_paper(
+            paper_id=paper_id,
+            verified_by_uid=verifier_uid,
+            verified_by_name=verifier_name,
+            verification_note=note,
+        )
+        if not updated:
+            raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        # Log activity
+        try:
+            from app.repositories.admin_activity_repository import AdminActivityRepository
+            AdminActivityRepository(self._db).log_activity(
+                actor_uid=verifier_uid,
+                actor_name=verifier_name,
+                actor_email=current_user.get("email"),
+                actor_role=current_user.get("role", "ADMIN"),
+                action="paper_verify",
+                target_type="paper",
+                target_id=str(paper_id),
+                target_title=paper.get("title"),
+                reason=note,
+                metadata={"verified_by": verifier_name, "note": note},
+            )
+        except Exception as e:
+            logger.warning("Failed to log admin activity for paper verify: %s", e)
+
+        return PaperResponse(**updated)
+
+    def revoke_verification(
+        self,
+        paper_id: int,
+        current_user: dict,
+        reason: str | None = None,
+    ) -> PaperResponse:
+        """Revoke verification on a paper (Super Admin)."""
+        paper = self._repo.get_by_id(paper_id, published_only=False)
+        if not paper:
+            raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        updated = self._repo.revoke_verification(paper_id, reason=reason)
+        if not updated:
+            raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        # Log activity
+        try:
+            from app.repositories.admin_activity_repository import AdminActivityRepository
+            AdminActivityRepository(self._db).log_activity(
+                actor_uid=current_user["firebase_uid"],
+                actor_name=current_user.get("display_name"),
+                actor_email=current_user.get("email"),
+                actor_role=current_user.get("role", "SUPER_ADMIN"),
+                action="paper_revoke_verification",
+                target_type="paper",
+                target_id=str(paper_id),
+                target_title=paper.get("title"),
+                reason=reason,
+                metadata={"reason": reason},
+            )
+        except Exception as e:
+            logger.warning("Failed to log admin activity for revoke verification: %s", e)
+
+        return PaperResponse(**updated)
 
     # ------------------------------------------------------------------ #
     # Likes & Comments
@@ -359,7 +498,7 @@ class PapersService:
 
     def delete_comment(self, comment_id: str, current_user: dict) -> dict:
         """Delete a comment (owner or admin)."""
-        is_admin = current_user.get("role") == "ADMIN"
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
         self._repo.delete_paper_comment(comment_id, hard_delete=is_admin)
         return {"success": True, "message": "Comment deleted"}
 

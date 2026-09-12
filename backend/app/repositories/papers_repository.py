@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def _add_status(row: dict[str, Any]) -> dict[str, Any]:
     """
-    Inject synthesised status, description, and contributor fields so Pydantic schemas are satisfied.
+    Inject synthesised status, description, contributor, and verification fields so Pydantic schemas are satisfied.
     Visible papers have is_visible = true (published), hidden have is_visible = false (archived).
     """
     is_visible = row.get("is_visible", True)
@@ -26,6 +26,11 @@ def _add_status(row: dict[str, Any]) -> dict[str, Any]:
     row.setdefault("description", None)
     row.setdefault("submission_id", None)
     row.setdefault("contributor_name", None)
+    row.setdefault("verification_status", "NOT_VERIFIED")
+    row.setdefault("verified_by_uid", None)
+    row.setdefault("verified_by_name", None)
+    row.setdefault("verified_at", None)
+    row.setdefault("verification_note", None)
     return row
 
 
@@ -39,7 +44,7 @@ class PapersRepository:
     def get_by_id(self, paper_id: int, published_only: bool = True) -> dict[str, Any] | None:
         """
         Return one paper with full subject + class join, or None.
-        Includes resilient fallback for missing optional columns (e.g. description, contributor_name).
+        Includes resilient fallback for missing optional columns (e.g. description, contributor_name, verification fields).
         """
         logger.debug("PapersRepository.get_by_id(paper_id=%s, published_only=%s)", paper_id, published_only)
         sql = """
@@ -49,6 +54,8 @@ class PapersRepository:
                 p.download_count, p.created_at,
                 p.submission_id, 
                 COALESCE(NULLIF(TRIM(u.display_name), ''), p.contributor_name) AS contributor_name,
+                p.verification_status, p.verified_by_uid, p.verified_by_name, p.verified_at, p.verification_note,
+                sub.firebase_uid AS submission_uid,
                 s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
                 c.id AS class_id, c.name AS class_name, c.slug AS class_slug
             FROM papers p
@@ -239,6 +246,92 @@ class PapersRepository:
             if auto_commit:
                 self._db.rollback()
             raise
+
+    def update_status(self, paper_id: int, is_visible: bool) -> dict[str, Any] | None:
+        """Update paper visibility (publish/unpublish) and return updated paper."""
+        stmt = text(
+            """
+            UPDATE papers
+            SET is_visible = :is_visible
+            WHERE id = :paper_id
+            """
+        )
+        res = self._db.execute(stmt, {"paper_id": paper_id, "is_visible": is_visible})
+        self._db.commit()
+        if res.rowcount == 0:
+            return None
+        return self.get_by_id(paper_id, published_only=False)
+
+    def verify_paper(
+        self,
+        paper_id: int,
+        verified_by_uid: str,
+        verified_by_name: str,
+        verification_note: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Set verification status to VERIFIED."""
+        stmt = text(
+            """
+            UPDATE papers
+            SET verification_status = 'VERIFIED',
+                verified_by_uid = :verified_by_uid,
+                verified_by_name = :verified_by_name,
+                verified_at = NOW(),
+                verification_note = :verification_note
+            WHERE id = :paper_id
+            """
+        )
+        res = self._db.execute(
+            stmt,
+            {
+                "paper_id": paper_id,
+                "verified_by_uid": verified_by_uid,
+                "verified_by_name": verified_by_name,
+                "verification_note": verification_note,
+            },
+        )
+        self._db.commit()
+        if res.rowcount == 0:
+            return None
+        return self.get_by_id(paper_id, published_only=False)
+
+    def revoke_verification(
+        self,
+        paper_id: int,
+        reason: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Revoke verification on paper."""
+        stmt = text(
+            """
+            UPDATE papers
+            SET verification_status = 'VERIFICATION_REVOKED',
+                verification_note = :reason
+            WHERE id = :paper_id
+            """
+        )
+        res = self._db.execute(stmt, {"paper_id": paper_id, "reason": reason})
+        self._db.commit()
+        if res.rowcount == 0:
+            return None
+        return self.get_by_id(paper_id, published_only=False)
+
+    def invalidate_verification(
+        self,
+        paper_id: int,
+        reason: str = "Material changes require re-verification",
+    ) -> dict[str, Any] | None:
+        """Reset verification status to PENDING_VERIFICATION if previously VERIFIED."""
+        stmt = text(
+            """
+            UPDATE papers
+            SET verification_status = 'PENDING_VERIFICATION',
+                verification_note = :reason
+            WHERE id = :paper_id AND verification_status = 'VERIFIED'
+            """
+        )
+        res = self._db.execute(stmt, {"paper_id": paper_id, "reason": reason})
+        self._db.commit()
+        return self.get_by_id(paper_id, published_only=False)
 
     def list_recent(self, limit: int = 10) -> list[dict[str, Any]]:
         """

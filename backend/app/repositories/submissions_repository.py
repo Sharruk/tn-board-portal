@@ -141,6 +141,24 @@ class SubmissionsRepository:
         d["submission_id"] = str(d["submission_id"])
         return d
 
+    def delete_submission(self, submission_id: str) -> None:
+        """Delete an incomplete or failed submission row and its associated files."""
+        try:
+            stmt = text("SELECT storage_path FROM submission_files WHERE submission_id::text = :id")
+            rows = self._db.execute(stmt, {"id": str(submission_id)}).fetchall()
+            paths = [r[0] for r in rows if r[0]]
+            if paths and self._storage:
+                try:
+                    self._storage.from_(SUBMISSIONS_BUCKET).remove(paths)
+                except Exception as st_err:
+                    logger.warning("Failed to clean up storage files for submission %s: %s", submission_id, st_err)
+        except Exception:
+            pass
+
+        self._db.execute(text("DELETE FROM submission_files WHERE submission_id::text = :id"), {"id": str(submission_id)})
+        self._db.execute(text("DELETE FROM submissions WHERE id::text = :id"), {"id": str(submission_id)})
+        self._db.commit()
+
     # ------------------------------------------------------------------ #
     # List submissions (admin)
     # ------------------------------------------------------------------ #

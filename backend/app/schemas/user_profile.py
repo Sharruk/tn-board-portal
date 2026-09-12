@@ -25,6 +25,8 @@ class UserProfileResponse(BaseModel):
     display_name: str = Field(..., description="Public contribution display name")
     photo_url: Optional[str] = Field(None, description="Google profile photo URL")
     role: str = Field(default="USER", description="Account role: USER, CONTRIBUTOR, ADMIN, SUPER_ADMIN")
+    is_verified_teacher: bool = Field(default=False, description="Super-Admin-Verified Teacher trust status")
+    governance_status: str = Field(default="active", description="Governance status: active, pending_removal, removed, suspended")
     badge: str = Field(default="User", description="Calculated contribution badge")
     rank: Optional[int] = Field(None, description="Rank on the public leaderboard if active")
     stats: UserStats = Field(default_factory=UserStats, description="User contribution statistics")

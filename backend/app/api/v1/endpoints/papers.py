@@ -34,8 +34,16 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.dependencies.auth import get_current_user, get_current_user_optional, require_admin, require_role
+from app.dependencies.auth import (
+    get_current_user,
+    get_current_user_optional,
+    require_admin,
+    require_role,
+    require_super_admin,
+    require_verified_teacher,
+)
 from app.dependencies.supabase import get_db
+from app.schemas.community import ReportCreate
 from app.schemas.paper import (
     PaperCommentCreate,
     PaperCommentOut,
@@ -44,6 +52,8 @@ from app.schemas.paper import (
     PaperLikeResponse,
     PaperListResponse,
     PaperResponse,
+    PaperStatusUpdate,
+    PaperVerifyRequest,
     SearchResponse,
 )
 from app.services.papers_service import DEFAULT_LIMIT, MAX_LIMIT, PapersService
@@ -202,9 +212,9 @@ async def get_paper(
     "/{paper_id}",
     response_model=PaperDeleteResponse,
     status_code=status.HTTP_200_OK,
-    summary="Delete a paper (admin)",
+    summary="Delete a paper (Super Admin)",
     description=(
-        "Admin only. Permanently deletes a paper, its database record, and its "
+        "Super Admin only. Permanently deletes a paper, its database record, and its "
         "associated storage file in Supabase Storage.\n\n"
         "Scoped to the specific paper_id. Storage object key is derived from the "
         "database record."
@@ -212,18 +222,131 @@ async def get_paper(
     responses={
         200: {"description": "Paper and storage object deleted successfully"},
         401: {"description": "Authentication required"},
-        403: {"description": "Admin privileges required"},
+        403: {"description": "Super Admin privileges required"},
         404: {"description": "Paper not found"},
     },
 )
 async def delete_paper(
     paper_id: int,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_super_admin),
     db: Session = Depends(get_db),
 ) -> PaperDeleteResponse:
     """Permanently delete a paper and its storage file."""
     service = PapersService(db)
     return service.delete_paper(paper_id=paper_id, current_user=current_user)
+
+
+# ── PATCH /api/v1/papers/{id}/status ──────────────────────────────────────────
+
+@router.patch(
+    "/{paper_id}/status",
+    response_model=PaperResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update paper status (unpublish/restore)",
+    description="Admin or Super Admin can unpublish/archive or restore/publish a paper.",
+    responses={
+        200: {"description": "Paper status updated successfully"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Admin privileges required"},
+        404: {"description": "Paper not found"},
+    },
+)
+async def update_paper_status(
+    paper_id: int,
+    req: PaperStatusUpdate,
+    current_user: dict = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> PaperResponse:
+    """Publish or unpublish/archive a paper."""
+    service = PapersService(db)
+    return service.update_paper_status(paper_id=paper_id, status=req.status, current_user=current_user)
+
+
+# ── POST /api/v1/papers/{id}/verify ───────────────────────────────────────────
+
+@router.post(
+    "/{paper_id}/verify",
+    response_model=PaperResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify paper (Verified Teacher / Super Admin)",
+    description="Verified Teacher or Super Admin verifies educational material accuracy. Self-verification is strictly prohibited.",
+    responses={
+        200: {"description": "Paper verified successfully"},
+        400: {"description": "Self-verification prohibited"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Verified Teacher status required"},
+        404: {"description": "Paper not found"},
+    },
+)
+async def verify_paper(
+    paper_id: int,
+    req: PaperVerifyRequest,
+    current_user: dict = Depends(require_verified_teacher),
+    db: Session = Depends(get_db),
+) -> PaperResponse:
+    """Verify paper accuracy."""
+    service = PapersService(db)
+    return service.verify_paper(paper_id=paper_id, current_user=current_user, note=req.note)
+
+
+# ── POST /api/v1/papers/{id}/revoke-verification ──────────────────────────────
+
+@router.post(
+    "/{paper_id}/revoke-verification",
+    response_model=PaperResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Revoke paper verification (Super Admin)",
+    description="Super Admin can revoke verified status on paper if issues arise.",
+    responses={
+        200: {"description": "Verification revoked successfully"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Super Admin privileges required"},
+        404: {"description": "Paper not found"},
+    },
+)
+async def revoke_paper_verification(
+    paper_id: int,
+    req: Optional[PaperVerifyRequest] = None,
+    current_user: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+) -> PaperResponse:
+    """Revoke verification on paper."""
+    service = PapersService(db)
+    reason = req.note if req else None
+    return service.revoke_verification(paper_id=paper_id, current_user=current_user, reason=reason)
+
+
+# ── POST /api/v1/papers/{id}/report ───────────────────────────────────────────
+
+@router.post(
+    "/{paper_id}/report",
+    status_code=status.HTTP_201_CREATED,
+    summary="Report a paper",
+    description="Authenticated users can submit a report on a paper. Deduplicated against active pending reports.",
+    responses={
+        201: {"description": "Report submitted successfully"},
+        401: {"description": "Authentication required"},
+        409: {"description": "Active report already pending for this paper"},
+    },
+)
+async def report_paper(
+    paper_id: int,
+    req: ReportCreate,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Submit report on a paper."""
+    from app.services.community_service import CommunityService
+    community_svc = CommunityService(db)
+    report_data = ReportCreate(
+        target_type="paper",
+        target_id=str(paper_id),
+        reason=req.reason,
+        report_category=req.report_category or "incorrect_answer_key",
+        details=req.details,
+    )
+    res = community_svc.create_report(report_data, current_user["firebase_uid"])
+    return {"success": True, "message": "Report submitted successfully.", "report": res}
 
 
 # ── GET /api/v1/papers/{id}/download ──────────────────────────────────────────

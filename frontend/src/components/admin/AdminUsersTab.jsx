@@ -155,7 +155,31 @@ export default function AdminUsersTab({ onSelectConversation }) {
                       <div className="flex items-center gap-3">
                         <UserAvatar user={u} size="md" className="border border-gray-200" />
                         <div className="min-w-0">
-                          <p className="font-bold text-gray-900 text-xs truncate">{u.display_name || 'Anonymous Student'}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-gray-900 text-xs truncate">{u.display_name || 'Anonymous Student'}</p>
+                            {u.email === 'hungrylearner786@gmail.com' || u.role === 'SUPER_ADMIN' ? (
+                              <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                👑 Super Admin
+                              </span>
+                            ) : u.role === 'ADMIN' && u.is_verified_teacher ? (
+                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                🛡️ Verified Teacher
+                              </span>
+                            ) : u.role === 'ADMIN' ? (
+                              <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                ⚡ Admin
+                              </span>
+                            ) : u.role === 'CONTRIBUTOR' || u.published_count > 0 ? (
+                              <span className="bg-violet-100 text-violet-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                ⭐ Contributor
+                              </span>
+                            ) : null}
+                            {u.governance_status === 'PENDING_REMOVAL' && (
+                              <span className="bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                ⏳ Pending Removal
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-gray-500 truncate">{u.email || '—'}</p>
                           <span className="text-[9px] font-mono text-gray-400 truncate block">{u.firebase_uid}</span>
                         </div>

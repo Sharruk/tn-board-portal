@@ -25,6 +25,10 @@ class AdminUserListItem(BaseModel):
     leaderboard_rank: Optional[int] = None
     acceptance_rate: Optional[float] = None
     badges: List[str] = []
+    is_verified_teacher: bool = False
+    governance_status: str = "ACTIVE"
+    admin_added_by_uid: Optional[str] = None
+    admin_added_at: Optional[datetime] = None
 
 
 class AdminUserListResponse(BaseModel):

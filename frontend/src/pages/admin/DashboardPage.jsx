@@ -4,6 +4,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import UserAvatar from '../../components/common/UserAvatar'
 import AdminUsersTab from '../../components/admin/AdminUsersTab'
 import AdminInboxTab from '../../components/admin/AdminInboxTab'
+import AdminGovernanceTab from '../../components/admin/AdminGovernanceTab'
+import AdminActivityTab from '../../components/admin/AdminActivityTab'
 import { getAdminConversationStats } from '../../services/adminConversations'
 import { getAdminPapers, getAdminStats, getSearchAnalytics, getRecentUploads, getAdminMe, getAuditLogs } from '../../services/admin'
 import { getAnalyticsDashboard } from '../../services/analytics'
@@ -98,6 +100,8 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
   const [auditLogs, setAuditLogs]       = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
+  const [toast, setToast]               = useState(null)
+  const showToast = (message, type = 'success') => setToast({ message, type })
 
   // Analytics state
   const [analyticsData, setAnalyticsData] = useState(null)
@@ -281,6 +285,26 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
               {reports.filter(r => r.status === 'pending').length}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab('governance')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+            activeTab === 'governance'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <span>🏛️</span> Governance
+        </button>
+        <button
+          onClick={() => setActiveTab('activity')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+            activeTab === 'activity'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <span>📜</span> Activity Log
         </button>
       </div>
 
@@ -785,6 +809,25 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── TAB: GOVERNANCE ── */}
+      {activeTab === 'governance' && (
+        <AdminGovernanceTab onToast={(msg) => showToast(msg, 'success')} />
+      )}
+
+      {/* ── TAB: ACTIVITY LOG ── */}
+      {activeTab === 'activity' && (
+        <AdminActivityTab />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl bg-emerald-600 text-white max-w-sm animate-fadeIn">
+          <span>✅</span>
+          <p className="text-sm font-medium flex-1">{toast.message}</p>
+          <button onClick={() => setToast(null)} className="ml-2 opacity-70 hover:opacity-100 text-lg leading-none">×</button>
         </div>
       )}
 
