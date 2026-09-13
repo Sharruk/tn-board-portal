@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.config.settings import get_settings
 from app.repositories.admin_activity_repository import AdminActivityRepository
 from app.repositories.admin_governance_repository import AdminGovernanceRepository
 from app.repositories.user_profile_repository import UserProfileRepository
@@ -22,6 +22,7 @@ from app.schemas.admin_governance import (
 from app.utils.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 MONTHLY_ADMIN_ADDITION_QUOTA = 3
 
@@ -242,6 +243,18 @@ class AdminGovernanceService:
             "request": gov_req,
         }
 
+    def direct_remove_admin(
+        self,
+        target_uid: str,
+        reason: str,
+        initiator: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Convenience method for direct removal of an Administrator by Super Admin."""
+        return self.request_admin_removal(
+            AdminRemovalRequestCreate(target_uid=target_uid, reason=reason),
+            initiator=initiator,
+        )
+
     # ── Admin Removal Approval / Rejection ────────────────────────────────────
 
     def process_removal_approval(
@@ -260,14 +273,6 @@ class AdminGovernanceService:
           - Approver cannot be the target (self-preservation rule).
           - Super Admin can approve/reject any request.
         """
-        approver_role = approver.get("role", "USER")
-        is_verified_teacher = bool(approver.get("is_verified_teacher", False))
-        is_super = approver_role == "SUPER_ADMIN" or approver.get("email") == settings.ADMIN_EMAIL
-        can_govern = is_super or (approver_role == "ADMIN" and is_verified_teacher)
-
-        if not can_govern:
-            raise ForbiddenError("Only Super Admin or Super-Admin-Verified Teachers can participate in removal decisions.")
-
         req = self._repo.get_by_id(request_id)
         if not req:
             raise NotFoundError(resource="GovernanceRequest", identifier=request_id)
@@ -277,13 +282,21 @@ class AdminGovernanceService:
 
         approver_uid = approver["firebase_uid"]
 
-        # Two-person rule: Initiator cannot approve
-        if approver_uid == req["initiated_by_uid"] and not is_super:
-            raise ForbiddenError("You cannot approve a removal request you initiated.")
-
         # Target cannot approve or reject their own removal
         if approver_uid == req["target_user_uid"]:
             raise ForbiddenError("The target Administrator cannot participate in their own removal decision.")
+
+        approver_role = approver.get("role", "USER")
+        is_verified_teacher = bool(approver.get("is_verified_teacher", False))
+        is_super = approver_role == "SUPER_ADMIN" or approver.get("email") == settings.ADMIN_EMAIL
+        can_govern = is_super or (approver_role == "ADMIN" and is_verified_teacher)
+
+        if not can_govern:
+            raise ForbiddenError("Only Super Admin or Super-Admin-Verified Teachers can participate in removal decisions.")
+
+        # Two-person rule: Initiator cannot approve
+        if approver_uid == req["initiated_by_uid"] and not is_super:
+            raise ForbiddenError("You cannot approve a removal request you initiated.")
 
         approver_name = approver.get("display_name") or approver.get("email")
         approver_email = approver.get("email") or "system@hungrylearner.internal"

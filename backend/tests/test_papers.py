@@ -486,7 +486,7 @@ def test_paper_response_includes_description_and_preserves_privacy():
 # ── Delete Paper Tests ────────────────────────────────────────────────────────
 
 def test_delete_paper_as_admin_success():
-    from app.dependencies.auth import require_admin
+    from app.dependencies.auth import require_super_admin
     from app.dependencies.supabase import get_db
 
     mock_db = _make_detail_db([
@@ -498,10 +498,10 @@ def test_delete_paper_as_admin_success():
         }
     ])
     app.dependency_overrides[get_db] = lambda: mock_db
-    app.dependency_overrides[require_admin] = lambda: {
+    app.dependency_overrides[require_super_admin] = lambda: {
         "firebase_uid": "admin-uid-123",
         "email": "admin@example.com",
-        "role": "ADMIN",
+        "role": "SUPER_ADMIN",
     }
 
     try:
@@ -517,7 +517,7 @@ def test_delete_paper_as_admin_success():
 
 
 def test_delete_paper_missing_storage_resilience():
-    from app.dependencies.auth import require_admin
+    from app.dependencies.auth import require_super_admin
     from app.dependencies.supabase import get_db
 
     mock_db = _make_detail_db([
@@ -527,10 +527,10 @@ def test_delete_paper_missing_storage_resilience():
         }
     ])
     app.dependency_overrides[get_db] = lambda: mock_db
-    app.dependency_overrides[require_admin] = lambda: {
+    app.dependency_overrides[require_super_admin] = lambda: {
         "firebase_uid": "admin-uid-123",
         "email": "admin@example.com",
-        "role": "ADMIN",
+        "role": "SUPER_ADMIN",
     }
 
     try:
@@ -545,15 +545,15 @@ def test_delete_paper_missing_storage_resilience():
 
 
 def test_delete_paper_not_found():
-    from app.dependencies.auth import require_admin
+    from app.dependencies.auth import require_super_admin
     from app.dependencies.supabase import get_db
 
     mock_db = _make_detail_db([])
     app.dependency_overrides[get_db] = lambda: mock_db
-    app.dependency_overrides[require_admin] = lambda: {
+    app.dependency_overrides[require_super_admin] = lambda: {
         "firebase_uid": "admin-uid-123",
         "email": "admin@example.com",
-        "role": "ADMIN",
+        "role": "SUPER_ADMIN",
     }
 
     try:

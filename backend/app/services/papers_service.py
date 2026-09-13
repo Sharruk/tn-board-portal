@@ -102,6 +102,7 @@ class PapersService:
     """Business logic for the papers domain."""
 
     def __init__(self, db: Session, storage: Any = None) -> None:
+        self._db = db
         self._repo = PapersRepository(db, storage=storage)
 
     # ------------------------------------------------------------------ #

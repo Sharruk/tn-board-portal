@@ -290,12 +290,20 @@ class CommunityService:
 
     # ── Moderation & Reports ──────────────────────────────────────────────────
 
-    def create_report(self, req: ReportCreate, reporter_uid: str) -> dict[str, Any]:
+    def create_report(
+        self,
+        req: ReportCreate,
+        reporter_uid: str | None = None,
+        firebase_uid: str | None = None,
+    ) -> dict[str, Any]:
         """File a report against inappropriate content or paper issues."""
+        uid = reporter_uid or firebase_uid
+        if not uid:
+            raise ValidationError("Reporter UID is required.")
         if not req.reason.strip():
             raise ValidationError("Report reason is required.")
         return self._repo.create_report(
-            reporter_uid=reporter_uid,
+            reporter_uid=uid,
             target_type=req.target_type,
             target_id=str(req.target_id),
             reason=req.reason.strip(),

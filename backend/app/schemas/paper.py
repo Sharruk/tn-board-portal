@@ -146,6 +146,8 @@ class PaperSummary(BaseModel):
     status: PaperStatus
     download_count: int = 0
     contributor_name: str | None = None
+    verification_status: str = "NOT_VERIFIED"
+    verified_by_name: str | None = None
     created_at: datetime
 
 

@@ -284,6 +284,9 @@ class CommunityRepository:
             d["parent_id"] = str(d["parent_id"])
         return d
 
+    # Alias for compatibility with community_service calls
+    add_comment = create_comment
+
     def delete_comment(self, comment_id: str, hard_delete: bool = False) -> bool:
         """Delete or soft-delete a comment."""
         if hard_delete:

@@ -204,11 +204,13 @@ class UserProfileRepository:
     def update_role(
         self,
         firebase_uid: str,
-        new_role: str,
+        new_role: str | None = None,
         admin_added_by_uid: str | None = None,
         auto_commit: bool = True,
+        role: str | None = None,
     ) -> bool:
         """Update user's role and track who promoted them."""
+        target_role = new_role or role
         stmt = text(
             """
             UPDATE users
@@ -222,7 +224,7 @@ class UserProfileRepository:
         )
         res = self._db.execute(
             stmt,
-            {"uid": firebase_uid, "role": new_role, "promoted_by": admin_added_by_uid},
+            {"uid": firebase_uid, "role": target_role, "promoted_by": admin_added_by_uid},
         )
         if auto_commit:
             self._db.commit()

@@ -47,6 +47,8 @@ _EXISTING_USER = {
     "photo_url": None,
     "role": "USER",
     "is_active": True,
+    "is_verified_teacher": False,
+    "governance_status": "active",
 }
 
 _CREATED_USER = {
@@ -57,6 +59,8 @@ _CREATED_USER = {
     "photo_url": None,
     "role": "USER",
     "is_active": True,
+    "is_verified_teacher": False,
+    "governance_status": "active",
 }
 
 _SUB_ID = "11111111-1111-1111-1111-111111111111"
