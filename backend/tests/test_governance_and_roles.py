@@ -444,6 +444,7 @@ def test_admin_invitation_claim_on_first_auth():
             "is_verified_teacher": False,
         }
         user = repo.claim_pending_invitation("teacher@school.edu", "real-google-uid-123", "Teacher Real Name")
+        assert user is not None
         assert user["role"] == "ADMIN"
         assert user["firebase_uid"] == "real-google-uid-123"
         mock_claim.assert_called_once()

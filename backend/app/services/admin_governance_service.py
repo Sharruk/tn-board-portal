@@ -92,7 +92,7 @@ class AdminGovernanceService:
                 admin_added_by_uid=initiator["firebase_uid"],
             )
 
-        initiator_name = initiator.get("display_name") or initiator.get("email")
+        initiator_name = initiator.get("display_name") or initiator.get("email") or "Administrator"
         initiator_email = initiator.get("email") or "system@hungrylearner.internal"
 
         # Record governance request log as completed/approved
@@ -178,7 +178,7 @@ class AdminGovernanceService:
         if existing_pending:
             raise ConflictError("A removal request is already pending for this Administrator.")
 
-        initiator_name = initiator.get("display_name") or initiator.get("email")
+        initiator_name = initiator.get("display_name") or initiator.get("email") or "Administrator"
         initiator_email = initiator.get("email") or "system@hungrylearner.internal"
 
         # If Super Admin, execute immediate unilateral removal
@@ -298,7 +298,7 @@ class AdminGovernanceService:
         if approver_uid == req["initiated_by_uid"] and not is_super:
             raise ForbiddenError("You cannot approve a removal request you initiated.")
 
-        approver_name = approver.get("display_name") or approver.get("email")
+        approver_name = approver.get("display_name") or approver.get("email") or "Administrator"
         approver_email = approver.get("email") or "system@hungrylearner.internal"
         target_uid = req["target_user_uid"]
 

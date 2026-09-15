@@ -258,7 +258,7 @@ class PapersRepository:
         )
         res = self._db.execute(stmt, {"paper_id": paper_id, "is_visible": is_visible})
         self._db.commit()
-        if res.rowcount == 0:
+        if getattr(res, "rowcount", 0) == 0:
             return None
         return self.get_by_id(paper_id, published_only=False)
 
@@ -291,7 +291,7 @@ class PapersRepository:
             },
         )
         self._db.commit()
-        if res.rowcount == 0:
+        if getattr(res, "rowcount", 0) == 0:
             return None
         return self.get_by_id(paper_id, published_only=False)
 
@@ -311,7 +311,7 @@ class PapersRepository:
         )
         res = self._db.execute(stmt, {"paper_id": paper_id, "reason": reason})
         self._db.commit()
-        if res.rowcount == 0:
+        if getattr(res, "rowcount", 0) == 0:
             return None
         return self.get_by_id(paper_id, published_only=False)
 
@@ -724,6 +724,6 @@ class PapersRepository:
             stmt = text("UPDATE paper_comments SET is_deleted = true, updated_at = NOW() WHERE id::text = :comment_id")
         result = self._db.execute(stmt, {"comment_id": comment_id})
         self._db.commit()
-        return result.rowcount > 0
+        return getattr(result, "rowcount", 0) > 0
 
 

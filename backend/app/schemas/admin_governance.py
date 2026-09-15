@@ -13,8 +13,8 @@ from pydantic import BaseModel, EmailStr, Field, computed_field
 class AdminAddRequest(BaseModel):
     """Payload for adding a trusted teacher/admin."""
     email: EmailStr = Field(..., description="Email of the user to be promoted to Admin")
-    display_name: Optional[str] = Field(None, description="Optional name/title of the teacher")
-    reason: Optional[str] = Field(None, description="Reason or context for adding as Admin")
+    display_name: Optional[str] = Field(default=None, description="Optional name/title of the teacher")
+    reason: Optional[str] = Field(default=None, description="Reason or context for adding as Admin")
 
 
 class AdminRemovalRequestCreate(BaseModel):

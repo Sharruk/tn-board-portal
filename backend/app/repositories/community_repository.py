@@ -214,7 +214,7 @@ class CommunityRepository:
             stmt = text("UPDATE community_posts SET is_deleted = true, updated_at = NOW() WHERE id::text = :post_id")
         result = self._db.execute(stmt, {"post_id": post_id})
         self._db.commit()
-        return result.rowcount > 0
+        return getattr(result, "rowcount", 0) > 0
 
     # ── Comments ──────────────────────────────────────────────────────────────
 
@@ -295,7 +295,7 @@ class CommunityRepository:
             stmt = text("UPDATE community_comments SET is_deleted = true, updated_at = NOW() WHERE id::text = :comment_id")
         result = self._db.execute(stmt, {"comment_id": comment_id})
         self._db.commit()
-        return result.rowcount > 0
+        return getattr(result, "rowcount", 0) > 0
 
     # ── Votes / Likes ─────────────────────────────────────────────────────────
 
@@ -436,7 +436,7 @@ class CommunityRepository:
         stmt = text("UPDATE content_reports SET status = :status WHERE id::text = :report_id")
         result = self._db.execute(stmt, {"status": status, "report_id": report_id})
         self._db.commit()
-        return result.rowcount > 0
+        return getattr(result, "rowcount", 0) > 0
 
     # ── Paper Requests ────────────────────────────────────────────────────────
 
@@ -631,7 +631,7 @@ class CommunityRepository:
         avatar_url = (name_row.author_avatar if name_row else None)
 
         from app.services.leaderboard_service import compute_badges
-        badges = compute_badges(approved_count, 100.0 if approved_count > 0 else 0.0)
+        badges = compute_badges(approved_count)
 
         return {
             "display_name": display_name,

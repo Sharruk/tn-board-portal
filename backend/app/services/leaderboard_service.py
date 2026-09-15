@@ -111,7 +111,7 @@ class LeaderboardService:
             decided = approved + rejected
             rate = round((approved / decided * 100.0), 1) if decided > 0 else (100.0 if approved > 0 else 0.0)
 
-            badges = compute_badges(approved, rate)
+            badges = compute_badges(approved)
             recent = recent_papers_map.get(stats["key"], [])[:3]
 
             ranked_list.append(
@@ -148,6 +148,7 @@ class LeaderboardService:
                 LeaderboardEntry(
                     rank=idx,
                     contributor_name=item["contributor_name"],
+                    avatar_url=item.get("avatar_url"),
                     submitted_count=item["submitted_count"],
                     approved_count=item["approved_count"],
                     rejected_count=item["rejected_count"],

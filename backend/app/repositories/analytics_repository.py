@@ -252,9 +252,6 @@ class AnalyticsRepository:
         except Exception as e:
             logger.warning("Top searches query failed: %s", e)
             return []
-        except Exception as e:
-            logger.warning("Top searches query failed: %s", e)
-            return []
 
     def get_daily_trends(self, days: int = 30) -> list[dict[str, Any]]:
         """Get daily counts for visitors, page views, paper views, downloads."""

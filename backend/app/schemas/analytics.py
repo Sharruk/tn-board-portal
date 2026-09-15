@@ -4,7 +4,7 @@ Pydantic schemas for Analytics Telemetry and Dashboard reporting.
 
 from datetime import datetime
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class AnalyticsEventCreate(BaseModel):
@@ -52,15 +52,17 @@ class TimeSeriesPoint(BaseModel):
 class AnalyticsDashboardResponse(BaseModel):
     """Admin analytics dashboard report."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     today: AnalyticsPeriodStats
     this_week: AnalyticsPeriodStats
     this_month: AnalyticsPeriodStats
     all_time: AnalyticsPeriodStats
 
     # Additional period keys matching frontend filter IDs ('7d', '30d', '90d')
-    stat_7d: Optional[AnalyticsPeriodStats] = Field(default=None, alias="7d")
-    stat_30d: Optional[AnalyticsPeriodStats] = Field(default=None, alias="30d")
-    stat_90d: Optional[AnalyticsPeriodStats] = Field(default=None, alias="90d")
+    stat_7d: Optional[AnalyticsPeriodStats] = Field(default=None, validation_alias=AliasChoices("7d", "stat_7d"), serialization_alias="7d")
+    stat_30d: Optional[AnalyticsPeriodStats] = Field(default=None, validation_alias=AliasChoices("30d", "stat_30d"), serialization_alias="30d")
+    stat_90d: Optional[AnalyticsPeriodStats] = Field(default=None, validation_alias=AliasChoices("90d", "stat_90d"), serialization_alias="90d")
 
     top_viewed_papers: list[TopItem] = Field(default_factory=list)
     top_downloaded_papers: list[TopItem] = Field(default_factory=list)

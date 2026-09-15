@@ -207,7 +207,7 @@ class ConversationsRepository:
         )
         res = self._db.execute(stmt, {"cid": conversation_id, "target_role": target_sender_role})
         self._db.commit()
-        return res.rowcount
+        return int(getattr(res, "rowcount", 0))
 
     def get_user_conversations(
         self, firebase_uid: str, limit: int = 50, offset: int = 0

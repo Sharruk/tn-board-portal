@@ -141,24 +141,6 @@ class SubmissionsRepository:
         d["submission_id"] = str(d["submission_id"])
         return d
 
-    def delete_submission(self, submission_id: str) -> None:
-        """Delete an incomplete or failed submission row and its associated files."""
-        try:
-            stmt = text("SELECT storage_path FROM submission_files WHERE submission_id::text = :id")
-            rows = self._db.execute(stmt, {"id": str(submission_id)}).fetchall()
-            paths = [r[0] for r in rows if r[0]]
-            if paths and self._storage:
-                try:
-                    self._storage.from_(SUBMISSIONS_BUCKET).remove(paths)
-                except Exception as st_err:
-                    logger.warning("Failed to clean up storage files for submission %s: %s", submission_id, st_err)
-        except Exception:
-            pass
-
-        self._db.execute(text("DELETE FROM submission_files WHERE submission_id::text = :id"), {"id": str(submission_id)})
-        self._db.execute(text("DELETE FROM submissions WHERE id::text = :id"), {"id": str(submission_id)})
-        self._db.commit()
-
     # ------------------------------------------------------------------ #
     # List submissions (admin)
     # ------------------------------------------------------------------ #
@@ -736,6 +718,7 @@ class SubmissionsRepository:
                     if d.get("submission_id"):
                         d["submission_id"] = str(d["submission_id"])
                     return d
+                raise RuntimeError("Failed to insert paper record in fallback — no data returned")
             except Exception as leg_err:
                 self._db.rollback()
                 logger.error("All fallback paper INSERTs failed: %s", leg_err)
@@ -969,6 +952,7 @@ class SubmissionsRepository:
                     if d.get("submission_id"):
                         d["submission_id"] = str(d["submission_id"])
                     return d
+                raise RuntimeError("Failed to insert paper record from prepared file in fallback — no data returned")
             except Exception as leg_err:
                 self._db.rollback()
                 logger.error("All fallback paper INSERTs failed: %s", leg_err)
@@ -1150,6 +1134,25 @@ class SubmissionsRepository:
         )
         row = self._db.execute(stmt, {"submission_id": submission_id}).fetchone()
         return row is not None
+
+    def get_published_papers_for_submission(self, submission_id: str) -> list[dict[str, Any]]:
+        """Fetch linked published papers for a specific submission."""
+        stmt = text(
+            """
+            SELECT p.id, p.title, p.submission_id, p.exam_type, p.year, p.paper_type, p.public_url,
+                   s.name AS subject_name, c.name AS class_name
+            FROM papers p
+            LEFT JOIN subjects s ON p.subject_id = s.id
+            LEFT JOIN classes c ON s.class_id = c.id
+            WHERE p.submission_id::text = :submission_id
+            """
+        )
+        try:
+            papers_res = self._db.execute(stmt, {"submission_id": str(submission_id)})
+            return [dict(r._mapping) for r in papers_res.fetchall()]
+        except Exception as e:
+            logger.debug("Failed to query linked papers for submission %s: %s", submission_id, e)
+            return []
 
     def delete_submission(
         self,

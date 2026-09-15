@@ -286,7 +286,8 @@ async def verify_paper(
 ) -> PaperResponse:
     """Verify paper accuracy."""
     service = PapersService(db)
-    return service.verify_paper(paper_id=paper_id, current_user=current_user, note=req.note)
+    note = req.note or req.verification_note
+    return service.verify_paper(paper_id=paper_id, current_user=current_user, note=note)
 
 
 # ── POST /api/v1/papers/{id}/revoke-verification ──────────────────────────────
@@ -312,7 +313,7 @@ async def revoke_paper_verification(
 ) -> PaperResponse:
     """Revoke verification on paper."""
     service = PapersService(db)
-    reason = req.note if req else None
+    reason = (req.note or req.verification_note) if req else None
     return service.revoke_verification(paper_id=paper_id, current_user=current_user, reason=reason)
 
 

@@ -22,9 +22,10 @@ def _decode_firebase_token(token: str) -> dict:
     Lightweight, fast, and does not require heavy grpcio/firebase-admin dependencies.
     """
     try:
-        decoded = google_id_token.verify_firebase_token(token, _request_adapter)
-        if not decoded:
+        payload = google_id_token.verify_firebase_token(token, _request_adapter)
+        if not payload:
             raise ValueError("Empty token payload")
+        decoded = dict(payload)
         uid = decoded.get("user_id") or decoded.get("sub") or decoded.get("uid")
         decoded["uid"] = uid
         return decoded

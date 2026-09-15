@@ -66,7 +66,8 @@ class PaperStatusUpdate(BaseModel):
 
 
 class PaperVerifyRequest(BaseModel):
-    verification_note: str | None = Field(None, max_length=500, description="Optional verification note")
+    verification_note: str | None = Field(default=None, max_length=500, description="Optional verification note")
+    note: str | None = Field(default=None, max_length=500, description="Optional verification note alias")
 
 
 

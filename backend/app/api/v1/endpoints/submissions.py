@@ -20,7 +20,7 @@ All database access lives in SubmissionsRepository.
 
 import logging
 import urllib.parse
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
@@ -84,8 +84,8 @@ async def create_submission(
     service = SubmissionsService(db)
     return await service.create_submission(
         publisher_name=publisher_name,
-        email=current_user.get("email"),
-        firebase_uid=current_user.get("firebase_uid"),
+        email=str(current_user.get("email") or ""),
+        firebase_uid=str(current_user.get("firebase_uid") or ""),
         details=details,
         files=files,
     )
@@ -304,11 +304,11 @@ async def approve_submission(
                 description=str(form_dict["description"]).strip() if form_dict.get("description") else None,
                 thank_you_message=str(form_dict["thank_you_message"]).strip() if form_dict.get("thank_you_message") else None,
                 youtube_url=str(form_dict["youtube_url"]).strip() if form_dict.get("youtube_url") else None,
-                class_id=int(form_dict["class_id"]) if form_dict.get("class_id") else None,
-                subject_id=int(subject_id_raw),
+                class_id=int(str(form_dict["class_id"])) if form_dict.get("class_id") else None,
+                subject_id=int(str(subject_id_raw)),
                 exam_type=str(form_dict["exam_type"]),
-                year=int(year_raw),
-                paper_type=str(form_dict["paper_type"]),
+                year=int(str(year_raw)),
+                paper_type=cast(Literal["question", "answer_key"], str(form_dict["paper_type"])),
                 month=str(form_dict["month"]).strip() if form_dict.get("month") else None,
                 district=str(form_dict["district"]).strip() if form_dict.get("district") else None,
             )
