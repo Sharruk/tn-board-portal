@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { useAdminAuth } from '../../contexts/AdminAuthContext'
 import UserAvatar from '../../components/common/UserAvatar'
 import AdminUsersTab from '../../components/admin/AdminUsersTab'
 import AdminInboxTab from '../../components/admin/AdminInboxTab'
+import AdminRolesTab from '../../components/admin/AdminRolesTab'
 import { getAdminConversationStats } from '../../services/adminConversations'
 import { getAdminPapers, getAdminStats, getSearchAnalytics, getRecentUploads, getAdminMe, getAuditLogs } from '../../services/admin'
 import { getAnalyticsDashboard } from '../../services/analytics'
@@ -76,7 +78,8 @@ function StatCard({ label, value, color, icon }) {
 
 export default function DashboardPage({ defaultTab = 'overview' }) {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState(defaultTab) // 'overview' | 'users' | 'inbox' | 'analytics' | 'moderation'
+  const { isSuperAdmin } = useAdminAuth()
+  const [activeTab, setActiveTab] = useState(defaultTab) // 'overview' | 'users' | 'inbox' | 'analytics' | 'moderation' | 'roles'
   const [inboxUnread, setInboxUnread] = useState(0)
 
   useEffect(() => {
@@ -282,6 +285,18 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
             </span>
           )}
         </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setActiveTab('roles')}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+              activeTab === 'roles'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <span>👑</span> Admin Roles
+          </button>
+        )}
       </div>
 
       {/* ── TAB 1: OVERVIEW ── */}
@@ -786,6 +801,19 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── TAB: ADMIN ROLES (SUPER ADMIN ONLY) ── */}
+      {activeTab === 'roles' && (
+        isSuperAdmin ? (
+          <AdminRolesTab />
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center text-amber-800 space-y-2">
+            <span className="text-3xl">🔒</span>
+            <p className="text-lg font-bold">Access Restricted</p>
+            <p className="text-xs text-amber-700">Admin role management is restricted to Super Admin only.</p>
+          </div>
+        )
       )}
 
     </div>

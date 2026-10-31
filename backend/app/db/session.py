@@ -39,13 +39,37 @@ def get_engine():
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
+    connect_args = {
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    }
+
+    # Detect Vercel serverless environment (Vercel automatically sets VERCEL=1)
+    is_vercel = bool(os.getenv("VERCEL"))
+
+    # In Vercel serverless microVMs, each instance handles 1 concurrent request.
+    # pool_size=2 and max_overflow=1 allows up to 3 total connections per warm instance,
+    # ensuring warm connection reuse without multiplying connection exhaustion on Supabase
+    # across multiple concurrent serverless function instances (budget: 60 max, 42 headroom).
+    #
+    # In persistent environments (local Docker / standalone container), pool_size=10 and
+    # max_overflow=5 (up to 15 connections) supports high-concurrency burst traffic cleanly.
+    default_pool_size = 2 if is_vercel else 10
+    default_max_overflow = 1 if is_vercel else 5
+
+    pool_size = int(os.getenv("DB_POOL_SIZE", str(default_pool_size)))
+    max_overflow = int(os.getenv("DB_MAX_OVERFLOW", str(default_max_overflow)))
+
     return create_engine(
         db_url,
-        pool_size=5,
-        max_overflow=2,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
         pool_pre_ping=True,
         pool_recycle=300,
-        pool_timeout=10,
+        pool_timeout=15,
+        connect_args=connect_args,
     )
 
 

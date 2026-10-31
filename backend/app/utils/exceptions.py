@@ -19,6 +19,16 @@ class NotFoundError(HTTPException):
         )
 
 
+class BadRequestError(HTTPException):
+    """Client sent an invalid request or state violation."""
+
+    def __init__(self, detail: str = "Bad request.") -> None:
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        )
+
+
 class DatabaseError(HTTPException):
     """Unexpected error returned by Supabase."""
 

@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import MainLayout from '../layouts/MainLayout'
 import AdminLayout from '../components/admin/AdminLayout'
 import ProtectedRoute from '../components/admin/ProtectedRoute'
+import { AdminAuthProvider } from '../contexts/AdminAuthContext'
 
 import HomePage from '../pages/HomePage'
 import ClassPage from '../pages/ClassPage'
@@ -59,15 +60,17 @@ const router = createBrowserRouter([
   },
 
   // ── Admin login (standalone, no layout) ───────────────
-  { path: '/admin/login', element: <LoginPage /> },
+  { path: '/admin/login', element: <AdminAuthProvider><LoginPage /></AdminAuthProvider> },
 
   // ── Protected admin routes (sidebar layout) ───────────
   {
     path: '/admin',
     element: (
-      <ProtectedRoute>
+      <AdminAuthProvider>
+        <ProtectedRoute>
         <AdminLayout />
-      </ProtectedRoute>
+        </ProtectedRoute>
+      </AdminAuthProvider>
     ),
     children: [
       { index: true, element: <Navigate to="/admin/dashboard" replace /> },
@@ -79,6 +82,7 @@ const router = createBrowserRouter([
       { path: 'news', element: <AdminNewsPage /> },
       { path: 'content-status', element: <ContentStatusPage /> },
       { path: 'submissions', element: <SubmissionsPage /> },
+      { path: 'roles', element: <DashboardPage defaultTab="roles" /> },
     ],
   },
 ])

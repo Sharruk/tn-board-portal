@@ -8,6 +8,10 @@
 
 FROM python:3.12-slim AS base
 
+# ── Environment settings ─────────────────────────────────────────────
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 # ── System dependencies ──────────────────────────────────────────────
 # curl is included for container health check probes
 RUN apt-get update \
@@ -24,14 +28,16 @@ WORKDIR /app
 # ── Install Python dependencies ──────────────────────────────────────
 # Copy requirements first so Docker layer cache is reused when only
 # application code changes.
-COPY requirements.txt .
+COPY requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements-dev.txt
 
-# ── Copy application code ────────────────────────────────────────────
+# ── Copy application code and test suite ─────────────────────────────
 COPY app/ ./app/
+COPY tests/ ./tests/
 
-# ── Switch to non-root user ──────────────────────────────────────────
+# ── Set ownership and switch to non-root user ────────────────────────
+RUN chown -R appuser:appgroup /app
 USER appuser
 
 # ── Expose port ──────────────────────────────────────────────────────

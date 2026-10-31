@@ -1,27 +1,24 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { useAdminAuth } from '../../contexts/AdminAuthContext'
 import { signInWithGoogle } from '../../lib/firebase'
 
 /**
  * Admin Login Page
  *
  * Authentication flow:
- *   1. If already loading Firebase auth state → show nothing (prevent flicker).
+ *   1. If already loading Firebase or Admin auth state → show spinner (prevent flicker).
  *   2. If already authorized as admin (isAdmin) → redirect to dashboard.
- *   3. If Firebase user is signed in but NOT the admin → show Access Denied screen
+ *   3. If Firebase user is signed in but NOT an authorized Admin → show Access Denied screen
  *      with a sign-out option (so the correct account can be chosen).
  *   4. Otherwise → show Google Sign-In button.
  *
- * The Google sign-in call uses prompt: 'select_account' (set in firebase.js)
- * so that a cached non-admin Google session never silently passes through.
- *
- * After sign-in, authorization is evaluated by comparing the Firebase user's
- * email to the single allowed admin email in AuthContext. If the email does
- * not match, the user lands in state 3 (Access Denied), never the dashboard.
+ * Appointed Admins and Super Admin are recognized server-side via AdminAuthContext.
  */
 export default function LoginPage() {
-  const { isAdmin, isAuthenticated, isLoading, firebaseUser, logout } = useAuth()
+  const { isAuthenticated, firebaseUser, logout } = useAuth()
+  const { isAdmin, adminLoading, refreshAdmin } = useAdminAuth()
   const navigate = useNavigate()
 
   const [loading, setLoading] = useState(false)
@@ -29,13 +26,19 @@ export default function LoginPage() {
 
   // ── Redirect authorized admin to dashboard ──────────────────────────────
   useEffect(() => {
-    if (!isLoading && isAdmin) {
+    if (!adminLoading && isAdmin) {
       navigate('/admin/dashboard', { replace: true })
     }
-  }, [isAdmin, isLoading, navigate])
+  }, [isAdmin, adminLoading, navigate])
 
-  // Don't render anything while Firebase resolves the initial auth state
-  if (isLoading) return null
+  // Don't render access denied while admin status is resolving
+  if (adminLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center">
+        <span className="w-8 h-8 border-4 border-gray-600 border-t-white rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -45,20 +48,17 @@ export default function LoginPage() {
     try {
       const { user, error: signInError } = await signInWithGoogle()
       if (signInError) {
-        // User cancelled the popup or another transient sign-in error
         if (
           signInError.code === 'auth/popup-closed-by-user' ||
           signInError.code === 'auth/cancelled-popup-request'
         ) {
-          // Not an error to show — user closed the chooser
           return
         }
         throw signInError
       }
-      // If user signed in but is NOT the admin, AuthContext will set isAdmin=false
-      // and the useEffect above will NOT redirect. The component re-renders into
-      // the "Access Denied" state below automatically.
-      if (!user) {
+      if (user) {
+        await refreshAdmin()
+      } else {
         setError('Sign-in did not return a user. Please try again.')
       }
     } catch (err) {
@@ -73,7 +73,7 @@ export default function LoginPage() {
     await logout()
   }
 
-  // ── Access Denied state: signed in but NOT the admin ─────────────────────
+  // ── Access Denied state: signed in but NOT an authorized Admin ───────────
   if (isAuthenticated && !isAdmin) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center px-4">
@@ -102,7 +102,7 @@ export default function LoginPage() {
             </div>
 
             <p className="text-xs text-gray-500 text-center mb-5">
-              Sign out and sign in with the authorized admin account to continue.
+              Sign out and sign in with an authorized administrator account to continue.
             </p>
 
             <button

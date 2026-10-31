@@ -303,15 +303,57 @@ tn-board-portal/
 
 ---
 
-## 🔒 Authentication & Security
+## 🔒 Authentication & Multi-User Role Management
 
-- **Google Sign-In**: Authentication is handled via Firebase Authentication Google Sign-In (`signInWithPopup`).
-- **Cryptographic Token Verification**: The backend verifies Firebase ID tokens using `google.oauth2.id_token.verify_firebase_token` against Google's public OAuth2 signing certificates.
-- **Server-Side Authorization**: Administrative operations (`/api/v1/submissions/*`, `DELETE /api/v1/papers/*`, etc.) are protected server-side with FastAPI's `require_admin` dependency, checking the authenticated account against the authorized administrator credentials.
-- **Zero Secret Exposure**:
-  - No secret keys, Firebase service account credentials, or database passwords are built into client bundles.
-  - Supabase Service Role keys are restricted strictly to backend execution.
-- **Storage Scope Protection**: File paths for storage deletion and downloads are derived from database records, preventing arbitrary client path manipulation.
+The platform enforces a comprehensive four-tier Role-Based Access Control (RBAC) architecture:
+
+```
+                           ┌────────────────────────────────────────┐
+                           │      SUPER_ADMIN (Root Governance)     │
+                           │    hungrylearner786@gmail.com (Pinned) │
+                           └───────────────────┬────────────────────┘
+                                               │
+                       ┌───────────────────────┴───────────────────────┐
+                       ▼                                               ▼
+         Method 1: Direct Promotion                      Method 2: Pre-Authorization
+         Promote registered USER/CONTRIBUTOR             Pre-authorize Google email invitation
+                       │                                               │
+                       └───────────────────────┬───────────────────────┘
+                                               ▼
+                                  ┌─────────────────────────┐
+                                  │   ADMIN (Management)    │
+                                  │ Review, Moderate, Papers│
+                                  └────────────┬────────────┘
+                                               │ (On Revocation)
+                                               ▼
+                                 Restores original previous_role
+                                       ┌───────┴───────┐
+                                       ▼               ▼
+                               ┌──────────────┐ ┌──────────────┐
+                               │ CONTRIBUTOR  │ │     USER     │
+                               │(Earned Badge)│ │(Default Role)│
+                               └──────────────┘ └──────────────┘
+```
+
+### Role Model Definitions
+
+| Role | Target Users | Capabilities & Scope |
+|---|---|---|
+| **`USER`** | All registered students, teachers, and visitors | Browse classes, search and download papers, participate in community discussions, request missing papers, and submit materials with voluntary public attribution. |
+| **`CONTRIBUTOR`** | Users with approved public materials | Same as `USER` plus automatic inclusion on the public **Contributor Recognition Leaderboard**, special profile badges, and tracked community download impact. |
+| **`ADMIN`** | Appointed community managers & moderators | Access to the **Admin Dashboard** (`/admin/dashboard`): review submissions (approve, reject, delete), manage papers (bulk upload, edit metadata, publish/draft), track subject coverage, respond to student messaging, and moderate discussions. |
+| **`SUPER_ADMIN`** | Primary platform administrator (`hungrylearner786@gmail.com`) | Complete system authority. In addition to all Admin features, has exclusive access to **Admin Role Management** (`/admin/dashboard` $\rightarrow$ Admin Roles) to promote registered users, pre-authorize pending Google emails, revoke admin access, and inspect platform analytics. Cannot be demoted or revoked. |
+
+### Two Admin Appointment Methods
+1. **Method 1 — Promote Existing Registered User**: Super Admin navigates to the *Users & Contributors* tab in the Admin Dashboard, searches for an existing registered user, opens their profile modal, and promotes them to Admin.
+2. **Method 2 — Pre-Authorize Email Invitation**: Super Admin enters a prospective administrator's Google email address in the *Admin Roles* tab. When that user signs in via Google for the first time, their account atomically claims the pending appointment via `claim_pending_admin_appointment()` and assumes the Admin role.
+3. **Safe Revocation & Restoration**: Revoking an Admin safely and automatically restores their original role (`USER` or `CONTRIBUTOR`) stored in `users.previous_role`. No account records are deleted and contribution history remains intact.
+
+### Authentication & Token Verification Security
+- **Firebase Google Sign-In**: Authentication is handled client-side via Firebase Authentication (`signInWithPopup`).
+- **Offloaded Cryptographic Token Verification**: The backend verifies Firebase ID tokens using `google.oauth2.id_token.verify_firebase_token` against Google's public OAuth2 signing certificates. Verification runs in a worker thread via `run_in_threadpool` with a 5.0-second socket timeout, guaranteeing that network delays never freeze FastAPI's main asyncio event loop.
+- **Server-Side Authorization**: Administrative operations (`/api/v1/admin/*`, `/api/v1/submissions/*`, etc.) are authoritatively guarded server-side using FastAPI dependencies (`require_admin`, `require_super_admin`).
+- **Zero Secret Exposure**: No database connection strings, Supabase service-role keys, or Firebase private keys are bundled in client assets.
 - **Privacy Enforcement**: Contributor emails are stored in database records for administrative tracking but are stripped from all public API schemas and public page responses.
 
 ---
@@ -327,7 +369,8 @@ tn-board-portal/
 | `papers` | Published question papers and answer keys | `id SERIAL` |
 | `submissions` | Contributor material submissions awaiting review | `id UUID` |
 | `submission_files` | Files attached to contributor submissions | `id UUID` |
-| `users` | User profiles and assigned application roles | `id UUID` |
+| `users` | User profiles, canonical display names, and assigned roles (`role`, `previous_role`) | `id UUID` |
+| `pending_admin_appointments` | Pre-authorized Admin email invitations created by Super Admin | `id UUID` |
 | `community_posts` | Community discussions and study queries | `id UUID` |
 | `community_comments` | Threaded replies on discussion posts | `id UUID` |
 | `paper_likes` | User upvotes / likes on question papers | `id UUID` |
@@ -347,25 +390,29 @@ tn-board-portal/
 | `official-updates` | **Public** | PDFs and attachments for official circulars and notices |
 | `news-media` | **Public** | Cover images and media for educational news updates |
 
-### Safe Database Migrations Workflow
-The project manages database schema through version-controlled, forward-only Supabase PostgreSQL migrations in `supabase/migrations/` (migrations `001` through `025` are fully applied and synchronized with remote production):
+### Database Migrations Workflow (Supabase CLI)
+The project manages database schemas through version-controlled, forward-only PostgreSQL migrations located in `supabase/migrations/`:
 
-1. **Link to Supabase Project**:
-   ```bash
-   supabase link --project-ref YOUR_PROJECT_REF
-   ```
-2. **Inspect Migration Status**:
-   ```bash
-   supabase migration list
-   ```
-3. **Apply Unapplied Migrations**:
-   ```bash
-   supabase db push
-   ```
-4. **Create New Migrations**: Always create a new forward-only migration file for schema changes; never modify or delete already-applied migration files:
-   ```bash
-   supabase migration new descriptive_migration_name
-   ```
+- **Applied Migrations (`001` through `028`)**: Fully applied and synchronized with remote Supabase production.
+- **Pending Migration (`029_admin_role_management.sql`)**: Implements `previous_role`, `pending_admin_appointments`, RLS policies, and `claim_pending_admin_appointment()` stored procedure.
+
+#### Safe Migration Commands
+```bash
+# 1. Link local repository to remote Supabase project
+npx supabase link --project-ref fcxvrsgcvmlowehpilvr
+
+# 2. Inspect migration history (compare local vs remote status)
+npx supabase migration list
+
+# 3. Review SQL changes before applying
+cat supabase/migrations/029_admin_role_management.sql
+
+# 4. Apply unapplied migrations (only after explicit approval)
+npx supabase db push
+
+# 5. Verify migration application
+npx supabase migration list
+```
 
 ---
 
@@ -404,14 +451,15 @@ Configured in `backend/.env` for development and in the **Vercel Project Setting
 
 ---
 
-## 💻 Local Development Setup
+## 💻 Local Development Setup (WSL / Linux & Docker Compose)
+
+The recommended and standardized local development environment uses **Docker Compose inside WSL2 (Ubuntu) or Linux**. This starts both the React frontend and FastAPI backend together in synchronized, isolated containers with health checks.
 
 ### Prerequisites
-- **Node.js**: v18.0 or later (v20+ recommended)
-- **npm**: v9.0 or later
-- **Python**: v3.10, v3.11, or v3.12
+- **OS**: Windows 10/11 with WSL2 (Ubuntu 22.04+ recommended) or native Linux
+- **Docker Engine & Docker Compose**: Installed inside WSL/Linux (`docker compose version` $\ge$ 2.20)
+- **Node.js**: v20+ (for local CLI tooling and builds)
 - **Git**
-- **Supabase CLI** (`npm install -g supabase`)
 
 ### 1. Clone the Repository
 ```bash
@@ -420,122 +468,169 @@ cd tn-board-portal
 ```
 
 ### 2. Configure Environment Variables
-Copy example environment templates:
+Copy the example environment templates:
 ```bash
+# Root & shared environment
+cp .env.example .env
+
 # Backend configuration
 cp backend/.env.example backend/.env
 
 # Frontend configuration
 cp frontend/.env.example frontend/.env.local
 ```
-Fill in your Supabase, Firebase, and backend API credentials.
+Fill in your Supabase connection URL, anonymous key, service-role key, and Firebase public credentials in the respective `.env` files.
 
-### 3. Apply Supabase Database Migrations
+### 3. Build & Run with Docker Compose
+Run the single build and startup command from the repository root:
 ```bash
-# Link local repository to your remote Supabase project
-supabase link --project-ref YOUR_PROJECT_REF
+docker compose up --build -d
+```
+Both services will start in detached mode with automated health checks:
+- **Frontend (React + Vite)**: [http://localhost:5000](http://localhost:5000)
+- **Backend (FastAPI)**: [http://localhost:8000](http://localhost:8000)
+- **API Health Check**: [http://localhost:8000/health](http://localhost:8000/health)
+- **Interactive Swagger Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Admin Dashboard**: [http://localhost:5000/admin/login](http://localhost:5000/admin/login)
 
-# Push unapplied migrations safely
-supabase db push
+### 4. Viewing Container Logs
+Stream real-time structured logs from containers:
+```bash
+# Stream backend logs (FastAPI / SQLAlchemy queries / Auth logs)
+docker compose logs -f backend
+
+# Stream frontend logs (Vite dev server & reverse proxy)
+docker compose logs -f frontend
+
+# Tail last 100 log lines from backend
+docker compose logs --tail=100 backend
 ```
 
-### 4. Setup & Start Backend API (FastAPI)
+### 5. Inspecting Container Health & Status
 ```bash
-# Navigate to backend
-cd backend
-
-# Create and activate virtual environment (Windows)
-python -m venv venv
-venv\Scripts\activate
-
-# Create and activate virtual environment (Linux/macOS)
-# python3 -m venv venv && source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start FastAPI server
-uvicorn app.main:app --reload --port 8000
+docker compose ps
 ```
-Interactive API documentation will be available at **http://localhost:8000/docs**.
+Both containers should report status `Up (healthy)`.
 
-### 5. Setup & Start Frontend (React + Vite)
-In a separate terminal window:
+### 6. Running Tests & Production Builds
 ```bash
-# Navigate to frontend
-cd frontend
+# Run complete backend test suite (180 tests) inside Docker
+docker exec tn-board-backend pytest
 
-# Install dependencies
-npm install
+# Run specific test modules
+docker exec tn-board-backend pytest tests/test_admin_roles.py -v
+docker exec tn-board-backend pytest tests/test_submissions.py -v
 
-# Start Vite development server
-npm run dev
+# Validate frontend production build locally
+cd frontend && npm run build
 ```
-The application will open at **http://localhost:5173**.
+
+### 7. Stopping & Restarting Containers
+```bash
+# Restart only the backend service after configuration updates
+docker compose restart backend
+
+# Stop all containers (preserves container volumes and state)
+docker compose down
+
+# Stop containers and remove build cache if necessary
+docker compose down --volumes
+```
+
+### 8. Troubleshooting Local Setup
+- **Port Conflict (Port 5000 or 8000 already in use)**: Check for host processes using `sudo lsof -i :5000` or `sudo lsof -i :8000` and stop lingering processes.
+- **Backend Health Check Failing**: Verify `backend/.env` has a reachable `SUPABASE_DATABASE_URL` (Supabase port 5432).
+- **Vite Proxy Latency**: Inside Docker, the frontend proxies `/api` calls directly to `http://backend:8000` via the internal Docker bridge network (`VITE_API_PROXY_TARGET=http://backend:8000`).
 
 ---
 
 ## 🧪 Testing & Quality Assurance
 
 ### Run Backend Test Suite
-The repository includes **141 unit and integration tests** covering routes, services, repositories, authentication, and the submission deletion lifecycle:
+The repository includes **180 comprehensive unit and integration tests** validating data access, role-based security, workflow state machines, and API schemas:
 ```bash
-# From the repository root
-python -m pytest backend/tests -q
+# Run tests directly inside the healthy backend container
+docker exec tn-board-backend pytest
 ```
 
 The test suite validates:
-- Approved submission deletion with linked paper and storage cleanup
-- Storage cleanup resilience when files are already missing
-- Pending and rejected submission deletion
-- Admin authorization enforcement (`403 Forbidden` for non-admins, `401 Unauthorized` for unauthenticated requests)
-- Missing submission `404 Not Found` handling
-- Submission file metadata cleanup
-- Audit logging verification
+- **Admin Role Management (`test_admin_roles.py`)**: 20 tests validating Super Admin promotion, pre-authorization, atomic claiming, revocation, previous-role restoration, and self-demotion prevention.
+- **Admin User Actions (`test_admin_users.py`)**: 4 tests validating user listings, search filters, and submission counts.
+- **Material Submissions Lifecycle (`test_submissions.py`)**: 65 tests validating multi-file uploads, PDF mime validation, approved/rejected states, linked paper generation, and display-name synchronization.
+- **Question Paper Catalog (`test_papers.py`)**: 35 tests covering full-text search, term expansion, class/subject filters, and proxy downloads.
+- **Community & Discussions (`test_community.py`, `test_conversations.py`)**: Discussion threads, message exchanges, and moderation.
+- **Authentication & Authorization (`test_auth.py`)**: Token verification offloading, role checking, and 401/403 security enforcement.
 
 ### Validate Frontend Production Build
 ```bash
-# From the frontend directory
 cd frontend
 npm run build
 ```
 
 ---
 
-## 🚀 Deployment Architecture
+## 🚀 Deployment Architecture (Vercel & Supabase)
 
-The production environment operates as a unified cloud deployment on Vercel and Supabase:
+Hungry Learner operates as a **unified cloud deployment on Vercel** backed by Supabase and Firebase:
 
-- **Frontend & Backend API (Vercel)**:
-  - Unified repository deployed directly on Vercel (`https://tn-board-portal.vercel.app`).
-  - Automatically builds frontend assets (`frontend/dist`) via Vite.
-  - Serverless Python execution for FastAPI routes (`api/index.py` handles `/api/*`, `/health`, `/docs`, `/openapi.json`).
-  - Unified routing configured via root `vercel.json` with Single Page Application rewrites to `index.html`.
-  - Environment variables configured in Vercel Project Settings.
+```
+                                  Vercel Edge Network
+                         (https://tn-board-portal.vercel.app)
+                                         │
+                 ┌───────────────────────┴───────────────────────┐
+                 ▼                                               ▼
+         Static Asset Routes                             API & Meta Routes
+      (Vite SPA in frontend/dist)                   (Vercel Serverless Function)
+                 │                                               │
+         /(.*) -> index.html                     /api/(.*), /health, /docs, /openapi.json
+        (Client-side routing)                                    │
+                                                                 ▼
+                                                           api/index.py
+                                                                 │
+                                                       (Adds /backend to sys.path)
+                                                                 │
+                                                                 ▼
+                                                         app.main:app (FastAPI)
+                                                                 │
+                                            ┌────────────────────┴────────────────────┐
+                                            ▼                                         ▼
+                                   Supabase PostgreSQL                        Supabase Storage
+                                   (Session Pooler: 5432)                     (Material PDFs)
+```
 
-- **Database & Storage (Supabase)**:
-  - Supabase PostgreSQL managed database running version-controlled migrations (`supabase/migrations/`).
-  - Supabase Storage hosting public PDF assets (`papers`, `official-updates`, `news-media`) and private submission queues (`submissions`).
+### Vercel Serverless Architecture
+- **Unified Monorepo Hosting**: The React 18 frontend and Python FastAPI backend live in the same repository and deploy together on `https://tn-board-portal.vercel.app`.
+- **SPA Rewrites (`vercel.json`)**: All non-API routes (`/(.*)`) rewrite to `/index.html`, allowing React Router to manage public student pages and protected `/admin/*` routes seamlessly.
+- **Serverless API Execution**: Routes under `/api/*`, `/health`, `/docs`, and `/openapi.json` route to `api/index.py`, which executes FastAPI in serverless Python 3.12 microVMs.
+- **Same-Origin Production API**: In production, `resolveApiBaseUrl()` resolves to relative paths (`/api/v1/...`), eliminating CORS preflight overhead in production.
 
-- **Authentication (Firebase)**:
-  - Google Sign-In managed client-side with ID tokens cryptographically verified on the backend against Google public certificates.
+### Database Connection Strategy (Serverless vs. Docker)
+In `backend/app/db/session.py`, the engine automatically detects the runtime environment:
+- **On Vercel (`VERCEL=1`)**: Uses `pool_size=2, max_overflow=1` (up to 3 connections per warm instance). Since serverless microVMs handle 1 request at a time, this allows warm instance connection reuse without multiplying connection exhaustion across concurrent Lambda instances (safe against Supabase's 60-connection pool limit).
+- **In Local Docker**: Uses `pool_size=10, max_overflow=5` (up to 15 connections) with TCP keepalives to handle concurrent bursts from the local development server.
+
+### Required Production Environment Variables (Vercel Project Settings)
+The following variable keys must be set in Vercel:
+- `SUPABASE_DATABASE_URL`: Direct Supabase PostgreSQL connection string (Port 5432)
+- `SUPABASE_URL`: Supabase project HTTPS URL
+- `SUPABASE_ANON_KEY`: Supabase public anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service-role secret key (for backend storage management)
+- `ADMIN_EMAIL`: Pinned Super Admin Google account email (`hungrylearner786@gmail.com`)
+- `CORS_ORIGINS`: Allowed origins including `https://tn-board-portal.vercel.app`
 
 ---
 
-## 🔄 Development Workflow
+## 🔄 Development & Release Workflow
 
-Follow the engineering rules documented in `.ai/`:
-
-1. **Branching Strategy**:
-   - `main`: Production release branch.
-   - `dev`: Active integration and development branch.
-   - `feature/*`: Feature development branches.
-   - `fix/*`: Bugfix branches.
-2. **Database Schema Evolution**:
-   - Never edit existing applied migration files.
-   - Always create forward-only incremental migrations and test via `supabase db push`.
-3. **Pre-Merge Verification**:
-   - Run the Pytest test suite (`python -m pytest backend/tests`) and verify the frontend build (`npm run build`) before merging to `dev` or `main`.
+1. **Feature Branching**: All enhancements and bug fixes are developed and verified on dedicated feature branches (e.g. `feature/multi-user-roles-v2`).
+2. **Local Container Verification**: Test full application execution with Docker Compose and verify Pytest test suite (`180 passed`).
+3. **Database Migration Synchronization**:
+   - Check status: `npx supabase migration list`
+   - Review pending migrations in `supabase/migrations/`
+   - Apply approved migrations remotely: `npx supabase db push`
+4. **Main Branch Release**:
+   - Merge the approved feature branch into `main`.
+   - Vercel's GitHub integration automatically builds the updated frontend and serverless backend and publishes the live production deployment.
 
 ---
 

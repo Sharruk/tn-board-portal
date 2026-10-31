@@ -4,8 +4,11 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Header, status
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
+import requests
+from requests.adapters import HTTPAdapter
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.config.settings import get_settings
 from app.dependencies.supabase import get_db
@@ -13,7 +16,25 @@ from app.dependencies.supabase import get_db
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-_request_adapter = google_requests.Request()
+
+class TimeoutHTTPAdapter(HTTPAdapter):
+    """HTTPAdapter that enforces a default timeout if none is provided."""
+
+    def __init__(self, timeout: float = 5.0, *args, **kwargs):
+        self.default_timeout = timeout
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        if kwargs.get("timeout") is None:
+            kwargs["timeout"] = self.default_timeout
+        return super().send(request, **kwargs)
+
+
+_session = requests.Session()
+_timeout_adapter = TimeoutHTTPAdapter(timeout=5.0, max_retries=1)
+_session.mount("https://", _timeout_adapter)
+_session.mount("http://", _timeout_adapter)
+_request_adapter = google_requests.Request(session=_session)
 
 
 def _decode_firebase_token(token: str) -> dict:
@@ -28,6 +49,8 @@ def _decode_firebase_token(token: str) -> dict:
         uid = decoded.get("user_id") or decoded.get("sub") or decoded.get("uid")
         decoded["uid"] = uid
         return decoded
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning("Firebase token verification failed: %s", exc)
         raise HTTPException(
@@ -39,6 +62,7 @@ def _decode_firebase_token(token: str) -> dict:
 async def verify_firebase_token(authorization: Annotated[str | None, Header()] = None) -> dict:
     """
     Verifies the Firebase ID token and returns the decoded token.
+    Offloads synchronous Google public cert verification to a worker thread.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -47,7 +71,7 @@ async def verify_firebase_token(authorization: Annotated[str | None, Header()] =
         )
 
     token = authorization.removeprefix("Bearer ").strip()
-    return _decode_firebase_token(token)
+    return await run_in_threadpool(_decode_firebase_token, token)
 
 
 async def get_current_user(
@@ -199,7 +223,7 @@ async def get_current_user_optional(
         return None
     try:
         token = authorization.removeprefix("Bearer ").strip()
-        decoded = _decode_firebase_token(token)
+        decoded = await run_in_threadpool(_decode_firebase_token, token)
         uid = decoded.get("uid")
         if not uid:
             return None

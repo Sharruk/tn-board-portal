@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import UserAvatar from '../common/UserAvatar'
 import { getAdminUsers, getAdminUserDetail } from '../../services/adminUsers'
+import { useAdminAuth } from '../../contexts/AdminAuthContext'
+import { promoteUserToAdmin, revokeAdminRole } from '../../services/adminRoles'
 
 function fmtDate(iso) {
   if (!iso) return '—'
@@ -20,6 +23,7 @@ function timeAgo(iso) {
 }
 
 export default function AdminUsersTab({ onSelectConversation }) {
+  const { isSuperAdmin } = useAdminAuth()
   const [users, setUsers] = useState([])
   const [totalCount, setTotalCount] = useState(0)
   const [totalContributors, setTotalContributors] = useState(0)
@@ -29,6 +33,54 @@ export default function AdminUsersTab({ onSelectConversation }) {
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [detailData, setDetailData] = useState(null)
+
+  // Super Admin action states
+  const [actionLoading, setActionLoading] = useState(false)
+  const [roleFeedback, setRoleFeedback] = useState(null)
+  const [roleConfirmModal, setRoleConfirmModal] = useState(null)
+
+  const showRoleFeedback = (message, type = 'success') => {
+    setRoleFeedback({ type, message })
+    setTimeout(() => {
+      setRoleFeedback(prev => (prev?.message === message ? null : prev))
+    }, 6000)
+  }
+
+  const handlePromoteUser = async (targetUser) => {
+    setActionLoading(true)
+    try {
+      await promoteUserToAdmin(targetUser.firebase_uid)
+      showRoleFeedback(`Successfully promoted "${targetUser.display_name || targetUser.email}" to Admin.`, 'success')
+      // Refresh modal
+      const detail = await getAdminUserDetail(targetUser.firebase_uid)
+      setDetailData(detail)
+      // Refresh directory table
+      loadUsers(search)
+      setRoleConfirmModal(null)
+    } catch (err) {
+      showRoleFeedback(err.message || 'Failed to promote user to Admin.', 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleRevokeRole = async (targetUser) => {
+    setActionLoading(true)
+    try {
+      const res = await revokeAdminRole(targetUser.firebase_uid)
+      showRoleFeedback(`Admin privileges revoked. Role safely restored to ${res.previous_role || 'previous role'}.`, 'success')
+      // Refresh modal
+      const detail = await getAdminUserDetail(targetUser.firebase_uid)
+      setDetailData(detail)
+      // Refresh directory table
+      loadUsers(search)
+      setRoleConfirmModal(null)
+    } catch (err) {
+      showRoleFeedback(err.message || 'Failed to revoke Admin role.', 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   const loadUsers = async (query = '') => {
     setLoading(true)
@@ -155,7 +207,19 @@ export default function AdminUsersTab({ onSelectConversation }) {
                       <div className="flex items-center gap-3">
                         <UserAvatar user={u} size="md" className="border border-gray-200" />
                         <div className="min-w-0">
-                          <p className="font-bold text-gray-900 text-xs truncate">{u.display_name || 'Anonymous Student'}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-bold text-gray-900 text-xs truncate">{u.display_name || 'Anonymous Student'}</p>
+                            {u.role === 'SUPER_ADMIN' && (
+                              <span className="text-[9px] font-black bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-full border border-amber-200">
+                                👑 Super Admin
+                              </span>
+                            )}
+                            {u.role === 'ADMIN' && (
+                              <span className="text-[9px] font-black bg-blue-100 text-blue-900 px-1.5 py-0.5 rounded-full border border-blue-200">
+                                🛡️ Admin
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-gray-500 truncate">{u.email || '—'}</p>
                           <span className="text-[9px] font-mono text-gray-400 truncate block">{u.firebase_uid}</span>
                         </div>
@@ -252,6 +316,16 @@ export default function AdminUsersTab({ onSelectConversation }) {
             ) : detailData ? (
               <div className="space-y-6">
 
+                {/* Role Action Feedback Banner */}
+                {roleFeedback && (
+                  <div className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 ${
+                    roleFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                    <span>{roleFeedback.message}</span>
+                    <button onClick={() => setRoleFeedback(null)} className="text-gray-400 hover:text-gray-700 font-bold">✕</button>
+                  </div>
+                )}
+
                 {/* Profile Header */}
                 <div className="bg-gradient-to-r from-blue-50 via-indigo-50/40 to-white rounded-2xl p-5 border border-blue-100 flex flex-col sm:flex-row items-center sm:items-start gap-4">
                   <UserAvatar user={detailData.user} size="lg" className="border-2 border-white shadow-xs" />
@@ -273,6 +347,57 @@ export default function AdminUsersTab({ onSelectConversation }) {
                     </div>
                   </div>
                 </div>
+
+                {/* Super Admin: Method 1 Promote / Revoke Administrative Controls */}
+                {isSuperAdmin && (
+                  <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-4 sm:p-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">👑</span>
+                          <h4 className="text-sm font-extrabold text-amber-950">Administrative Role Management</h4>
+                        </div>
+                        <p className="text-xs text-amber-900/80">
+                          {detailData.user.role === 'SUPER_ADMIN'
+                            ? 'Root Super Admin account. Privileges cannot be revoked or altered.'
+                            : detailData.user.role === 'ADMIN'
+                            ? 'This registered user currently holds full Admin access to the platform.'
+                            : 'Method 1: Appoint this existing registered user directly to the Admin role.'}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0">
+                        {detailData.user.role === 'SUPER_ADMIN' ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-200/70 text-amber-950 text-xs font-black rounded-xl border border-amber-300">
+                            👑 Super Admin (Protected)
+                          </span>
+                        ) : detailData.user.role === 'ADMIN' ? (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-900 text-xs font-black rounded-xl border border-blue-200">
+                              🛡️ Active Admin
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setRoleConfirmModal({ type: 'revoke', user: detailData.user })}
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-xl border border-red-200 transition"
+                            >
+                              Revoke Admin Access
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setRoleConfirmModal({ type: 'promote', user: detailData.user })}
+                            className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-extrabold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <span>👑</span>
+                            <span>Promote to Admin</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Contribution Statistics Grid */}
                 <div>
@@ -393,6 +518,76 @@ export default function AdminUsersTab({ onSelectConversation }) {
                 className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Role Action Confirmation Modal (Super Admin) ────────── */}
+      {roleConfirmModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
+                roleConfirmModal.type === 'promote' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+              }`}>
+                {roleConfirmModal.type === 'promote' ? '👑' : '⚠️'}
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-gray-900">
+                  {roleConfirmModal.type === 'promote' ? 'Promote to Admin?' : 'Revoke Admin Privileges?'}
+                </h3>
+                <p className="text-xs text-gray-500">Method 1 — Role Appointment</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-1.5 text-xs text-gray-600">
+              <p>
+                <span className="font-semibold text-gray-900">User:</span>{' '}
+                {roleConfirmModal.user.display_name || 'Anonymous User'}
+              </p>
+              <p>
+                <span className="font-semibold text-gray-900">Email:</span>{' '}
+                {roleConfirmModal.user.email}
+              </p>
+              <p>
+                <span className="font-semibold text-gray-900">Current Role:</span>{' '}
+                <span className="font-bold uppercase text-gray-800">{roleConfirmModal.user.role}</span>
+              </p>
+            </div>
+
+            <p className="text-xs text-gray-600 leading-relaxed">
+              {roleConfirmModal.type === 'promote'
+                ? 'This will immediately grant full administrative access to this account. Their user account, submissions, and UID remain unchanged.'
+                : 'This will revoke all administrative privileges from this account and restore their previous role. Their account, submissions, and profile will be preserved.'}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRoleConfirmModal(null)}
+                disabled={actionLoading}
+                className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  roleConfirmModal.type === 'promote'
+                    ? handlePromoteUser(roleConfirmModal.user)
+                    : handleRevokeRole(roleConfirmModal.user)
+                }
+                disabled={actionLoading}
+                className={`px-4 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer ${
+                  roleConfirmModal.type === 'promote'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {actionLoading && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                <span>{roleConfirmModal.type === 'promote' ? 'Confirm Promotion' : 'Confirm Revocation'}</span>
               </button>
             </div>
           </div>
