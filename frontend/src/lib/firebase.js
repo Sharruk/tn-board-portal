@@ -1,5 +1,15 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import {
+  initializeAuth,
+  browserLocalPersistence,
+  indexedDBLocalPersistence,
+  browserSessionPersistence,
+  browserPopupRedirectResolver,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  setPersistence,
+} from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -8,13 +18,21 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
 
-// ─── Admin Sign-In ──────────────────────────────────────────────────────────
+// Configure browserLocalPersistence as primary, with IndexedDB and Session persistence
+// as fallbacks. browserLocalPersistence (window.localStorage) has no open database handles,
+// preventing 'Database is closing/hidden' errors when mobile browser tabs are hidden
+// during OAuth popups, while preserving existing sessions stored in IndexedDB.
+export const auth = initializeAuth(app, {
+  persistence: [browserLocalPersistence, indexedDBLocalPersistence, browserSessionPersistence],
+  popupRedirectResolver: browserPopupRedirectResolver,
+});
+
+// ─── Sign-In & Auth Actions ──────────────────────────────────────────────────
 // A fresh GoogleAuthProvider is constructed per sign-in call so that the
 // 'select_account' prompt is always honoured. Reusing a single provider
 // instance can lead to the prompt being silently skipped on subsequent calls.
@@ -22,7 +40,13 @@ export const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = async () => {
   try {
-    // Force the Google account chooser to appear on every admin login attempt.
+    // Ensure auth state and persistence manager are initialized before initiating popup
+    if (typeof auth.authStateReady === 'function') {
+      await auth.authStateReady();
+    }
+    await setPersistence(auth, browserLocalPersistence).catch(() => {});
+
+    // Force the Google account chooser to appear on every login attempt.
     // This prevents a cached (non-admin) Google session from silently passing
     // through the login page without the user explicitly choosing an account.
     const provider = new GoogleAuthProvider();
@@ -65,4 +89,3 @@ export const getFirebaseToken = async (forceRefresh = false) => {
     });
   });
 };
-

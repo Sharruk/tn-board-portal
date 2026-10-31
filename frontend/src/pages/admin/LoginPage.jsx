@@ -48,9 +48,11 @@ export default function LoginPage() {
     try {
       const { user, error: signInError } = await signInWithGoogle()
       if (signInError) {
+        // Normal user cancellation or popup dismissal - do not display an error banner
         if (
           signInError.code === 'auth/popup-closed-by-user' ||
-          signInError.code === 'auth/cancelled-popup-request'
+          signInError.code === 'auth/cancelled-popup-request' ||
+          signInError.message?.includes('closed-by-user')
         ) {
           return
         }
@@ -62,7 +64,38 @@ export default function LoginPage() {
         setError('Sign-in did not return a user. Please try again.')
       }
     } catch (err) {
-      setError(err.message || 'Sign-in failed. Please try again.')
+      // User cancellation check in catch block as well
+      if (
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.code === 'auth/cancelled-popup-request' ||
+        err?.message?.includes('closed-by-user')
+      ) {
+        return
+      }
+
+      // Popup blocked by browser settings
+      if (err?.code === 'auth/popup-blocked') {
+        setError('Sign-in popup was blocked by your browser. Please allow popups for this site and try again.')
+        return
+      }
+
+      // Handle transient mobile storage or connection interruption without exposing internal SDK strings
+      if (
+        err?.message?.includes('Database is closing') ||
+        err?.message?.includes('hidden') ||
+        err?.code === 'auth/internal-error'
+      ) {
+        setError('Sign-in was interrupted by the browser. Please tap "Sign in with Google" again.')
+        return
+      }
+
+      // Network connectivity issues
+      if (err?.code === 'auth/network-request-failed') {
+        setError('Network error during sign-in. Please check your internet connection and try again.')
+        return
+      }
+
+      setError(err?.message || 'Sign-in failed. Please try again.')
     } finally {
       setLoading(false)
     }

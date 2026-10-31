@@ -169,7 +169,7 @@ FastAPI DELETE /api/v1/submissions/{submission_id} (Server-side admin authorizat
 | **Build Tool** | Vite `5.4.10` | Fast development server and optimized production bundling |
 | **Styling** | Tailwind CSS `3.4.14` | Utility-first, responsive design system |
 | **Routing** | React Router DOM `6.27.0` | Client-side routing with protected admin layouts |
-| **Authentication Client** | Firebase JS SDK `12.17.1` | Client-side Google Sign-In authentication |
+| **Authentication Client** | Firebase JS SDK `12.19.0` | Client-side Google Sign-In authentication |
 | **Database Client** | `@supabase/supabase-js` `^2.108.2` | Client-side queries for public notices, news, and search RPCs |
 | **API Client** | Native `fetch` + `apiFetch` | Centralized REST client with Bearer token injection for papers, submissions, and admin actions |
 
@@ -350,7 +350,8 @@ The platform enforces a comprehensive four-tier Role-Based Access Control (RBAC)
 3. **Safe Revocation & Restoration**: Revoking an Admin safely and automatically restores their original role (`USER` or `CONTRIBUTOR`) stored in `users.previous_role`. No account records are deleted and contribution history remains intact.
 
 ### Authentication & Token Verification Security
-- **Firebase Google Sign-In**: Authentication is handled client-side via Firebase Authentication (`signInWithPopup`).
+- **Firebase Google Sign-In & Browser Persistence**: Authentication is handled client-side via Firebase Authentication (`signInWithPopup`). Persistence is configured using `browserLocalPersistence` (`window.localStorage`) as primary, backed by `indexedDBLocalPersistence` and `browserSessionPersistence` in a graceful hierarchy. This architecture prevents mobile background-tab suspension and `Database is closing/hidden` errors during OAuth popups while preserving existing sessions across browser restarts.
+- **Mobile Authentication & Cancellation Resilience**: Sign-in flows handle mobile viewport tab switches and user popup dismissals gracefully without exposing raw SDK errors or getting stuck in blind retry loops.
 - **Offloaded Cryptographic Token Verification**: The backend verifies Firebase ID tokens using `google.oauth2.id_token.verify_firebase_token` against Google's public OAuth2 signing certificates. Verification runs in a worker thread via `run_in_threadpool` with a 5.0-second socket timeout, guaranteeing that network delays never freeze FastAPI's main asyncio event loop.
 - **Server-Side Authorization**: Administrative operations (`/api/v1/admin/*`, `/api/v1/submissions/*`, etc.) are authoritatively guarded server-side using FastAPI dependencies (`require_admin`, `require_super_admin`).
 - **Zero Secret Exposure**: No database connection strings, Supabase service-role keys, or Firebase private keys are bundled in client assets.
