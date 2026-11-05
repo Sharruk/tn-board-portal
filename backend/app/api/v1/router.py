@@ -14,6 +14,7 @@ from app.api.v1.endpoints.community import router as community_router
 from app.api.v1.endpoints.conversations import router as conversations_router
 from app.api.v1.endpoints.admin_conversations import router as admin_conversations_router
 from app.api.v1.endpoints.admin_roles import router as admin_roles_router
+from app.api.v1.endpoints.admin_team_chat import router as admin_team_chat_router
 from app.api.v1.endpoints.admin_users import router as admin_users_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.leaderboard import router as leaderboard_router
@@ -38,6 +39,7 @@ router.include_router(analytics_router)
 router.include_router(user_profile_router)
 router.include_router(conversations_router)
 router.include_router(admin_conversations_router)
+router.include_router(admin_team_chat_router)
 router.include_router(admin_roles_router)
 router.include_router(admin_users_router)
 
