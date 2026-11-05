@@ -443,7 +443,7 @@ export default function AdminInboxTab() {
                         <div className="space-y-1">
                           <div className={`flex items-center gap-2 ${isAdmin ? 'justify-end' : 'justify-start'}`}>
                             <span className="text-[11px] font-bold text-gray-700">
-                              {isAdmin ? 'TN Board Admin' : m.sender_name}
+                              {isAdmin ? (m.sender_name || 'TN Board Admin') : m.sender_name}
                             </span>
                             <span className="text-[10px] text-gray-400">
                               {fmtTime(m.created_at)}

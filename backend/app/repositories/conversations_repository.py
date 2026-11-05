@@ -10,6 +10,26 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
+def format_admin_display_name(
+    role: Optional[str] = None,
+    display_name: Optional[str] = None,
+    email: Optional[str] = None,
+) -> str:
+    """
+    Format an authenticated admin identity with role prefix:
+    e.g. 'Admin (Sharruk)', 'Admin (Riyaz)', 'Super Admin (Hungry Learner)'.
+    """
+    role_prefix = "Super Admin" if (role or "").upper() == "SUPER_ADMIN" else "Admin"
+    raw_name = (display_name or "").strip()
+    if not raw_name and email:
+        raw_name = email.split("@")[0].strip()
+
+    if raw_name:
+        clean_name = raw_name.title() if raw_name.isupper() and len(raw_name) > 3 else raw_name
+        return f"{role_prefix} ({clean_name})"
+    return f"{role_prefix} (Staff)"
+
+
 class ConversationsRepository:
     """Data access layer for conversations and messages."""
 
@@ -116,14 +136,16 @@ class ConversationsRepository:
         return d
 
     def get_messages(self, conversation_id: str) -> List[dict[str, Any]]:
-        """Fetch all messages for a conversation ordered chronologically."""
+        """Fetch all messages for a conversation ordered chronologically, resolving admin sender identities."""
         stmt = text(
             """
-            SELECT id, conversation_id, sender_role, sender_firebase_uid, sender_name,
-                   message, is_read, read_at, created_at
-            FROM messages
-            WHERE conversation_id = :cid
-            ORDER BY created_at ASC
+            SELECT m.id, m.conversation_id, m.sender_role, m.sender_firebase_uid, m.sender_name,
+                   m.message, m.is_read, m.read_at, m.created_at,
+                   u.display_name AS u_display_name, u.email AS u_email, u.role AS u_role
+            FROM messages m
+            LEFT JOIN users u ON m.sender_firebase_uid = u.firebase_uid
+            WHERE m.conversation_id = :cid
+            ORDER BY m.created_at ASC
             """
         )
         rows = self._db.execute(stmt, {"cid": conversation_id}).fetchall()
@@ -132,6 +154,25 @@ class ConversationsRepository:
             m = dict(r._mapping)
             m["id"] = str(m["id"])
             m["conversation_id"] = str(m["conversation_id"])
+
+            u_display_name = m.pop("u_display_name", None)
+            u_email = m.pop("u_email", None)
+            u_role = m.pop("u_role", None)
+
+            if m.get("sender_role") == "admin":
+                curr_name = (m.get("sender_name") or "").strip()
+                # If not already formatted as "Admin (..." or "Super Admin (..."
+                if not (curr_name.startswith("Admin (") or curr_name.startswith("Super Admin (")):
+                    if u_display_name or u_email:
+                        m["sender_name"] = format_admin_display_name(
+                            role=u_role,
+                            display_name=u_display_name,
+                            email=u_email,
+                        )
+                    else:
+                        # Cannot be verified — retain existing historical label, never guess
+                        m["sender_name"] = curr_name or "TN Board Admin"
+
             result.append(m)
         return result
 

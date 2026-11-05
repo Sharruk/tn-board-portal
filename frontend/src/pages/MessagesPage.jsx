@@ -434,7 +434,7 @@ export default function MessagesPage() {
                           <div className="space-y-1">
                             <div className={`flex items-center gap-2 ${isAdmin ? 'justify-start' : 'justify-end'}`}>
                               <span className="text-[11px] font-bold text-gray-700">
-                                {isAdmin ? 'TN Board Admin' : 'You'}
+                                {isAdmin ? (m.sender_name || 'TN Board Admin') : 'You'}
                               </span>
                               <span className="text-[10px] text-gray-400">
                                 {fmtTime(m.created_at)}
