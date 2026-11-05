@@ -5,6 +5,7 @@ import { useAdminAuth } from '../../contexts/AdminAuthContext'
 import UserAvatar from '../../components/common/UserAvatar'
 import AdminUsersTab from '../../components/admin/AdminUsersTab'
 import AdminInboxTab from '../../components/admin/AdminInboxTab'
+import AdminTeamChatTab from '../../components/admin/AdminTeamChatTab'
 import AdminRolesTab from '../../components/admin/AdminRolesTab'
 import { getAdminConversationStats } from '../../services/adminConversations'
 import { getAdminPapers, getAdminStats, getSearchAnalytics, getRecentUploads, getAdminMe, getAuditLogs } from '../../services/admin'
@@ -79,7 +80,7 @@ function StatCard({ label, value, color, icon }) {
 export default function DashboardPage({ defaultTab = 'overview' }) {
   const { user } = useAuth()
   const { isSuperAdmin } = useAdminAuth()
-  const [activeTab, setActiveTab] = useState(defaultTab) // 'overview' | 'users' | 'inbox' | 'analytics' | 'moderation' | 'roles'
+  const [activeTab, setActiveTab] = useState(defaultTab) // 'overview' | 'users' | 'inbox' | 'team-chat' | 'analytics' | 'moderation' | 'roles'
   const [inboxUnread, setInboxUnread] = useState(0)
 
   useEffect(() => {
@@ -259,6 +260,16 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
               {inboxUnread}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab('team-chat')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+            activeTab === 'team-chat'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <span>📢</span> Admin Team Chat
         </button>
         <button
           onClick={() => setActiveTab('analytics')}
@@ -452,6 +463,9 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
 
       {/* ── TAB: MESSAGES & INBOX ── */}
       {activeTab === 'inbox' && <AdminInboxTab />}
+
+      {/* ── TAB: ADMIN TEAM CHAT ── */}
+      {activeTab === 'team-chat' && <AdminTeamChatTab />}
 
       {/* ── TAB 2: ANALYTICS & TELEMETRY ── */}
       {activeTab === 'analytics' && (

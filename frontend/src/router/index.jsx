@@ -77,6 +77,7 @@ const router = createBrowserRouter([
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'users', element: <DashboardPage defaultTab="users" /> },
       { path: 'messages', element: <DashboardPage defaultTab="inbox" /> },
+      { path: 'team-chat', element: <DashboardPage defaultTab="team-chat" /> },
       { path: 'papers', element: <PapersPage /> },
       { path: 'official-notices', element: <AdminOfficialNoticesPage /> },
       { path: 'news', element: <AdminNewsPage /> },
