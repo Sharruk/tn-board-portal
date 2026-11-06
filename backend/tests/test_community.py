@@ -334,6 +334,8 @@ def test_admin_can_delete_other_user_comment(client):
         executed_statements.append((sql, params))
         if "from community_comments" in sql:
             return MockResult([SAMPLE_COMMENT_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -363,6 +365,8 @@ def test_super_admin_can_delete_other_user_comment(client):
         executed_statements.append((sql, params))
         if "from community_comments" in sql:
             return MockResult([SAMPLE_COMMENT_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -391,6 +395,8 @@ def test_user_can_delete_own_comment(client):
         executed_statements.append((sql, params))
         if "from community_comments" in sql:
             return MockResult([SAMPLE_COMMENT_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -507,6 +513,8 @@ def test_revoked_admin_cannot_delete_other_user_comment(client):
         executed_statements.append((sql, params))
         if "from community_comments" in sql:
             return MockResult([SAMPLE_COMMENT_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -543,6 +551,8 @@ def test_super_admin_can_delete_other_user_post(client):
         executed_statements.append((sql, params))
         if "from community_posts" in sql:
             return MockResult([SAMPLE_POST_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -570,6 +580,8 @@ def test_user_cannot_delete_other_user_post(client):
         executed_statements.append((sql, params))
         if "from community_posts" in sql:
             return MockResult([SAMPLE_POST_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -599,6 +611,8 @@ def test_disabled_admin_cannot_delete_comment(client):
         executed_statements.append((sql, params))
         if "from community_comments" in sql:
             return MockResult([SAMPLE_COMMENT_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -645,6 +659,8 @@ def test_admin_can_delete_other_user_post(client):
         executed_statements.append((sql, params))
         if "from community_posts" in sql:
             return MockResult([SAMPLE_POST_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -677,6 +693,8 @@ def test_user_can_delete_own_post(client):
         executed_statements.append((sql, params))
         if "from community_posts" in sql:
             return MockResult([SAMPLE_POST_ROW])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
         return MockResult(rowcount=1)
 
     mock_db.execute.side_effect = _execute
@@ -732,5 +750,170 @@ def test_cannot_delete_already_deleted_comment(client):
             if "update community_comments set is_deleted" in s[0] or "delete from community_comments" in s[0]
         ]
         assert len(delete_sqls) == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ── Stage 3B.4: Moderation Audit Logging Tests ─────────────────────────────
+
+def test_admin_delete_post_records_audit_log(client, monkeypatch):
+    """Admin deleting a community post creates a COMMUNITY_POST_DELETED audit log entry."""
+    logged_calls = []
+
+    def mock_log_activity(self, **kwargs):
+        logged_calls.append(kwargs)
+        return {"id": "comm-log-1", **kwargs}
+
+    monkeypatch.setattr(
+        "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+        mock_log_activity,
+    )
+
+    mock_db = MagicMock()
+    mock_db.execute.side_effect = lambda stmt, params=None: MockResult([SAMPLE_POST_ROW])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_ADMIN
+
+    try:
+        res = client.delete(
+            "/api/v1/community/posts/post-xyz-789",
+            headers={"Authorization": "Bearer admin-token"},
+        )
+        assert res.status_code == 200
+        assert len(logged_calls) == 1
+        call = logged_calls[0]
+        assert call["action"] == "COMMUNITY_POST_DELETED"
+        assert call["actor_uid"] == MOCK_ADMIN["firebase_uid"]
+        assert call["target_type"] == "community_post"
+        assert call["target_id"] == "post-xyz-789"
+        assert mock_db.commit.called
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_delete_comment_records_audit_log(client, monkeypatch):
+    """Admin deleting a community comment creates a COMMUNITY_COMMENT_DELETED audit log entry."""
+    logged_calls = []
+
+    def mock_log_activity(self, **kwargs):
+        logged_calls.append(kwargs)
+        return {"id": "comm-log-2", **kwargs}
+
+    monkeypatch.setattr(
+        "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+        mock_log_activity,
+    )
+
+    mock_db = MagicMock()
+    mock_db.execute.side_effect = lambda stmt, params=None: MockResult([SAMPLE_COMMENT_ROW])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_ADMIN
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer admin-token"},
+        )
+        assert res.status_code == 200
+        assert len(logged_calls) == 1
+        call = logged_calls[0]
+        assert call["action"] == "COMMUNITY_COMMENT_DELETED"
+        assert call["actor_uid"] == MOCK_ADMIN["firebase_uid"]
+        assert call["target_type"] == "community_comment"
+        assert call["target_id"] == "comment-abc-123"
+        assert mock_db.commit.called
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_update_report_status_records_audit_log(client, monkeypatch):
+    """Admin updating report status creates a CONTENT_REPORT_RESOLVED audit log entry."""
+    from app.dependencies.auth import get_current_admin
+
+    logged_calls = []
+
+    def mock_log_activity(self, **kwargs):
+        logged_calls.append(kwargs)
+        return {"id": "comm-log-3", **kwargs}
+
+    monkeypatch.setattr(
+        "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+        mock_log_activity,
+    )
+
+    mock_db = MagicMock()
+    mock_db.execute.return_value = MockResult(rowcount=1)
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_admin] = lambda: MOCK_ADMIN
+
+    try:
+        res = client.patch(
+            "/api/v1/community/reports/report-123?status=actioned",
+            headers={"Authorization": "Bearer admin-token"},
+        )
+        assert res.status_code == 200
+        assert len(logged_calls) == 1
+        call = logged_calls[0]
+        assert call["action"] == "CONTENT_REPORT_RESOLVED"
+        assert call["target_type"] == "content_report"
+        assert call["target_id"] == "report-123"
+        assert call["metadata"]["status"] == "actioned"
+        assert mock_db.commit.called
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_user_delete_own_post_does_not_audit_log(client, monkeypatch):
+    """Regular user deleting their own post does NOT log to admin activity."""
+    logged_calls = []
+
+    def mock_log_activity(self, **kwargs):
+        logged_calls.append(kwargs)
+        return {"id": "comm-log-4", **kwargs}
+
+    monkeypatch.setattr(
+        "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+        mock_log_activity,
+    )
+
+    mock_db = MagicMock()
+    mock_db.execute.side_effect = lambda stmt, params=None: MockResult([SAMPLE_POST_ROW])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_USER
+
+    try:
+        res = client.delete(
+            "/api/v1/community/posts/post-xyz-789",
+            headers={"Authorization": "Bearer user-token"},
+        )
+        assert res.status_code == 200
+        assert len(logged_calls) == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_delete_post_audit_failure_rolls_back(monkeypatch):
+    """If audit log insertion fails during admin deletion, transaction is rolled back."""
+    def mock_log_activity(self, **kwargs):
+        raise RuntimeError("Audit table unavailable")
+
+    monkeypatch.setattr(
+        "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+        mock_log_activity,
+    )
+
+    mock_db = MagicMock()
+    mock_db.execute.side_effect = lambda stmt, params=None: MockResult([SAMPLE_POST_ROW])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_ADMIN
+
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        res = client.delete(
+            "/api/v1/community/posts/post-xyz-789",
+            headers={"Authorization": "Bearer admin-token"},
+        )
+        assert res.status_code == 500
+        assert mock_db.rollback.called
     finally:
         app.dependency_overrides.clear()
