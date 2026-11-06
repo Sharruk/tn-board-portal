@@ -4,6 +4,7 @@ Tests for Community discussions and comments endpoints.
 
 from unittest.mock import MagicMock
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.dependencies.auth import get_current_user
@@ -27,9 +28,10 @@ class MockRow:
 
 
 class MockResult:
-    def __init__(self, rows: list[dict | tuple] | None = None, scalar_val=None):
+    def __init__(self, rows: list[dict | tuple] | None = None, scalar_val=None, rowcount: int = 1):
         self._rows = [MockRow(r) for r in (rows or [])]
         self._scalar = scalar_val
+        self.rowcount = rowcount
 
     def fetchall(self):
         return self._rows
@@ -260,5 +262,475 @@ def test_toggle_upvote_authenticated(client):
         data = res.json()
         assert data["upvotes"] == 4
         assert data["voted"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ── Comment & Post Deletion Authorization Security Tests ──────────────────────
+
+MOCK_OTHER_USER = {
+    "firebase_uid": "user-456",
+    "email": "other@example.com",
+    "display_name": "Other Student",
+    "role": "USER",
+    "is_active": True,
+}
+
+MOCK_ADMIN = {
+    "firebase_uid": "admin-123",
+    "email": "admin@example.com",
+    "display_name": "Admin User",
+    "role": "ADMIN",
+    "is_active": True,
+}
+
+MOCK_SUPER_ADMIN = {
+    "firebase_uid": "super-123",
+    "email": "super@example.com",
+    "display_name": "Super Admin",
+    "role": "SUPER_ADMIN",
+    "is_active": True,
+}
+
+SAMPLE_COMMENT_ROW = {
+    "id": "comment-abc-123",
+    "post_id": "post-1",
+    "firebase_uid": "user-123",  # Owned by MOCK_USER
+    "author_name": "Karthik",
+    "author_avatar": None,
+    "parent_id": None,
+    "content": "A student comment that requires authorization to delete",
+    "is_deleted": False,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z",
+}
+
+SAMPLE_POST_ROW = {
+    "id": "post-xyz-789",
+    "firebase_uid": "user-123",  # Owned by MOCK_USER
+    "author_name": "Karthik",
+    "author_avatar": None,
+    "title": "Post Title",
+    "content": "Post body content",
+    "category": "general",
+    "status": "open",
+    "upvotes": 0,
+    "likes_count": 0,
+    "comments_count": 0,
+    "is_pinned": False,
+    "is_deleted": False,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z",
+}
+
+
+def test_admin_can_delete_other_user_comment(client):
+    """Admin can moderate (delete) another user's comment."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_comments" in sql:
+            return MockResult([SAMPLE_COMMENT_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_ADMIN
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer admin-token"},
+        )
+        assert res.status_code == 200
+        assert res.json() == {"success": True, "message": "Comment deleted"}
+        # Verify delete statement was executed
+        assert any("update community_comments set is_deleted = true" in s[0] or "delete from community_comments" in s[0] for s in executed_statements)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_super_admin_can_delete_other_user_comment(client):
+    """Super Admin can moderate (delete) another user's comment."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_comments" in sql:
+            return MockResult([SAMPLE_COMMENT_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_SUPER_ADMIN
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer super-token"},
+        )
+        assert res.status_code == 200
+        assert res.json() == {"success": True, "message": "Comment deleted"}
+        assert any("update community_comments set is_deleted = true" in s[0] or "delete from community_comments" in s[0] for s in executed_statements)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_user_can_delete_own_comment(client):
+    """User can delete their own comment."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_comments" in sql:
+            return MockResult([SAMPLE_COMMENT_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_USER
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer user-token"},
+        )
+        assert res.status_code == 200
+        assert res.json() == {"success": True, "message": "Comment deleted"}
+        assert any("update community_comments set is_deleted = true" in s[0] for s in executed_statements)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_user_cannot_delete_other_user_comment(client):
+    """User attempting to delete another user's comment is rejected with 403 Forbidden."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_comments" in sql:
+            # Comment is owned by user-123, but caller is user-456
+            return MockResult([SAMPLE_COMMENT_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_OTHER_USER
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer other-token"},
+        )
+        assert res.status_code == 403
+        assert "You can only delete your own comments" in res.json()["detail"]
+        # CRITICAL SECURITY ASSERTION: Delete query was NEVER executed!
+        delete_sqls = [s[0] for s in executed_statements if "update community_comments set is_deleted" in s[0] or "delete from community_comments" in s[0]]
+        assert len(delete_sqls) == 0, f"Delete statement should not have executed: {delete_sqls}"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_user_cannot_delete_nonexistent_comment(client):
+    """Attempting to delete a nonexistent comment returns 404 Not Found."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_comments" in sql:
+            return MockResult([])  # Comment not found
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_USER
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-missing-999",
+            headers={"Authorization": "Bearer user-token"},
+        )
+        assert res.status_code == 404
+        assert "Comment with id 'comment-missing-999' was not found" in res.json()["detail"]
+        # CRITICAL ASSERTION: Delete query was NEVER executed!
+        delete_sqls = [s[0] for s in executed_statements if "update community_comments set is_deleted" in s[0] or "delete from community_comments" in s[0]]
+        assert len(delete_sqls) == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_unauthenticated_user_cannot_delete_comment(client):
+    """Unauthenticated delete request returns 401 Unauthorized."""
+    res = client.delete("/api/v1/community/comments/comment-abc-123")
+    assert res.status_code == 401
+
+
+def test_disabled_account_cannot_delete_comment(client):
+    """Disabled user account returns 403 Forbidden."""
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    def _raise_disabled():
+        raise HTTPException(status_code=403, detail="Account is disabled.")
+
+    app.dependency_overrides[get_current_user] = _raise_disabled
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer disabled-token"},
+        )
+        assert res.status_code == 403
+        assert "Account is disabled" in res.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_revoked_admin_cannot_delete_other_user_comment(client):
+    """Revoked Admin (demoted to USER) cannot delete another user's comment."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_comments" in sql:
+            return MockResult([SAMPLE_COMMENT_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    demoted_admin = {
+        "firebase_uid": "demoted-admin-uid",
+        "email": "demoted@example.com",
+        "display_name": "Demoted Admin",
+        "role": "USER",
+        "is_active": True,
+    }
+    app.dependency_overrides[get_current_user] = lambda: demoted_admin
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer demoted-token"},
+        )
+        assert res.status_code == 403
+        assert "You can only delete your own comments" in res.json()["detail"]
+        delete_sqls = [s[0] for s in executed_statements if "update community_comments set is_deleted" in s[0] or "delete from community_comments" in s[0]]
+        assert len(delete_sqls) == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_super_admin_can_delete_other_user_post(client):
+    """Super Admin can moderate (delete) another user's post."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_posts" in sql:
+            return MockResult([SAMPLE_POST_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_SUPER_ADMIN
+
+    try:
+        res = client.delete(
+            "/api/v1/community/posts/post-xyz-789",
+            headers={"Authorization": "Bearer super-token"},
+        )
+        assert res.status_code == 200
+        assert res.json() == {"success": True, "message": "Post deleted"}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_user_cannot_delete_other_user_post(client):
+    """User attempting to delete another user's post is rejected with 403 Forbidden."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_posts" in sql:
+            return MockResult([SAMPLE_POST_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_OTHER_USER
+
+    try:
+        res = client.delete(
+            "/api/v1/community/posts/post-xyz-789",
+            headers={"Authorization": "Bearer other-token"},
+        )
+        assert res.status_code == 403
+        assert "You can only delete your own posts" in res.json()["detail"]
+        delete_sqls = [s[0] for s in executed_statements if "update community_posts set is_deleted" in s[0] or "delete from community_posts" in s[0]]
+        assert len(delete_sqls) == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_disabled_admin_cannot_delete_comment(client):
+    """Disabled admin account (role=ADMIN, is_active=False) is rejected with 403 Forbidden."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_comments" in sql:
+            return MockResult([SAMPLE_COMMENT_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    disabled_admin = {
+        "firebase_uid": "admin-disabled-123",
+        "email": "disabled_admin@example.com",
+        "display_name": "Disabled Admin",
+        "role": "ADMIN",
+        "is_active": False,
+    }
+
+    def _get_current_user():
+        if not disabled_admin.get("is_active", True):
+            raise HTTPException(status_code=403, detail="Account is disabled.")
+        return disabled_admin
+
+    app.dependency_overrides[get_current_user] = _get_current_user
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer disabled-admin-token"},
+        )
+        assert res.status_code == 403
+        assert "Account is disabled" in res.json()["detail"]
+        delete_sqls = [
+            s[0] for s in executed_statements
+            if "update community_comments set is_deleted" in s[0] or "delete from community_comments" in s[0]
+        ]
+        assert len(delete_sqls) == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_can_delete_other_user_post(client):
+    """Active regular Admin (role=ADMIN) can delete another user's post."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_posts" in sql:
+            return MockResult([SAMPLE_POST_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_ADMIN
+
+    try:
+        res = client.delete(
+            "/api/v1/community/posts/post-xyz-789",
+            headers={"Authorization": "Bearer admin-token"},
+        )
+        assert res.status_code == 200
+        assert res.json() == {"success": True, "message": "Post deleted"}
+        delete_sqls = [
+            s[0] for s in executed_statements
+            if "update community_posts set is_deleted = true" in s[0] or "delete from community_posts" in s[0]
+        ]
+        assert len(delete_sqls) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_user_can_delete_own_post(client):
+    """Active regular user can delete their own post."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_posts" in sql:
+            return MockResult([SAMPLE_POST_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_USER
+
+    try:
+        res = client.delete(
+            "/api/v1/community/posts/post-xyz-789",
+            headers={"Authorization": "Bearer user-token"},
+        )
+        assert res.status_code == 200
+        assert res.json() == {"success": True, "message": "Post deleted"}
+        delete_sqls = [
+            s[0] for s in executed_statements
+            if "update community_posts set is_deleted = true" in s[0] or "delete from community_posts" in s[0]
+        ]
+        assert len(delete_sqls) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_cannot_delete_already_deleted_comment(client):
+    """Attempting to delete an already soft-deleted comment returns 404 Not Found."""
+    mock_db = MagicMock()
+    executed_statements = []
+
+    DELETED_COMMENT_ROW = {
+        **SAMPLE_COMMENT_ROW,
+        "is_deleted": True,
+    }
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        executed_statements.append((sql, params))
+        if "from community_comments" in sql:
+            return MockResult([DELETED_COMMENT_ROW])
+        return MockResult(rowcount=1)
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: MOCK_USER
+
+    try:
+        res = client.delete(
+            "/api/v1/community/comments/comment-abc-123",
+            headers={"Authorization": "Bearer user-token"},
+        )
+        assert res.status_code == 404
+        assert "Comment with id 'comment-abc-123' was not found" in res.json()["detail"]
+        delete_sqls = [
+            s[0] for s in executed_statements
+            if "update community_comments set is_deleted" in s[0] or "delete from community_comments" in s[0]
+        ]
+        assert len(delete_sqls) == 0
     finally:
         app.dependency_overrides.clear()

@@ -224,8 +224,11 @@ class CommunityService:
         if not post:
             raise NotFoundError(resource="Post", identifier=post_id)
 
-        is_admin = current_user.get("role") == "ADMIN"
-        is_owner = current_user.get("firebase_uid") == post.get("firebase_uid")
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
+        is_owner = bool(
+            current_user.get("firebase_uid")
+            and current_user.get("firebase_uid") == post.get("firebase_uid")
+        )
         if not (is_admin or is_owner):
             raise ForbiddenError("You can only delete your own posts.")
 
@@ -278,7 +281,18 @@ class CommunityService:
         hard_delete: bool = False,
     ) -> dict[str, Any]:
         """Delete a comment (author or admin)."""
-        is_admin = current_user.get("role") == "ADMIN"
+        comment = self._repo.get_comment_by_id(comment_id, allow_deleted=False)
+        if not comment:
+            raise NotFoundError(resource="Comment", identifier=comment_id)
+
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
+        is_owner = bool(
+            current_user.get("firebase_uid")
+            and current_user.get("firebase_uid") == comment.get("firebase_uid")
+        )
+        if not (is_admin or is_owner):
+            raise ForbiddenError("You can only delete your own comments.")
+
         self._repo.delete_comment(comment_id, hard_delete=hard_delete and is_admin)
         return {"success": True, "message": "Comment deleted"}
 

@@ -284,6 +284,29 @@ class CommunityRepository:
             d["parent_id"] = str(d["parent_id"])
         return d
 
+    def get_comment_by_id(self, comment_id: str, allow_deleted: bool = False) -> dict[str, Any] | None:
+        """Fetch a single comment by UUID."""
+        stmt = text(
+            """
+            SELECT id, post_id, firebase_uid, author_name, author_avatar, parent_id,
+                   content, is_deleted, created_at, updated_at
+            FROM community_comments
+            WHERE id::text = :comment_id
+            """
+        )
+        result = self._db.execute(stmt, {"comment_id": comment_id})
+        row = result.fetchone()
+        if not row:
+            return None
+        d = dict(row._mapping)
+        if not allow_deleted and d.get("is_deleted"):
+            return None
+        d["id"] = str(d["id"])
+        d["post_id"] = str(d["post_id"])
+        if d.get("parent_id"):
+            d["parent_id"] = str(d["parent_id"])
+        return d
+
     def delete_comment(self, comment_id: str, hard_delete: bool = False) -> bool:
         """Delete or soft-delete a comment."""
         if hard_delete:
