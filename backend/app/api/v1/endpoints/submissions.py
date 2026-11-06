@@ -323,8 +323,15 @@ async def approve_submission(
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
+    client_ip = request.client.host if request.client else None
     service = SubmissionsService(db)
-    return await service.approve_submission(submission_id, req, prepared_file=prepared_file)
+    return await service.approve_submission(
+        submission_id,
+        req,
+        prepared_file=prepared_file,
+        current_user=current_user,
+        ip_address=client_ip,
+    )
 
 
 
@@ -354,12 +361,19 @@ async def approve_submission(
 async def reject_submission(
     submission_id: str,
     req: RejectRequest,
+    request: Request,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
     """Reject a pending submission."""
+    client_ip = request.client.host if request.client else None
     service = SubmissionsService(db)
-    return service.reject_submission(submission_id, req)
+    return service.reject_submission(
+        submission_id,
+        req,
+        current_user=current_user,
+        ip_address=client_ip,
+    )
 
 
 # ── POST /api/v1/submissions/{id}/restore — admin ────────────────────────────
@@ -387,12 +401,18 @@ async def reject_submission(
 )
 async def restore_submission(
     submission_id: str,
+    request: Request,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict:
     """Restore a rejected submission back to pending for re-review."""
+    client_ip = request.client.host if request.client else None
     service = SubmissionsService(db)
-    return service.restore_submission(submission_id)
+    return service.restore_submission(
+        submission_id,
+        current_user=current_user,
+        ip_address=client_ip,
+    )
 
 
 # ── DELETE /api/v1/submissions/{id} — admin ──────────────────────────────────
@@ -417,10 +437,15 @@ async def restore_submission(
 )
 async def delete_submission(
     submission_id: str,
+    request: Request,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> SubmissionDeleteResponse:
     """Permanently delete a submission (pending, rejected, or approved)."""
+    client_ip = request.client.host if request.client else None
     service = SubmissionsService(db)
-    return service.delete_submission(submission_id, current_user=current_user)
-
+    return service.delete_submission(
+        submission_id,
+        current_user=current_user,
+        ip_address=client_ip,
+    )

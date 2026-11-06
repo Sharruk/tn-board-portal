@@ -351,12 +351,16 @@ export default function PapersPage() {
     if (!paperToDelete) return
     setDeleteLoading(true)
     try {
-      await deletePaper(paperToDelete.id)
+      const res = await deletePaper(paperToDelete.id)
       const removedId = paperToDelete.id
       setPaperToDelete(null)
       // Optimistically remove from state immediately
       setPapers(prev => prev.filter(p => p.id !== removedId))
-      showToast('Paper and its uploaded file deleted permanently.')
+      if (res && res.storage_deleted === false) {
+        showToast('Paper record deleted, but storage file was not found.', 'warning')
+      } else {
+        showToast('Paper and its uploaded file deleted permanently.')
+      }
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
     } finally {

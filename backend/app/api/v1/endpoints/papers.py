@@ -31,7 +31,7 @@ import urllib.parse
 from typing import Annotated, Literal, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.dependencies.auth import get_current_user, get_current_user_optional, require_admin, require_role
@@ -39,11 +39,13 @@ from app.dependencies.supabase import get_db
 from app.schemas.paper import (
     PaperCommentCreate,
     PaperCommentOut,
+    PaperCreate,
     PaperDeleteResponse,
     PaperDetail,
     PaperLikeResponse,
     PaperListResponse,
     PaperResponse,
+    PaperUpdate,
     SearchResponse,
 )
 from app.services.papers_service import DEFAULT_LIMIT, MAX_LIMIT, PapersService
@@ -80,6 +82,27 @@ async def list_papers(
     """Return recent or popular published papers."""
     service = PapersService(db)
     return service.list_papers(sort=sort, limit=limit)
+
+
+# ── POST /api/v1/papers ───────────────────────────────────────────────────────
+
+@router.post(
+    "",
+    response_model=PaperResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a paper (admin)",
+    description="Admin only. Creates a new paper record with centralized audit logging.",
+)
+async def create_paper(
+    req: PaperCreate,
+    request: Request,
+    current_user: dict = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> PaperResponse:
+    """Create a new paper record."""
+    client_ip = request.client.host if request.client else None
+    service = PapersService(db)
+    return service.create_paper(req=req, current_user=current_user, ip_address=client_ip)
 
 
 # ── GET /api/v1/papers/search ─────────────────────────────────────────────────
@@ -196,6 +219,27 @@ async def get_paper(
     return service.get_paper(paper_id)
 
 
+# ── PATCH /api/v1/papers/{id} ─────────────────────────────────────────────────
+
+@router.patch(
+    "/{paper_id}",
+    response_model=PaperResponse,
+    summary="Update a paper (admin)",
+    description="Admin only. Updates a paper record with centralized audit logging and outbox storage management.",
+)
+async def update_paper(
+    paper_id: int,
+    req: PaperUpdate,
+    request: Request,
+    current_user: dict = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> PaperResponse:
+    """Update a paper record."""
+    client_ip = request.client.host if request.client else None
+    service = PapersService(db)
+    return service.update_paper(paper_id=paper_id, req=req, current_user=current_user, ip_address=client_ip)
+
+
 # ── DELETE /api/v1/papers/{id} ───────────────────────────────────────────────
 
 @router.delete(
@@ -218,12 +262,14 @@ async def get_paper(
 )
 async def delete_paper(
     paper_id: int,
+    request: Request,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> PaperDeleteResponse:
     """Permanently delete a paper and its storage file."""
+    client_ip = request.client.host if request.client else None
     service = PapersService(db)
-    return service.delete_paper(paper_id=paper_id, current_user=current_user)
+    return service.delete_paper(paper_id=paper_id, current_user=current_user, ip_address=client_ip)
 
 
 # ── GET /api/v1/papers/{id}/download ──────────────────────────────────────────
@@ -412,11 +458,11 @@ async def add_paper_comment(
 )
 async def delete_paper_comment(
     comment_id: str,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     """Delete a paper comment."""
+    client_ip = request.client.host if request.client else None
     service = PapersService(db)
-    return service.delete_comment(comment_id=comment_id, current_user=current_user)
-
-
+    return service.delete_comment(comment_id=comment_id, current_user=current_user, ip_address=client_ip)

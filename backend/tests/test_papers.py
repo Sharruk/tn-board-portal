@@ -864,5 +864,165 @@ def test_critical_regression_paper_catalog_and_contributor_isolation():
         app.dependency_overrides.clear()
 
 
+def test_delete_paper_audit_logged(monkeypatch):
+    from app.dependencies.auth import require_admin
+    from app.dependencies.supabase import get_db
+
+    logged_calls = []
+
+    def mock_log_activity(self, **kwargs):
+        logged_calls.append(kwargs)
+        return {"id": "paper-log-1", **kwargs}
+
+    monkeypatch.setattr(
+        "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+        mock_log_activity,
+    )
+
+    mock_db = _make_detail_db([
+        {
+            **MOCK_PAPER_DETAIL_ROW,
+            "file_path": "uuid-1234.pdf",
+            "submission_id": "sub-1234",
+            "contributor_name": "Sharruk",
+        }
+    ])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: {
+        "firebase_uid": "admin-uid-123",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+        "display_name": "Test Admin",
+    }
+
+    try:
+        client = TestClient(app)
+        resp = client.delete("/api/v1/papers/42")
+        assert resp.status_code == 200
+        assert len(logged_calls) == 1
+        call = logged_calls[0]
+        assert call["action"] == "PAPER_DELETED"
+        assert call["actor_uid"] == "admin-uid-123"
+        assert call["target_type"] == "paper"
+        assert call["target_id"] == "42"
+        assert "storage_deleted" in call["metadata"]
+        assert mock_db.commit.called
+    finally:
+        app.dependency_overrides.clear()
 
 
+def test_delete_paper_audit_failure_rolls_back(monkeypatch):
+    from app.dependencies.auth import require_admin
+    from app.dependencies.supabase import get_db
+
+    def mock_log_activity(self, **kwargs):
+        raise RuntimeError("Audit log table disk full")
+
+    monkeypatch.setattr(
+        "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+        mock_log_activity,
+    )
+
+    mock_db = _make_detail_db([
+        {
+            **MOCK_PAPER_DETAIL_ROW,
+            "file_path": "uuid-1234.pdf",
+        }
+    ])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: {
+        "firebase_uid": "admin-uid-123",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+    }
+
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.delete("/api/v1/papers/42")
+        assert resp.status_code == 500
+        assert mock_db.rollback.called
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_paper_admin_success():
+    from app.dependencies.auth import require_admin
+    from app.dependencies.supabase import get_db
+
+    mock_db = MagicMock()
+    paper_row = dict(MOCK_PAPER_DETAIL_ROW)
+
+    def execute_handler(stmt, params=None):
+        sql = str(stmt).lower()
+        if "insert into papers" in sql:
+            return MockResult([paper_row])
+        if "from papers" in sql:
+            return MockResult([paper_row])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "activity-mock-1", "metadata": "{}"}])
+        return MockResult([])
+
+    mock_db.execute.side_effect = execute_handler
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: {
+        "user_id": "admin-1",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+    }
+
+    payload = {
+        "subject_id": 8,
+        "exam_type": "Annual Exam",
+        "year": 2024,
+        "title": "Class 10 Maths Annual Exam 2024",
+        "paper_type": "question",
+        "file_path": "uuid.pdf",
+    }
+
+    try:
+        client = TestClient(app)
+        resp = client.post("/api/v1/papers", json=payload)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["id"] == 42
+        assert mock_db.commit.called
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_update_paper_admin_success():
+    from app.dependencies.auth import require_admin
+    from app.dependencies.supabase import get_db
+
+    mock_db = MagicMock()
+    paper_row = dict(MOCK_PAPER_DETAIL_ROW)
+
+    def execute_handler(stmt, params=None):
+        sql = str(stmt).lower()
+        if "from papers" in sql:
+            return MockResult([paper_row])
+        if "update papers" in sql:
+            return MockResult([paper_row])
+        if "storage_outbox" in sql:
+            return MockResult([{"id": "outbox-1"}])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "activity-mock-1", "metadata": "{}"}])
+        return MockResult([])
+
+    mock_db.execute.side_effect = execute_handler
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: {
+        "user_id": "admin-1",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+    }
+
+    try:
+        client = TestClient(app)
+        resp = client.patch("/api/v1/papers/42", json={"title": "Updated Paper Title"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == 42
+        assert mock_db.commit.called
+    finally:
+        app.dependency_overrides.clear()

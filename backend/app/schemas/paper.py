@@ -57,6 +57,44 @@ class PaperBase(BaseModel):
     created_at: datetime = Field(..., description="Upload timestamp")
 
 
+class PaperCreate(BaseModel):
+    """Payload for creating a paper."""
+    subject_id: int = Field(..., description="Foreign key → subjects.id")
+    exam_type: str = Field(..., description="Exam category")
+    year: int = Field(..., description="Academic year")
+    month: Optional[str] = Field(None, description="Month")
+    district: Optional[str] = Field(None, description="District")
+    title: str = Field(..., description="Paper title")
+    description: Optional[str] = Field(None, description="Description")
+    paper_type: PaperType = Field("question", description='"question" or "answer_key"')
+    public_url: Optional[str] = Field(None, description="Supabase storage CDN URL")
+    youtube_url: Optional[str] = Field(None, description="YouTube embed URL")
+    file_path: Optional[str] = Field(None, description="Supabase storage path")
+    original_filename: Optional[str] = Field(None, description="Original filename")
+    is_visible: bool = Field(True, description="Visibility flag")
+    status: PaperStatus = Field("published", description="draft | published | archived")
+    contributor_name: Optional[str] = Field(None, description="Contributor name")
+
+
+class PaperUpdate(BaseModel):
+    """Payload for updating a paper."""
+    subject_id: Optional[int] = None
+    exam_type: Optional[str] = None
+    year: Optional[int] = None
+    month: Optional[str] = None
+    district: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    paper_type: Optional[PaperType] = None
+    public_url: Optional[str] = None
+    youtube_url: Optional[str] = None
+    file_path: Optional[str] = None
+    original_filename: Optional[str] = None
+    is_visible: Optional[bool] = None
+    status: Optional[PaperStatus] = None
+    contributor_name: Optional[str] = None
+
+
 class PaperResponse(PaperBase):
     """
     Single paper with full subject + class join.
@@ -254,5 +292,3 @@ class PaperDeleteResponse(BaseModel):
     deleted: bool = Field(True, description="Whether the deletion succeeded")
     storage_deleted: bool = Field(True, description="Whether the associated storage file was removed")
     message: str = Field("Paper deleted successfully", description="Status message")
-
-
