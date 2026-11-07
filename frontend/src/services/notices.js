@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase'
 export const NOTICE_CATEGORIES = [
   'Monthly Test Timetable',
   'Unit Test Timetable',
+  'Mid Term Test',
   'Quarterly Timetable',
   'Half Yearly Timetable',
   'Annual Exam Timetable',
@@ -30,6 +31,7 @@ export const NOTICE_CATEGORIES = [
 export const CATEGORY_ICONS = {
   'Monthly Test Timetable': '🗓️',
   'Unit Test Timetable':    '📝',
+  'Mid Term Test':          '📝',
   'Quarterly Timetable':    '📅',
   'Half Yearly Timetable':  '📅',
   'Annual Exam Timetable':  '📅',
