@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { getFirebaseToken } from '../lib/firebase'
-import { apiFetch } from '../lib/api'
+import { apiFetch, getApiUrl } from '../lib/api'
 
 // =============================================================================
 // News & Updates — Public + Admin Service
@@ -155,16 +155,21 @@ export const getNewsBySlug = async (slug) => {
 
 /**
  * Fetch a single article by id with no visibility filter (for admin use).
+ * Strictly routes through FastAPI backend with Firebase Bearer token.
  */
 export const getNewsAdmin = async (id) => {
-  const { data, error } = await supabase
-    .from('news_updates')
-    .select('*, classes(name)')
-    .eq('id', id)
-    .single()
-  if (error) throw error
-  return {
-    data: { ...data, class_name: data.classes?.name ?? null },
+  const token = await getFirebaseToken()
+  try {
+    const data = await apiFetch(`/api/v1/news/${id}`, {
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
+    return {
+      data: { ...data, class_name: data.class_name ?? null }
+    }
+  } catch (err) {
+    throw new Error(`Failed to load article details from backend: ${err.message || err}`)
   }
 }
 
@@ -197,16 +202,54 @@ export const recordNewsView = (id) =>
 
 /**
  * Fetch ALL news articles for the admin table (no visibility filter).
+ * Strictly routes through FastAPI backend with Firebase Bearer token.
  */
 export const getAdminNews = async () => {
-  const { data, error } = await supabase
-    .from('news_updates')
-    .select('*, classes(name)')
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return {
-    data: data.map(n => ({ ...n, class_name: n.classes?.name ?? null })),
+  const token = await getFirebaseToken()
+  try {
+    const res = await apiFetch('/api/v1/news/admin?limit=200', {
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
+    const items = res?.data || []
+    return {
+      data: items.map(n => ({
+        ...n,
+        class_name: n.class_name ?? null,
+      }))
+    }
+  } catch (err) {
+    throw new Error(`Failed to load news articles from backend: ${err.message || err}`)
   }
+}
+
+/**
+ * Archive a news article via backend API.
+ */
+export const archiveNews = async (id) => {
+  const token = await getFirebaseToken()
+  const data = await apiFetch(`/api/v1/news/${id}/archive`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+  })
+  return { data }
+}
+
+/**
+ * Unarchive / restore a news article to published status via backend API.
+ */
+export const unarchiveNews = async (id) => {
+  const token = await getFirebaseToken()
+  const data = await apiFetch(`/api/v1/news/${id}/unarchive`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+  })
+  return { data }
 }
 
 /**
@@ -255,39 +298,64 @@ export const deleteNews = async (id) => {
 }
 
 /**
- * Upload a file (image or PDF) to the news-media bucket.
- * Returns the public URL.
+ * Upload a file (image or PDF) to the news-media bucket via FastAPI server-side storage client.
+ * Returns { publicUrl, filename }.
  */
 export const uploadNewsFile = async (file, onProgress) => {
-  const ext      = file.name.split('.').pop().toLowerCase()
-  const filename = `${crypto.randomUUID()}.${ext}`
+  if (onProgress) onProgress(20)
 
-  if (onProgress) onProgress(10)
+  const token = await getFirebaseToken()
+  const url = getApiUrl('/api/v1/news/upload')
 
-  const { error: uploadError } = await supabase.storage
-    .from('news-media')
-    .upload(filename, file, { upsert: false })
-  if (uploadError) throw uploadError
+  const fd = new FormData()
+  fd.append('file', file)
 
-  if (onProgress) onProgress(90)
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: fd,
+  })
 
-  const { data: { publicUrl } } = supabase.storage
-    .from('news-media')
-    .getPublicUrl(filename)
+  if (onProgress) onProgress(80)
 
+  if (!response.ok) {
+    let detail = `Upload failed (HTTP ${response.status})`
+    try {
+      const errBody = await response.json()
+      detail = errBody?.detail || errBody?.message || detail
+    } catch {
+      // ignore JSON parse errors
+    }
+    throw new Error(detail)
+  }
+
+  const data = await response.json()
   if (onProgress) onProgress(100)
 
-  return { publicUrl, filename }
+  return {
+    publicUrl: data.public_url || data.publicUrl,
+    filename: data.file_path || data.filename,
+  }
 }
 
 /**
- * Delete a single file from the news-media bucket by its storage path (filename).
+ * Delete a single file from the news-media bucket via the backend storage cleanup endpoint.
  * Errors are swallowed — used for cleanup when replacing images.
  */
 export const deleteNewsFile = async (publicUrl) => {
   if (!publicUrl) return
-  const path = publicUrl.split('/news-media/').pop()
-  if (path) {
-    await supabase.storage.from('news-media').remove([path]).catch(() => {})
+  try {
+    const token = await getFirebaseToken()
+    const url = getApiUrl(`/api/v1/news/media?url=${encodeURIComponent(publicUrl)}`)
+    await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+    })
+  } catch {
+    // Non-fatal cleanup error
   }
 }

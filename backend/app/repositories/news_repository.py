@@ -130,12 +130,16 @@ class NewsRepository:
         is_pinned: Optional[bool] = None,
         limit: int = 50,
         offset: int = 0,
+        published_only: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         """List news articles with filtering and pagination."""
         where_clauses = []
         params: dict[str, Any] = {"limit": limit, "offset": offset}
 
-        if status is not None:
+        if published_only:
+            where_clauses.append("n.status = 'published'")
+            where_clauses.append("(n.published_at IS NULL OR n.published_at <= NOW())")
+        elif status is not None:
             where_clauses.append("n.status = :status")
             params["status"] = status
         if category is not None:
