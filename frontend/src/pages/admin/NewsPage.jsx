@@ -519,7 +519,14 @@ export default function AdminNewsPage() {
       if (newStatus === 'published' && !a.published_at) updates.published_at = new Date().toISOString()
       await updateNews(a.id, updates)
       load()
-      showToast(newStatus === 'published' ? 'Article published!' : newStatus === 'archived' ? 'Article archived.' : 'Article set to draft.')
+      const msg = a.status === 'archived' && newStatus === 'published'
+        ? 'Article unarchived.'
+        : newStatus === 'published'
+        ? 'Article published!'
+        : newStatus === 'archived'
+        ? 'Article archived.'
+        : 'Article set to draft.'
+      showToast(msg)
     } catch (err) {
       showToast(err.message || 'Failed', 'error')
     }
@@ -660,7 +667,12 @@ export default function AdminNewsPage() {
                           <button onClick={() => setEditArticle(a)} className="text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">
                             Edit
                           </button>
-                          {a.status !== 'published' && (
+                          {a.status === 'archived' && (
+                            <button onClick={() => quickStatus(a, 'published')} className="text-xs font-medium text-emerald-600 hover:text-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors">
+                              Unarchive
+                            </button>
+                          )}
+                          {a.status === 'draft' && (
                             <button onClick={() => quickStatus(a, 'published')} className="text-xs font-medium text-emerald-600 hover:text-emerald-800 px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors">
                               Publish
                             </button>

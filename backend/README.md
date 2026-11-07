@@ -88,15 +88,31 @@ curl -X POST "http://localhost:8000/api/v1/admin/outbox/process?batch_size=10" \
 
 ---
 
-## 4. Testing & Verification
+## 4. Backend-Mediated Storage Architecture
 
-The backend includes a comprehensive 298-test test suite covering role governance, submission workflows, community moderation, centralized audit logging, and outbox concurrency:
+The backend serves as the authoritative orchestrator for all file uploads to Supabase Storage:
+- **Authentication:** Firebase Authentication Bearer token (`require_admin`).
+- **Authorization:** Verified server-side; client-side direct writes to Supabase Storage are completely disabled.
+- **Storage Client:** `get_storage_client()` utilizes `SUPABASE_SERVICE_ROLE_KEY` to securely bypass storage RLS on the server.
+- **Bucket Mapping:**
+  - `papers`: Question Papers and Answer Keys (PDF only, max 50 MB)
+  - `official-updates`: Official Notices and Circulars (PDF, images, Office docs, max 50 MB)
+  - `news-media`: Educational News thumbnails and PDF attachments (max 20 MB)
+  - `submissions`: Private student/educator submissions (max 25 MB)
+- **Validation & Cleanup:** Strict extension, size, and content validation; database failures trigger immediate compensating file deletion in Supabase Storage.
+
+---
+
+## 5. Testing & Verification
+
+The backend includes a comprehensive 315-test test suite covering role governance, submission workflows, community moderation, centralized audit logging, server-side storage uploads, and outbox concurrency:
 
 ```bash
 # Run all tests
 pytest tests/ -v
 
 # Run specific test modules
+pytest tests/test_storage_uploads.py -v
 pytest tests/test_admin_roles.py -v
 pytest tests/test_submissions.py -v
 pytest tests/test_notices.py -v
@@ -106,7 +122,7 @@ pytest tests/test_outbox.py -v
 
 ---
 
-## 5. API Endpoints Reference
+## 6. API Endpoints Reference
 
 | Domain | Method | Path | Access | Description |
 |---|---|---|:---:|---|
@@ -116,15 +132,17 @@ pytest tests/test_outbox.py -v
 | **Subjects** | `GET` | `/api/v1/subjects` | Public | List subjects by class |
 | **Papers** | `GET` | `/api/v1/papers` | Public | List recent/popular published papers |
 | **Papers** | `GET` | `/api/v1/papers/search` | Public | Multi-field search with alias expansion |
-| **Papers** | `POST` | `/api/v1/papers` | Admin | Create paper with centralized audit log |
+| **Papers** | `POST` | `/api/v1/papers` | Admin | Create paper with file upload & audit log |
 | **Papers** | `PATCH`| `/api/v1/papers/{id}` | Admin | Update paper metadata and outbox storage |
 | **Papers** | `DELETE`|`/api/v1/papers/{id}` | Admin | Delete paper, audit log, & queue outbox file |
 | **Notices**| `GET` | `/api/v1/notices` | Public | Browse official government circulars |
-| **Notices**| `POST` | `/api/v1/notices` | Admin | Create official notice with audit log |
+| **Notices**| `POST` | `/api/v1/notices` | Admin | Create official notice with file upload & audit log |
 | **Notices**| `PATCH`| `/api/v1/notices/{id}` | Admin | Update notice with audit log |
 | **Notices**| `DELETE`|`/api/v1/notices/{id}` | Admin | Delete notice, audit log, & queue outbox file |
 | **News** | `GET` | `/api/v1/news` | Public | Browse education news updates |
-| **News** | `POST` | `/api/v1/news` | Admin | Create article with audit log |
+| **News** | `POST` | `/api/v1/news` | Admin | Create article with file upload & audit log |
+| **News** | `POST` | `/api/v1/news/upload` | Admin | Upload news media (thumbnail / PDF) |
+| **News** | `DELETE`|`/api/v1/news/media` | Admin | Delete media file from news-media bucket |
 | **News** | `PATCH`| `/api/v1/news/{id}` | Admin | Update article with audit log |
 | **News** | `DELETE`|`/api/v1/news/{id}` | Admin | Delete article, audit log, & queue outbox file |
 | **Outbox** | `POST` | `/api/v1/admin/outbox/process` | Super Admin | Process claimed outbox batch |

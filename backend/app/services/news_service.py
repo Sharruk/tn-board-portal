@@ -96,10 +96,12 @@ class NewsService:
             self._db.rollback()
             raise
 
-    def get_news(self, news_id: str) -> NewsOut:
-        """Retrieve a single news article."""
+    def get_news(self, news_id: str, allow_non_published: bool = False) -> NewsOut:
+        """Retrieve a single news article. Public callers only receive published articles."""
         row = self._repo.get_by_id(news_id)
         if not row:
+            raise NotFoundError(resource="News", identifier=news_id)
+        if not allow_non_published and row.get("status") != "published":
             raise NotFoundError(resource="News", identifier=news_id)
         return NewsOut(**row)
 
@@ -111,6 +113,7 @@ class NewsService:
         is_pinned: Optional[bool] = None,
         limit: int = 50,
         offset: int = 0,
+        published_only: bool = False,
     ) -> NewsListResponse:
         """List news articles with pagination."""
         rows, total = self._repo.list_news(
@@ -120,6 +123,7 @@ class NewsService:
             is_pinned=is_pinned,
             limit=limit,
             offset=offset,
+            published_only=published_only,
         )
         return NewsListResponse(
             data=[NewsOut(**r) for r in rows],

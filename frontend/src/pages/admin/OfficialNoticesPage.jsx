@@ -15,6 +15,7 @@ const ACCEPTED_EXTENSIONS = '.pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xl
 const EMPTY_FORM = {
   title: '', category: '', classId: '', year: String(CURRENT_YEAR),
   description: '', expiresAt: '', youtubeUrl: '', file: null,
+  isVisible: true,
 }
 
 // ── Shared sub-components (same patterns as PapersPage) ──────────────────────
@@ -200,13 +201,14 @@ export default function AdminOfficialNoticesPage() {
       if (form.description) fd.append('description', form.description)
       if (form.expiresAt)   fd.append('expires_at', new Date(form.expiresAt).toISOString())
       if (form.youtubeUrl)  fd.append('youtube_url', form.youtubeUrl.trim())
+      fd.append('is_visible',  String(form.isVisible ?? true))
       fd.append('file', form.file)
       await uploadNotice(fd, pct => setUploadProgress(pct))
       setShowUpload(false)
       setForm(EMPTY_FORM)
       setUploadProgress(null)
       load()
-      showToast('Notice uploaded! Set it to Visible when ready.')
+      showToast(form.isVisible ? 'Notice uploaded and published!' : 'Notice uploaded! Set it to Visible when ready.')
     } catch (err) {
       setFormErrors({ _general: err.message || 'Upload failed. Please try again.' })
       setUploadProgress(null)
@@ -502,6 +504,18 @@ export default function AdminOfficialNoticesPage() {
                 className={formErrors.youtubeUrl ? inputErrCls : inputCls}
                 placeholder="https://youtu.be/... or https://youtube.com/watch?v=..."
               />
+            </FormField>
+
+            {/* Visibility */}
+            <FormField label="Visibility" hint="Choose whether to publish immediately or keep as hidden draft">
+              <div className="flex gap-3">
+                {[{ val: true, label: '✅ Visible' }, { val: false, label: '🙈 Hidden' }].map(o => (
+                  <label key={String(o.val)} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 cursor-pointer text-sm font-medium transition-colors ${form.isVisible === o.val ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    <input type="radio" checked={form.isVisible === o.val} onChange={() => setForm(f => ({ ...f, isVisible: o.val }))} className="sr-only" />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
             </FormField>
 
             <FormField

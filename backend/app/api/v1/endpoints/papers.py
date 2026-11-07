@@ -36,6 +36,14 @@ from sqlalchemy.orm import Session
 
 from app.dependencies.auth import get_current_user, get_current_user_optional, require_admin, require_role
 from app.dependencies.supabase import get_db
+from app.services.storage_upload_service import (
+    PAPERS_ALLOWED_EXTENSIONS,
+    PAPERS_BUCKET,
+    PAPERS_MAX_SIZE_BYTES,
+    cleanup_storage_file,
+    validate_and_upload_file,
+)
+from app.utils.exceptions import BadRequestError
 from app.schemas.paper import (
     PaperCommentCreate,
     PaperCommentOut,
@@ -91,18 +99,108 @@ async def list_papers(
     response_model=PaperResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a paper (admin)",
-    description="Admin only. Creates a new paper record with centralized audit logging.",
+    description="Admin only. Creates a new paper record with centralized audit logging and secure server-side storage upload.",
 )
 async def create_paper(
-    req: PaperCreate,
     request: Request,
     current_user: dict = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> PaperResponse:
-    """Create a new paper record."""
+    """Create a new paper record via JSON or multipart/form-data."""
     client_ip = request.client.host if request.client else None
     service = PapersService(db)
-    return service.create_paper(req=req, current_user=current_user, ip_address=client_ip)
+    content_type = request.headers.get("content-type", "")
+
+    if content_type.startswith("application/json"):
+        body = await request.json()
+        req = PaperCreate(**body)
+        return service.create_paper(req=req, current_user=current_user, ip_address=client_ip)
+
+    if content_type.startswith("multipart/form-data") or content_type.startswith("application/x-www-form-urlencoded"):
+        form = await request.form()
+        subject_id_raw = form.get("subject_id")
+        try:
+            subject_id = int(subject_id_raw) if subject_id_raw is not None else None
+        except (ValueError, TypeError):
+            raise BadRequestError("subject_id must be a valid integer.")
+        if subject_id is None:
+            raise BadRequestError("subject_id is required.")
+
+        exam_type = str(form.get("exam_type", "")).strip()
+        if not exam_type:
+            raise BadRequestError("exam_type is required.")
+
+        year_raw = form.get("year")
+        try:
+            year = int(year_raw) if year_raw is not None else None
+        except (ValueError, TypeError):
+            raise BadRequestError("year must be a valid integer.")
+        if year is None:
+            raise BadRequestError("year is required.")
+
+        title = str(form.get("title", "")).strip()
+        if not title:
+            raise BadRequestError("title is required.")
+
+        paper_type = str(form.get("paper_type", "question")).strip()
+        if paper_type not in ("question", "answer_key"):
+            paper_type = "question"
+
+        month = str(form.get("month", "")).strip() or None
+        district = str(form.get("district", "")).strip() or None
+        description = str(form.get("description", "")).strip() or None
+        youtube_url = str(form.get("youtube_url", "")).strip() or None
+        original_filename = str(form.get("original_filename", "")).strip() or None
+        contributor_name = str(form.get("contributor_name", "")).strip() or None
+
+        is_visible_raw = form.get("is_visible", "false")
+        is_visible = str(is_visible_raw).lower() in ("true", "1")
+
+        status_raw = form.get("status")
+        paper_status = str(status_raw).strip() if status_raw else ("published" if is_visible else "draft")
+        if paper_status not in ("draft", "published", "archived"):
+            paper_status = "draft"
+
+        file_obj = form.get("file")
+        if not file_obj or not hasattr(file_obj, "filename") or not file_obj.filename:
+            raise BadRequestError("Paper PDF file is required.")
+
+        if not original_filename and hasattr(file_obj, "filename"):
+            original_filename = file_obj.filename
+
+        storage_path, public_url, _ = await validate_and_upload_file(
+            file=file_obj,
+            bucket=PAPERS_BUCKET,
+            allowed_extensions=PAPERS_ALLOWED_EXTENSIONS,
+            max_size_bytes=PAPERS_MAX_SIZE_BYTES,
+        )
+
+        req = PaperCreate(
+            subject_id=subject_id,
+            exam_type=exam_type,
+            year=year,
+            month=month,
+            district=district,
+            title=title,
+            description=description,
+            paper_type=paper_type,
+            public_url=public_url,
+            youtube_url=youtube_url,
+            file_path=storage_path,
+            original_filename=original_filename,
+            is_visible=is_visible,
+            status=paper_status,
+            contributor_name=contributor_name,
+        )
+
+        try:
+            return service.create_paper(req=req, current_user=current_user, ip_address=client_ip)
+        except Exception:
+            if storage_path:
+                cleanup_storage_file(PAPERS_BUCKET, storage_path)
+            raise
+
+    raise BadRequestError("Unsupported Content-Type. Expected application/json or multipart/form-data.")
 
 
 # ── GET /api/v1/papers/search ─────────────────────────────────────────────────

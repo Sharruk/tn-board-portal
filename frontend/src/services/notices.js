@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/api'
 
 // =============================================================================
 // Official Notices — Public Service
@@ -143,26 +144,35 @@ export function getYouTubeEmbedUrl(url) {
  *   Pass true for the home page strip; pass false (default) for the full notices listing.
  */
 export const getRecentNotices = async (limit = 10, activeOnly = false) => {
-  let query = supabase
-    .from('official_notices')
-    .select('*, classes(name)')
-    .eq('is_visible', true)
+  try {
+    const res = await apiFetch(`/api/v1/notices?is_visible=true&limit=${limit}`)
+    let list = res?.data || []
+    if (activeOnly) {
+      const now = new Date()
+      list = list.filter(n => !n.expires_at || new Date(n.expires_at) > now)
+    }
+    return { data: list }
+  } catch (apiErr) {
+    let query = supabase
+      .from('official_notices')
+      .select('*, classes(name)')
+      .eq('is_visible', true)
 
-  // Home page: show only active (non-expired) notices
-  if (activeOnly) {
-    query = query.or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
-  }
+    if (activeOnly) {
+      query = query.or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+    }
 
-  const { data, error } = await query
-    .order('is_pinned', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (error) throw error
-  return {
-    data: data.map(n => ({
-      ...n,
-      class_name: n.classes?.name ?? null,
-    })),
+    const { data, error } = await query
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return {
+      data: data.map(n => ({
+        ...n,
+        class_name: n.classes?.name ?? null,
+      })),
+    }
   }
 }
 
@@ -171,34 +181,44 @@ export const getRecentNotices = async (limit = 10, activeOnly = false) => {
  * The expires_at filter was removed in migration 015; RLS now allows expired visible notices.
  */
 export const getNotice = async (id) => {
-  const { data, error } = await supabase
-    .from('official_notices')
-    .select('*, classes(name)')
-    .eq('id', id)
-    .eq('is_visible', true)
-    .single()
-  if (error) throw error
-  return {
-    data: {
-      ...data,
-      class_name: data.classes?.name ?? null,
-    },
+  try {
+    const data = await apiFetch(`/api/v1/notices/${id}`)
+    return { data }
+  } catch (apiErr) {
+    const { data, error } = await supabase
+      .from('official_notices')
+      .select('*, classes(name)')
+      .eq('id', id)
+      .eq('is_visible', true)
+      .single()
+    if (error) throw error
+    return {
+      data: {
+        ...data,
+        class_name: data.classes?.name ?? null,
+      },
+    }
   }
 }
 
 /** Fetch a single notice by id with NO visibility filter (for admin use). */
 export const getNoticeAdmin = async (id) => {
-  const { data, error } = await supabase
-    .from('official_notices')
-    .select('*, classes(name)')
-    .eq('id', id)
-    .single()
-  if (error) throw error
-  return {
-    data: {
-      ...data,
-      class_name: data.classes?.name ?? null,
-    },
+  try {
+    const data = await apiFetch(`/api/v1/notices/${id}`)
+    return { data }
+  } catch (apiErr) {
+    const { data, error } = await supabase
+      .from('official_notices')
+      .select('*, classes(name)')
+      .eq('id', id)
+      .single()
+    if (error) throw error
+    return {
+      data: {
+        ...data,
+        class_name: data.classes?.name ?? null,
+      },
+    }
   }
 }
 
