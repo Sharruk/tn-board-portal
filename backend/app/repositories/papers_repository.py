@@ -454,8 +454,15 @@ class PapersRepository:
         params: dict[str, Any] = {"subject_id": subject_id}
 
         if exam_type:
-            conditions.append("exam_type = :exam_type")
-            params["exam_type"] = exam_type
+            types_list = [t.strip() for t in exam_type.split(",") if t.strip()]
+            if len(types_list) > 1:
+                type_placeholders = [f":et_{i}" for i in range(len(types_list))]
+                conditions.append(f"exam_type IN ({', '.join(type_placeholders)})")
+                for i, t in enumerate(types_list):
+                    params[f"et_{i}"] = t
+            elif len(types_list) == 1:
+                conditions.append("exam_type = :exam_type")
+                params["exam_type"] = types_list[0]
         if paper_type:
             conditions.append("paper_type = :paper_type")
             params["paper_type"] = paper_type
@@ -526,8 +533,15 @@ class PapersRepository:
             conditions.append("c.id = :class_id")
             params["class_id"] = class_id
         if exam_type:
-            conditions.append("p.exam_type = :exam_type")
-            params["exam_type"] = exam_type
+            types_list = [t.strip() for t in exam_type.split(",") if t.strip()]
+            if len(types_list) > 1:
+                type_placeholders = [f":et_{i}" for i in range(len(types_list))]
+                conditions.append(f"p.exam_type IN ({', '.join(type_placeholders)})")
+                for i, t in enumerate(types_list):
+                    params[f"et_{i}"] = t
+            elif len(types_list) == 1:
+                conditions.append("p.exam_type = :exam_type")
+                params["exam_type"] = types_list[0]
         if paper_type:
             conditions.append("p.paper_type = :paper_type")
             params["paper_type"] = paper_type
@@ -617,39 +631,43 @@ class PapersRepository:
 
     def toggle_like(self, paper_id: int, firebase_uid: str) -> dict[str, Any]:
         """Toggle like for user on paper in an atomic transaction."""
-        chk_stmt = text(
-            "SELECT id FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"
-        )
-        existing = self._db.execute(chk_stmt, {"paper_id": paper_id, "firebase_uid": firebase_uid}).fetchone()
+        try:
+            chk_stmt = text(
+                "SELECT id FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"
+            )
+            existing = self._db.execute(chk_stmt, {"paper_id": paper_id, "firebase_uid": firebase_uid}).fetchone()
 
-        if existing:
-            self._db.execute(
-                text("DELETE FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"),
-                {"paper_id": paper_id, "firebase_uid": firebase_uid},
-            )
-            has_liked = False
-        else:
-            self._db.execute(
-                text("INSERT INTO paper_likes (paper_id, firebase_uid, created_at) VALUES (:paper_id, :firebase_uid, NOW())"),
-                {"paper_id": paper_id, "firebase_uid": firebase_uid},
-            )
-            has_liked = True
-            # Also log like event to analytics_events
-            try:
-                from app.repositories.analytics_repository import AnalyticsRepository
-                AnalyticsRepository(self._db).insert_event(
-                    event_type="like",
-                    firebase_uid=firebase_uid,
-                    paper_id=paper_id,
+            if existing:
+                self._db.execute(
+                    text("DELETE FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"),
+                    {"paper_id": paper_id, "firebase_uid": firebase_uid},
                 )
-            except Exception as exc:
-                logger.debug("Analytics event recording skipped in toggle_like: %s", exc)
+                has_liked = False
+            else:
+                self._db.execute(
+                    text("INSERT INTO paper_likes (paper_id, firebase_uid, created_at) VALUES (:paper_id, :firebase_uid, NOW())"),
+                    {"paper_id": paper_id, "firebase_uid": firebase_uid},
+                )
+                has_liked = True
+                # Also log like event to analytics_events
+                try:
+                    from app.repositories.analytics_repository import AnalyticsRepository
+                    AnalyticsRepository(self._db).insert_event(
+                        event_type="like",
+                        firebase_uid=firebase_uid,
+                        paper_id=paper_id,
+                    )
+                except Exception as exc:
+                    logger.debug("Analytics event recording skipped in toggle_like: %s", exc)
 
-        cnt_stmt = text("SELECT COUNT(*)::int FROM paper_likes WHERE paper_id = :paper_id")
-        likes_count = self._db.execute(cnt_stmt, {"paper_id": paper_id}).scalar() or 0
-        self._db.commit()
+            cnt_stmt = text("SELECT COUNT(*)::int FROM paper_likes WHERE paper_id = :paper_id")
+            likes_count = self._db.execute(cnt_stmt, {"paper_id": paper_id}).scalar() or 0
+            self._db.commit()
 
-        return {"paper_id": paper_id, "likes_count": likes_count, "has_liked": has_liked}
+            return {"paper_id": paper_id, "likes_count": likes_count, "has_liked": has_liked}
+        except Exception:
+            self._db.rollback()
+            raise
 
     def get_likes_info(self, paper_id: int, firebase_uid: Optional[str] = None) -> dict[str, Any]:
         """Get total like count and whether current user has liked."""

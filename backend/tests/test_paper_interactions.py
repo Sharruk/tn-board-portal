@@ -170,3 +170,64 @@ def test_paper_comments_flow(client):
         assert post_res.status_code == 201
     finally:
         app.dependency_overrides.clear()
+
+
+def test_toggle_like_analytics_failure_resilience(client):
+    """Test that failure in analytics event recording does not disrupt the like transaction."""
+    from unittest.mock import patch
+
+    mock_db = MagicMock()
+    likes_state = set()
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        if "from papers" in sql:
+            return MockResult([_MOCK_PAPER])
+        elif "select id from paper_likes" in sql:
+            if ("uid-123", 14) in likes_state:
+                return MockResult([{"id": "like-1"}])
+            return MockResult([])
+        elif "insert into paper_likes" in sql:
+            likes_state.add(("uid-123", 14))
+            return MockResult([])
+        elif "select count(*)" in sql and "paper_likes" in sql:
+            return MockResult([], scalar_val=len(likes_state))
+        return MockResult([])
+
+    mock_db.execute.side_effect = _execute
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: {"role": "USER", "firebase_uid": "uid-123", "display_name": "Student A"}
+
+    try:
+        # Patch insert_event to raise an exception or fail
+        with patch("app.repositories.analytics_repository.AnalyticsRepository.insert_event", side_effect=RuntimeError("Analytics DB unreachable")):
+            res = client.post("/api/v1/papers/14/like")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["has_liked"] is True
+            assert data["likes_count"] == 1
+            mock_db.commit.assert_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_toggle_like_rollback_on_error():
+    """Test that a database error during like toggle invokes rollback."""
+    mock_db = MagicMock()
+
+    def _execute(stmt, params=None):
+        sql = str(stmt).lower()
+        if "select id from paper_likes" in sql:
+            return MockResult([])
+        elif "insert into paper_likes" in sql:
+            raise RuntimeError("Database connection terminated")
+        return MockResult([])
+
+    mock_db.execute.side_effect = _execute
+
+    from app.repositories.papers_repository import PapersRepository
+    repo = PapersRepository(mock_db)
+    with pytest.raises(RuntimeError):
+        repo.toggle_like(14, "uid-123")
+    mock_db.rollback.assert_called_once()

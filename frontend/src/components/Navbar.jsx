@@ -14,6 +14,7 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [unreadMsgCount, setUnreadMsgCount] = useState(0)
   const userMenuRef = useRef(null)
+  const classesMenuRef = useRef(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -31,9 +32,22 @@ export default function Navbar() {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
         setUserMenuOpen(false)
       }
+      if (classesMenuRef.current && !classesMenuRef.current.contains(e.target)) {
+        setClassesOpen(false)
+      }
+    }
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') {
+        setUserMenuOpen(false)
+        setClassesOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [])
 
   const handleLogout = async () => {
@@ -69,8 +83,19 @@ export default function Navbar() {
             </NavLink>
 
             {/* Classes dropdown */}
-            <div className="relative" onMouseEnter={() => setClassesOpen(true)} onMouseLeave={() => setClassesOpen(false)}>
-              <button className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1 transition-colors">
+            <div
+              ref={classesMenuRef}
+              className="relative"
+              onMouseEnter={() => setClassesOpen(true)}
+              onMouseLeave={() => setClassesOpen(false)}
+            >
+              <button
+                type="button"
+                onClick={() => setClassesOpen(prev => !prev)}
+                aria-expanded={classesOpen}
+                aria-haspopup="true"
+                className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center gap-1 transition-colors"
+              >
                 Classes
                 <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 transition-transform ${classesOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

@@ -302,6 +302,31 @@ def test_list_by_subject_with_exam_type_filter():
         app.dependency_overrides.clear()
 
 
+def test_list_by_subject_with_multi_exam_type_filter():
+    """Verify comma-separated multi-type filter creates IN clause and succeeds."""
+    mock_db = MagicMock()
+    executed_queries = []
+
+    def _execute(stmt, params=None):
+        executed_queries.append((str(stmt), params or {}))
+        return MockResult([MOCK_PAPER_LIST_ROW])
+
+    mock_db.execute.side_effect = _execute
+    app.dependency_overrides[get_db] = lambda: mock_db
+    try:
+        client = TestClient(app)
+        resp = client.get("/api/v1/papers/by-subject/8?exam_type=Unit+Test+1%2CUnit+Test+2%2CUnit+Test+3")
+        assert resp.status_code == 200
+        assert len(executed_queries) > 0
+        sql, params = executed_queries[0]
+        assert "exam_type IN (:et_0, :et_1, :et_2)" in sql
+        assert params["et_0"] == "Unit Test 1"
+        assert params["et_1"] == "Unit Test 2"
+        assert params["et_2"] == "Unit Test 3"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_list_by_subject_with_paper_type_filter():
     mock_db = _make_list_db([MOCK_PAPER_LIST_ROW])
     app.dependency_overrides[get_db] = lambda: mock_db

@@ -74,7 +74,7 @@ export default function SubjectPage() {
                 <div key={group.label}>
                   {hasFiles ? (
                     <Link
-                      to={`/papers?subject_id=${subject.id}&exam_type=${encodeURIComponent(group.types[0])}`}
+                      to={`/papers?subject_id=${subject.id}&category=${encodeURIComponent(group.label)}&exam_type=${encodeURIComponent(group.types.join(','))}`}
                       className="group card p-5 flex items-start gap-4 hover:border-blue-200 h-full"
                     >
                       <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center text-xl shrink-0 group-hover:bg-blue-100 transition-colors">

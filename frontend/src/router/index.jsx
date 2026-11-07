@@ -38,10 +38,12 @@ const router = createBrowserRouter([
     element: <MainLayout />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'classes', element: <Navigate to="/#classes" replace /> },
       { path: 'class/:id', element: <ClassPage /> },
       { path: 'subject/:id', element: <SubjectPage /> },
       { path: 'papers', element: <PaperListPage /> },
       { path: 'paper/:id', element: <PaperDetailPage /> },
+      { path: 'papers/:id', element: <PaperDetailPage /> },
       { path: 'official-notices', element: <OfficialNoticesPage /> },
       { path: 'notice/:id', element: <NoticeDetailPage /> },
       { path: 'news', element: <NewsPage /> },

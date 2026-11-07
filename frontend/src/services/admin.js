@@ -147,15 +147,17 @@ export const getAdminMe = async () => {
 }
 
 export const getAuditLogs = async (limit = 50, action = null) => {
-  let query = supabase
-    .from('audit_logs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (action) query = query.eq('action', action)
-  const { data, error } = await query
-  if (error) throw error
-  return { data }
+  const token = await getFirebaseToken()
+  const params = new URLSearchParams()
+  if (limit) params.append('limit', String(Math.min(limit, 100)))
+  if (action) params.append('action', action)
+  const qs = params.toString() ? `?${params.toString()}` : ''
+  const res = await apiFetch(`/api/v1/admin/activity-logs${qs}`, {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  })
+  return { data: res?.data || [] }
 }
 
 // =============================================================================

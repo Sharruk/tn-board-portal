@@ -397,7 +397,7 @@ export default function AdminInboxTab() {
                   </div>
                   {activeConv.linked_submission.published_papers?.length > 0 && (
                     <a
-                      href={`/papers/${activeConv.linked_submission.published_papers[0].id}`}
+                      href={`/paper/${activeConv.linked_submission.published_papers[0].id}`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-blue-700 font-bold hover:underline"

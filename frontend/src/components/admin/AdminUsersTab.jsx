@@ -465,7 +465,7 @@ export default function AdminUsersTab({ onSelectConversation }) {
                           </div>
                           {s.published_papers?.length > 0 && (
                             <Link
-                              to={`/papers/${s.published_papers[0].id}`}
+                              to={`/paper/${s.published_papers[0].id}`}
                               target="_blank"
                               className="text-blue-600 hover:underline text-[11px] font-bold shrink-0"
                             >
