@@ -1,4 +1,6 @@
 import { supabase } from '../lib/supabase'
+import { getFirebaseToken } from '../lib/firebase'
+import { apiFetch } from '../lib/api'
 
 // =============================================================================
 // News & Updates — Public + Admin Service
@@ -208,61 +210,48 @@ export const getAdminNews = async () => {
 }
 
 /**
- * Create a new news article.
- * Accepts a plain object — thumbnail/PDF uploads are handled separately.
+ * Create a new news article via backend API with centralized audit logging.
  */
 export const createNews = async (payload) => {
-  const { data, error } = await supabase
-    .from('news_updates')
-    .insert(payload)
-    .select()
-    .single()
-  if (error) throw error
+  const token = await getFirebaseToken()
+  const data = await apiFetch('/api/v1/news', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  })
   return { data }
 }
 
 /**
- * Update an existing news article.
+ * Update an existing news article via backend API with centralized audit logging.
  */
 export const updateNews = async (id, updates) => {
-  const { data, error } = await supabase
-    .from('news_updates')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single()
-  if (error) throw error
+  const token = await getFirebaseToken()
+  const data = await apiFetch(`/api/v1/news/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(updates),
+  })
   return { data }
 }
 
 /**
- * Delete a news article. Also removes associated storage objects.
+ * Delete a news article via backend API with transactional outbox storage cleanup.
  */
 export const deleteNews = async (id) => {
-  // Fetch paths before deleting row
-  const { data: article, error: fetchError } = await supabase
-    .from('news_updates')
-    .select('thumbnail_url, pdf_url')
-    .eq('id', id)
-    .single()
-  if (fetchError) throw fetchError
-
-  // Remove storage objects (thumbnail + pdf) — errors are non-fatal
-  const pathsToDelete = []
-  if (article?.thumbnail_url) {
-    const thumbPath = article.thumbnail_url.split('/news-media/').pop()
-    if (thumbPath) pathsToDelete.push(thumbPath)
-  }
-  if (article?.pdf_url) {
-    const pdfPath = article.pdf_url.split('/news-media/').pop()
-    if (pdfPath) pathsToDelete.push(pdfPath)
-  }
-  if (pathsToDelete.length > 0) {
-    await supabase.storage.from('news-media').remove(pathsToDelete).catch(() => {})
-  }
-
-  const { error } = await supabase.from('news_updates').delete().eq('id', id)
-  if (error) throw error
+  const token = await getFirebaseToken()
+  return await apiFetch(`/api/v1/news/${id}`, {
+    method: 'DELETE',
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+  })
 }
 
 /**
