@@ -4,7 +4,7 @@ Community discussion, requests, moderation, and member profile endpoints.
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.dependencies.auth import get_current_admin, get_current_user
@@ -111,12 +111,14 @@ async def update_post(
 )
 async def delete_post(
     post_id: str,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     """Delete a post."""
+    client_ip = request.client.host if request.client else None
     service = CommunityService(db)
-    return service.delete_post(post_id=post_id, current_user=current_user)
+    return service.delete_post(post_id=post_id, current_user=current_user, ip_address=client_ip)
 
 
 # ── Comments & Votes ──────────────────────────────────────────────────────────
@@ -153,12 +155,14 @@ async def add_comment(
 )
 async def delete_comment(
     comment_id: str,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     """Delete comment."""
+    client_ip = request.client.host if request.client else None
     service = CommunityService(db)
-    return service.delete_comment(comment_id=comment_id, current_user=current_user)
+    return service.delete_comment(comment_id=comment_id, current_user=current_user, ip_address=client_ip)
 
 
 @router.post(
@@ -221,12 +225,19 @@ async def list_reports(
 async def update_report(
     report_id: str,
     status: Annotated[str, Query(description="'reviewed', 'dismissed', 'actioned'")],
+    request: Request,
     admin_user: dict = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ) -> dict:
     """Update report status."""
+    client_ip = request.client.host if request.client else None
     service = CommunityService(db)
-    return service.update_report_status(report_id=report_id, status=status)
+    return service.update_report_status(
+        report_id=report_id,
+        status=status,
+        current_user=admin_user,
+        ip_address=client_ip,
+    )
 
 
 # ── Paper Requests ────────────────────────────────────────────────────────────

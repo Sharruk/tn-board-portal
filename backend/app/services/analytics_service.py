@@ -24,6 +24,7 @@ class AnalyticsService:
     """Service layer for usage telemetry and dashboard reporting."""
 
     def __init__(self, db: Session) -> None:
+        self._db = db
         self._repo = AnalyticsRepository(db)
 
     def log_event(self, req: AnalyticsEventCreate, firebase_uid: Optional[str] = None) -> bool:
@@ -35,7 +36,7 @@ class AnalyticsService:
             logger.debug("Ignoring unrecognized analytics event: %s", ev_type)
             return False
 
-        return self._repo.insert_event(
+        success = self._repo.insert_event(
             event_type=ev_type,
             session_id=req.session_id,
             firebase_uid=firebase_uid,
@@ -44,6 +45,14 @@ class AnalyticsService:
             subject_id=req.subject_id,
             metadata=req.metadata,
         )
+        if success:
+            try:
+                self._db.commit()
+            except Exception as e:
+                logger.warning("Failed to commit analytics event: %s", e)
+                self._db.rollback()
+                return False
+        return success
 
     def get_dashboard_data(self, period: Optional[str] = None) -> AnalyticsDashboardResponse:
         """Generate comprehensive analytics report for admin dashboard."""

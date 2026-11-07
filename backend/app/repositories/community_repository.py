@@ -206,14 +206,15 @@ class CommunityRepository:
         d["id"] = str(d["id"])
         return d
 
-    def delete_post(self, post_id: str, hard_delete: bool = False) -> bool:
+    def delete_post(self, post_id: str, hard_delete: bool = False, auto_commit: bool = True) -> bool:
         """Delete or soft-delete a post."""
         if hard_delete:
             stmt = text("DELETE FROM community_posts WHERE id::text = :post_id")
         else:
             stmt = text("UPDATE community_posts SET is_deleted = true, updated_at = NOW() WHERE id::text = :post_id")
         result = self._db.execute(stmt, {"post_id": post_id})
-        self._db.commit()
+        if auto_commit:
+            self._db.commit()
         return result.rowcount > 0
 
     # ── Comments ──────────────────────────────────────────────────────────────
@@ -284,14 +285,38 @@ class CommunityRepository:
             d["parent_id"] = str(d["parent_id"])
         return d
 
-    def delete_comment(self, comment_id: str, hard_delete: bool = False) -> bool:
+    def get_comment_by_id(self, comment_id: str, allow_deleted: bool = False) -> dict[str, Any] | None:
+        """Fetch a single comment by UUID."""
+        stmt = text(
+            """
+            SELECT id, post_id, firebase_uid, author_name, author_avatar, parent_id,
+                   content, is_deleted, created_at, updated_at
+            FROM community_comments
+            WHERE id::text = :comment_id
+            """
+        )
+        result = self._db.execute(stmt, {"comment_id": comment_id})
+        row = result.fetchone()
+        if not row:
+            return None
+        d = dict(row._mapping)
+        if not allow_deleted and d.get("is_deleted"):
+            return None
+        d["id"] = str(d["id"])
+        d["post_id"] = str(d["post_id"])
+        if d.get("parent_id"):
+            d["parent_id"] = str(d["parent_id"])
+        return d
+
+    def delete_comment(self, comment_id: str, hard_delete: bool = False, auto_commit: bool = True) -> bool:
         """Delete or soft-delete a comment."""
         if hard_delete:
             stmt = text("DELETE FROM community_comments WHERE id::text = :comment_id")
         else:
             stmt = text("UPDATE community_comments SET is_deleted = true, updated_at = NOW() WHERE id::text = :comment_id")
         result = self._db.execute(stmt, {"comment_id": comment_id})
-        self._db.commit()
+        if auto_commit:
+            self._db.commit()
         return result.rowcount > 0
 
     # ── Votes / Likes ─────────────────────────────────────────────────────────
@@ -393,11 +418,12 @@ class CommunityRepository:
         result = self._db.execute(stmt, {"status": status} if status else {})
         return [dict(r._mapping) for r in result.fetchall()]
 
-    def update_report_status(self, report_id: str, status: str) -> bool:
+    def update_report_status(self, report_id: str, status: str, auto_commit: bool = True) -> bool:
         """Update report status ('reviewed', 'dismissed', 'actioned')."""
         stmt = text("UPDATE content_reports SET status = :status WHERE id::text = :report_id")
         result = self._db.execute(stmt, {"status": status, "report_id": report_id})
-        self._db.commit()
+        if auto_commit:
+            self._db.commit()
         return result.rowcount > 0
 
     # ── Paper Requests ────────────────────────────────────────────────────────

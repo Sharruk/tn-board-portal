@@ -19,6 +19,10 @@ from fastapi.testclient import TestClient
 
 from app.dependencies.supabase import get_db
 from app.dependencies.auth import get_current_user, require_admin
+from app.repositories.conversations_repository import (
+    ConversationsRepository,
+    format_admin_display_name,
+)
 from app.main import app
 
 
@@ -272,9 +276,9 @@ def test_admin_conversations_access(client):
 
 
 def test_admin_reply_and_resolve(client):
-    """Admin can reply to a conversation and mark it resolved."""
+    """Admin can reply to a conversation with actual identity and mark it resolved."""
     mock_db = MagicMock()
-    reply_msg = {**_MSG, "sender_role": "admin", "sender_name": "TN Board Admin", "message": "Uploaded!"}
+    reply_msg = {**_MSG, "sender_role": "admin", "sender_name": "Super Admin (Admin)", "message": "Uploaded!"}
     resolved_conv = {**_CONV, "status": "resolved"}
 
     def _exec(stmt, params=None):
@@ -284,7 +288,8 @@ def test_admin_reply_and_resolve(client):
         if "from messages" in sql:
             return MockResult([_MSG, reply_msg])
         if "insert into messages" in sql:
-            return MockResult([reply_msg])
+            sender_name = params.get("sender_name") if params else "Super Admin (Admin)"
+            return MockResult([{**reply_msg, "sender_name": sender_name}])
         if "update conversations" in sql:
             return MockResult([resolved_conv])
         if "from users" in sql:
@@ -306,6 +311,7 @@ def test_admin_reply_and_resolve(client):
         )
         assert res.status_code == 201
         assert res.json()["sender_role"] == "admin"
+        assert res.json()["sender_name"] == "Super Admin (Admin)"
 
         # Resolve status
         res_status = client.patch(
@@ -317,3 +323,163 @@ def test_admin_reply_and_resolve(client):
         assert res_status.json()["status"] == "resolved"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_format_admin_display_name_variations():
+    """Unit test admin identity derivation rules across all role/name variations."""
+    # Super Admin with all caps name -> Title cased with Super Admin prefix
+    assert format_admin_display_name("SUPER_ADMIN", "HUNGRY LEARNER", "hungrylearner786@gmail.com") == "Super Admin (Hungry Learner)"
+    # Standard Admin with normal mixed case name
+    assert format_admin_display_name("ADMIN", "Sharruk", "mr.sharruk@gmail.com") == "Admin (Sharruk)"
+    assert format_admin_display_name("ADMIN", "Mister Riyaz", "mr.g.riyaz@gmail.com") == "Admin (Mister Riyaz)"
+    # Admin with email fallback when display_name is missing
+    assert format_admin_display_name("ADMIN", None, "riyaz@example.com") == "Admin (riyaz)"
+    assert format_admin_display_name("ADMIN", "", "sharruk@example.com") == "Admin (sharruk)"
+    # Super Admin with no display_name or email
+    assert format_admin_display_name("SUPER_ADMIN", None, None) == "Super Admin (Staff)"
+    # Admin with no role specified defaults to Admin
+    assert format_admin_display_name(None, "Sharruk", None) == "Admin (Sharruk)"
+
+
+def test_admin_reply_with_regular_admin_identity(client):
+    """Regular ADMIN role user has reply formatted as Admin (Name)."""
+    mock_db = MagicMock()
+    regular_admin = {
+        "id": "88888888-8888-8888-8888-888888888888",
+        "firebase_uid": "admin-uid-sharruk",
+        "email": "mr.sharruk@gmail.com",
+        "display_name": "Sharruk",
+        "role": "ADMIN",
+        "is_active": True,
+        "photo_url": None,
+    }
+    resolved_conv = {**_CONV, "status": "awaiting_user"}
+
+    def _exec(stmt, params=None):
+        sql = str(stmt).lower()
+        if "from conversations" in sql:
+            return MockResult([resolved_conv])
+        if "insert into messages" in sql:
+            sender_name = params.get("sender_name") if params else "Admin (Sharruk)"
+            return MockResult([{**_MSG, "sender_role": "admin", "sender_name": sender_name, "message": "Checked!"}])
+        if "update conversations" in sql:
+            return MockResult([resolved_conv])
+        return MockResult([])
+
+    mock_db.execute.side_effect = _exec
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: regular_admin
+
+    try:
+        res = client.post(
+            f"/api/v1/admin/conversations/{_CONV['id']}/reply",
+            json={"message": "Checked!"},
+            headers={"Authorization": "Bearer admin-token"},
+        )
+        assert res.status_code == 201
+        assert res.json()["sender_role"] == "admin"
+        assert res.json()["sender_name"] == "Admin (Sharruk)"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_historical_admin_message_resolution():
+    """get_messages resolves historical TN Board Admin to actual identity via LEFT JOIN users."""
+    mock_db = MagicMock()
+    repo = ConversationsRepository(mock_db)
+
+    # Simulate database rows with joined user details
+    mock_rows = [
+        {
+            "id": "msg-1",
+            "conversation_id": "conv-1",
+            "sender_role": "user",
+            "sender_firebase_uid": "student-1",
+            "sender_name": "Student A",
+            "message": "Hello",
+            "is_read": True,
+            "read_at": None,
+            "created_at": datetime.now(),
+            "u_display_name": "Student A",
+            "u_email": "student@example.com",
+            "u_role": "USER",
+        },
+        {
+            "id": "msg-2",
+            "conversation_id": "conv-1",
+            "sender_role": "admin",
+            "sender_firebase_uid": "admin-super",
+            "sender_name": "TN Board Admin",
+            "message": "Hello from Super Admin",
+            "is_read": False,
+            "read_at": None,
+            "created_at": datetime.now(),
+            "u_display_name": "HUNGRY LEARNER",
+            "u_email": "hungrylearner786@gmail.com",
+            "u_role": "SUPER_ADMIN",
+        },
+        {
+            "id": "msg-3",
+            "conversation_id": "conv-1",
+            "sender_role": "admin",
+            "sender_firebase_uid": "admin-regular",
+            "sender_name": "TN Board Admin",
+            "message": "Hello from Admin",
+            "is_read": False,
+            "read_at": None,
+            "created_at": datetime.now(),
+            "u_display_name": "Mister Riyaz",
+            "u_email": "mr.g.riyaz@gmail.com",
+            "u_role": "ADMIN",
+        },
+        {
+            "id": "msg-4",
+            "conversation_id": "conv-1",
+            "sender_role": "admin",
+            "sender_firebase_uid": "unknown-admin-uid",
+            "sender_name": "TN Board Admin",
+            "message": "Unresolvable identity",
+            "is_read": False,
+            "read_at": None,
+            "created_at": datetime.now(),
+            "u_display_name": None,
+            "u_email": None,
+            "u_role": None,
+        },
+        {
+            "id": "msg-5",
+            "conversation_id": "conv-1",
+            "sender_role": "admin",
+            "sender_firebase_uid": "admin-already-formatted",
+            "sender_name": "Admin (Sharruk)",
+            "message": "Already formatted",
+            "is_read": False,
+            "read_at": None,
+            "created_at": datetime.now(),
+            "u_display_name": "Sharruk",
+            "u_email": "mr.sharruk@gmail.com",
+            "u_role": "ADMIN",
+        },
+    ]
+
+    mock_db.execute.return_value = MockResult(mock_rows)
+
+    messages = repo.get_messages("conv-1")
+    assert len(messages) == 5
+
+    # 1. Student message untouched
+    assert messages[0]["sender_name"] == "Student A"
+    assert "u_display_name" not in messages[0]
+
+    # 2. Historical Super Admin resolved
+    assert messages[1]["sender_name"] == "Super Admin (Hungry Learner)"
+    assert "u_display_name" not in messages[1]
+
+    # 3. Historical Admin resolved
+    assert messages[2]["sender_name"] == "Admin (Mister Riyaz)"
+
+    # 4. Unresolvable Admin never guesses - retains historical label
+    assert messages[3]["sender_name"] == "TN Board Admin"
+
+    # 5. Already formatted message preserved
+    assert messages[4]["sender_name"] == "Admin (Sharruk)"

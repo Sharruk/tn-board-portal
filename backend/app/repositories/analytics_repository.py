@@ -43,23 +43,22 @@ class AnalyticsRepository:
             """
         )
         try:
-            self._db.execute(
-                stmt,
-                {
-                    "event_type": event_type,
-                    "session_id": session_id,
-                    "firebase_uid": firebase_uid,
-                    "paper_id": paper_id,
-                    "class_id": class_id,
-                    "subject_id": subject_id,
-                    "metadata": json.dumps(metadata or {}),
-                },
-            )
-            self._db.commit()
+            with self._db.begin_nested():
+                self._db.execute(
+                    stmt,
+                    {
+                        "event_type": event_type,
+                        "session_id": session_id,
+                        "firebase_uid": firebase_uid,
+                        "paper_id": paper_id,
+                        "class_id": class_id,
+                        "subject_id": subject_id,
+                        "metadata": json.dumps(metadata or {}),
+                    },
+                )
             return True
         except Exception as e:
             logger.warning("Failed to insert analytics event: %s", e)
-            self._db.rollback()
             return False
 
     def get_period_stats(self, since: Optional[datetime] = None) -> dict[str, int]:

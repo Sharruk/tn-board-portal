@@ -43,11 +43,11 @@ class PapersRepository:
         """
         logger.debug("PapersRepository.get_by_id(paper_id=%s, published_only=%s)", paper_id, published_only)
         sql = """
-            SELECT 
+            SELECT
                 p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.description, p.paper_type,
                 p.file_path, p.public_url, p.youtube_url, p.original_filename, p.is_visible,
                 p.download_count, p.created_at,
-                p.submission_id, 
+                p.submission_id,
                 COALESCE(NULLIF(TRIM(u.display_name), ''), p.contributor_name) AS contributor_name,
                 s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
                 c.id AS class_id, c.name AS class_name, c.slug AS class_slug
@@ -75,11 +75,11 @@ class PapersRepository:
             # Fallback 1: Without description (if description column is unmigrated in DB)
             try:
                 fallback_sql_1 = """
-                    SELECT 
+                    SELECT
                         p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
                         p.file_path, p.public_url, p.youtube_url, p.original_filename, p.is_visible,
                         p.download_count, p.created_at,
-                        p.submission_id, 
+                        p.submission_id,
                         COALESCE(NULLIF(TRIM(u.display_name), ''), p.contributor_name) AS contributor_name,
                         s.name AS subject_name, s.slug AS subject_slug, s.is_practical,
                         c.id AS class_id, c.name AS class_name, c.slug AS class_slug
@@ -102,7 +102,7 @@ class PapersRepository:
                 logger.warning("Fallback 1 failed (%s), trying legacy core columns fallback...", fb1_exc)
                 # Fallback 2: Core guaranteed legacy columns
                 fallback_sql_2 = """
-                    SELECT 
+                    SELECT
                         p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
                         p.file_path, p.public_url, p.youtube_url, p.original_filename, p.is_visible,
                         p.download_count, p.created_at,
@@ -123,6 +123,123 @@ class PapersRepository:
         d = dict(row._mapping)
         if d.get("submission_id"):
             d["submission_id"] = str(d["submission_id"])
+        return _add_status(d)
+
+    def create_paper(
+        self,
+        *,
+        subject_id: int,
+        exam_type: str,
+        year: int,
+        title: str,
+        month: Optional[str] = None,
+        district: Optional[str] = None,
+        description: Optional[str] = None,
+        paper_type: str = "question",
+        file_path: Optional[str] = None,
+        public_url: Optional[str] = None,
+        youtube_url: Optional[str] = None,
+        original_filename: Optional[str] = None,
+        is_visible: bool = True,
+        status: str = "published",
+        contributor_name: Optional[str] = None,
+        submission_id: Optional[str] = None,
+        auto_commit: bool = True,
+    ) -> dict[str, Any]:
+        """Insert a new question paper record."""
+        stmt = text(
+            """
+            INSERT INTO papers (
+                subject_id, exam_type, year, month, district, title, description,
+                paper_type, file_path, public_url, youtube_url, original_filename,
+                is_visible, status, download_count, contributor_name, submission_id,
+                created_at
+            )
+            VALUES (
+                :subject_id, :exam_type, :year, :month, :district, :title, :description,
+                :paper_type, :file_path, :public_url, :youtube_url, :original_filename,
+                :is_visible, :status, 0, :contributor_name, :submission_id,
+                NOW()
+            )
+            RETURNING id, subject_id, exam_type, year, month, district, title, description,
+                      paper_type, file_path, public_url, youtube_url, original_filename,
+                      is_visible, status, download_count, contributor_name, submission_id,
+                      created_at
+            """
+        )
+        res = self._db.execute(
+            stmt,
+            {
+                "subject_id": subject_id,
+                "exam_type": exam_type.strip(),
+                "year": year,
+                "month": month.strip() if month else None,
+                "district": district.strip() if district else None,
+                "title": title.strip(),
+                "description": description.strip() if description else None,
+                "paper_type": paper_type.strip(),
+                "file_path": file_path,
+                "public_url": public_url,
+                "youtube_url": youtube_url,
+                "original_filename": original_filename,
+                "is_visible": is_visible,
+                "status": status,
+                "contributor_name": contributor_name,
+                "submission_id": submission_id,
+            },
+        )
+        if auto_commit:
+            self._db.commit()
+        row = res.fetchone()
+        if not row:
+            raise RuntimeError("Failed to insert paper record.")
+        d = dict(row._mapping)
+        return _add_status(d)
+
+    def update_paper(
+        self,
+        paper_id: int,
+        updates: dict[str, Any],
+        auto_commit: bool = True,
+    ) -> Optional[dict[str, Any]]:
+        """Update fields of a paper."""
+        if not updates:
+            return self.get_by_id(paper_id, published_only=False)
+
+        sets = []
+        params: dict[str, Any] = {"paper_id": paper_id}
+
+        for k, v in updates.items():
+            if k in (
+                "subject_id", "exam_type", "year", "month", "district",
+                "title", "description", "paper_type", "file_path",
+                "public_url", "youtube_url", "original_filename",
+                "is_visible", "status", "contributor_name"
+            ):
+                sets.append(f"{k} = :{k}")
+                params[k] = v
+
+        if not sets:
+            return self.get_by_id(paper_id, published_only=False)
+
+        stmt = text(
+            f"""
+            UPDATE papers
+            SET {", ".join(sets)}
+            WHERE id = :paper_id
+            RETURNING id, subject_id, exam_type, year, month, district, title, description,
+                      paper_type, file_path, public_url, youtube_url, original_filename,
+                      is_visible, status, download_count, contributor_name, submission_id,
+                      created_at
+            """
+        )
+        res = self._db.execute(stmt, params)
+        if auto_commit:
+            self._db.commit()
+        row = res.fetchone()
+        if not row:
+            return None
+        d = dict(row._mapping)
         return _add_status(d)
 
     def delete_paper(
@@ -247,7 +364,7 @@ class PapersRepository:
         logger.debug("PapersRepository.list_recent(limit=%s)", limit)
         stmt = text(
             """
-            SELECT 
+            SELECT
                 id, subject_id, exam_type, year, month, district, title, paper_type,
                 public_url, youtube_url, original_filename, is_visible,
                 download_count, contributor_name, submission_id, created_at
@@ -267,7 +384,7 @@ class PapersRepository:
             self._db.rollback()
             fallback_stmt = text(
                 """
-                SELECT 
+                SELECT
                     id, subject_id, exam_type, year, month, district, title, paper_type,
                     public_url, youtube_url, original_filename, is_visible,
                     download_count, created_at
@@ -287,7 +404,7 @@ class PapersRepository:
         logger.debug("PapersRepository.list_popular(limit=%s)", limit)
         stmt = text(
             """
-            SELECT 
+            SELECT
                 id, subject_id, exam_type, year, month, district, title, paper_type,
                 public_url, youtube_url, original_filename, is_visible,
                 download_count, contributor_name, submission_id, created_at
@@ -307,7 +424,7 @@ class PapersRepository:
             self._db.rollback()
             fallback_stmt = text(
                 """
-                SELECT 
+                SELECT
                     id, subject_id, exam_type, year, month, district, title, paper_type,
                     public_url, youtube_url, original_filename, is_visible,
                     download_count, created_at
@@ -337,15 +454,22 @@ class PapersRepository:
         params: dict[str, Any] = {"subject_id": subject_id}
 
         if exam_type:
-            conditions.append("exam_type = :exam_type")
-            params["exam_type"] = exam_type
+            types_list = [t.strip() for t in exam_type.split(",") if t.strip()]
+            if len(types_list) > 1:
+                type_placeholders = [f":et_{i}" for i in range(len(types_list))]
+                conditions.append(f"exam_type IN ({', '.join(type_placeholders)})")
+                for i, t in enumerate(types_list):
+                    params[f"et_{i}"] = t
+            elif len(types_list) == 1:
+                conditions.append("exam_type = :exam_type")
+                params["exam_type"] = types_list[0]
         if paper_type:
             conditions.append("paper_type = :paper_type")
             params["paper_type"] = paper_type
 
         where_clause = " AND ".join(conditions)
         sql = f"""
-            SELECT 
+            SELECT
                 id, subject_id, exam_type, year, month, district, title, paper_type,
                 public_url, youtube_url, original_filename, is_visible,
                 download_count, contributor_name, submission_id, created_at
@@ -363,7 +487,7 @@ class PapersRepository:
                 raise
             self._db.rollback()
             fallback_sql = f"""
-                SELECT 
+                SELECT
                     id, subject_id, exam_type, year, month, district, title, paper_type,
                     public_url, youtube_url, original_filename, is_visible,
                     download_count, created_at
@@ -409,8 +533,15 @@ class PapersRepository:
             conditions.append("c.id = :class_id")
             params["class_id"] = class_id
         if exam_type:
-            conditions.append("p.exam_type = :exam_type")
-            params["exam_type"] = exam_type
+            types_list = [t.strip() for t in exam_type.split(",") if t.strip()]
+            if len(types_list) > 1:
+                type_placeholders = [f":et_{i}" for i in range(len(types_list))]
+                conditions.append(f"p.exam_type IN ({', '.join(type_placeholders)})")
+                for i, t in enumerate(types_list):
+                    params[f"et_{i}"] = t
+            elif len(types_list) == 1:
+                conditions.append("p.exam_type = :exam_type")
+                params["exam_type"] = types_list[0]
         if paper_type:
             conditions.append("p.paper_type = :paper_type")
             params["paper_type"] = paper_type
@@ -423,10 +554,10 @@ class PapersRepository:
 
         where_clause = " AND ".join(conditions)
         sql = f"""
-            SELECT 
+            SELECT
                 p.id, p.subject_id, p.exam_type, p.year, p.month, p.district, p.title, p.paper_type,
-                p.public_url, p.youtube_url, p.original_filename, p.is_visible, p.download_count, 
-                COALESCE(NULLIF(TRIM(u.display_name), ''), p.contributor_name) AS contributor_name, 
+                p.public_url, p.youtube_url, p.original_filename, p.is_visible, p.download_count,
+                COALESCE(NULLIF(TRIM(u.display_name), ''), p.contributor_name) AS contributor_name,
                 p.submission_id, p.created_at,
                 s.name AS subject_name,
                 c.id AS class_id, c.name AS class_name
@@ -500,39 +631,43 @@ class PapersRepository:
 
     def toggle_like(self, paper_id: int, firebase_uid: str) -> dict[str, Any]:
         """Toggle like for user on paper in an atomic transaction."""
-        chk_stmt = text(
-            "SELECT id FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"
-        )
-        existing = self._db.execute(chk_stmt, {"paper_id": paper_id, "firebase_uid": firebase_uid}).fetchone()
+        try:
+            chk_stmt = text(
+                "SELECT id FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"
+            )
+            existing = self._db.execute(chk_stmt, {"paper_id": paper_id, "firebase_uid": firebase_uid}).fetchone()
 
-        if existing:
-            self._db.execute(
-                text("DELETE FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"),
-                {"paper_id": paper_id, "firebase_uid": firebase_uid},
-            )
-            has_liked = False
-        else:
-            self._db.execute(
-                text("INSERT INTO paper_likes (paper_id, firebase_uid, created_at) VALUES (:paper_id, :firebase_uid, NOW())"),
-                {"paper_id": paper_id, "firebase_uid": firebase_uid},
-            )
-            has_liked = True
-            # Also log like event to analytics_events
-            try:
-                from app.repositories.analytics_repository import AnalyticsRepository
-                AnalyticsRepository(self._db).insert_event(
-                    event_type="like",
-                    firebase_uid=firebase_uid,
-                    paper_id=paper_id,
+            if existing:
+                self._db.execute(
+                    text("DELETE FROM paper_likes WHERE paper_id = :paper_id AND firebase_uid = :firebase_uid"),
+                    {"paper_id": paper_id, "firebase_uid": firebase_uid},
                 )
-            except Exception as exc:
-                logger.debug("Analytics event recording skipped in toggle_like: %s", exc)
+                has_liked = False
+            else:
+                self._db.execute(
+                    text("INSERT INTO paper_likes (paper_id, firebase_uid, created_at) VALUES (:paper_id, :firebase_uid, NOW())"),
+                    {"paper_id": paper_id, "firebase_uid": firebase_uid},
+                )
+                has_liked = True
+                # Also log like event to analytics_events
+                try:
+                    from app.repositories.analytics_repository import AnalyticsRepository
+                    AnalyticsRepository(self._db).insert_event(
+                        event_type="like",
+                        firebase_uid=firebase_uid,
+                        paper_id=paper_id,
+                    )
+                except Exception as exc:
+                    logger.debug("Analytics event recording skipped in toggle_like: %s", exc)
 
-        cnt_stmt = text("SELECT COUNT(*)::int FROM paper_likes WHERE paper_id = :paper_id")
-        likes_count = self._db.execute(cnt_stmt, {"paper_id": paper_id}).scalar() or 0
-        self._db.commit()
+            cnt_stmt = text("SELECT COUNT(*)::int FROM paper_likes WHERE paper_id = :paper_id")
+            likes_count = self._db.execute(cnt_stmt, {"paper_id": paper_id}).scalar() or 0
+            self._db.commit()
 
-        return {"paper_id": paper_id, "likes_count": likes_count, "has_liked": has_liked}
+            return {"paper_id": paper_id, "likes_count": likes_count, "has_liked": has_liked}
+        except Exception:
+            self._db.rollback()
+            raise
 
     def get_likes_info(self, paper_id: int, firebase_uid: Optional[str] = None) -> dict[str, Any]:
         """Get total like count and whether current user has liked."""
@@ -554,9 +689,9 @@ class PapersRepository:
         """Fetch all non-deleted comments for a paper with dynamically resolved author info."""
         stmt = text(
             """
-            SELECT pc.id, pc.paper_id, pc.firebase_uid, 
-                   COALESCE(NULLIF(TRIM(u.display_name), ''), pc.author_name) AS author_name, 
-                   COALESCE(NULLIF(TRIM(u.photo_url), ''), pc.author_avatar) AS author_avatar, 
+            SELECT pc.id, pc.paper_id, pc.firebase_uid,
+                   COALESCE(NULLIF(TRIM(u.display_name), ''), pc.author_name) AS author_name,
+                   COALESCE(NULLIF(TRIM(u.photo_url), ''), pc.author_avatar) AS author_avatar,
                    pc.parent_id, pc.content, pc.is_deleted, pc.created_at, pc.updated_at
             FROM paper_comments pc
             LEFT JOIN users u ON pc.firebase_uid = u.firebase_uid
@@ -623,14 +758,13 @@ class PapersRepository:
             d["parent_id"] = str(d["parent_id"])
         return d
 
-    def delete_paper_comment(self, comment_id: str, hard_delete: bool = False) -> bool:
+    def delete_paper_comment(self, comment_id: str, hard_delete: bool = False, auto_commit: bool = True) -> bool:
         """Delete or soft-delete a paper comment."""
         if hard_delete:
             stmt = text("DELETE FROM paper_comments WHERE id::text = :comment_id")
         else:
             stmt = text("UPDATE paper_comments SET is_deleted = true, updated_at = NOW() WHERE id::text = :comment_id")
         result = self._db.execute(stmt, {"comment_id": comment_id})
-        self._db.commit()
+        if auto_commit:
+            self._db.commit()
         return result.rowcount > 0
-
-

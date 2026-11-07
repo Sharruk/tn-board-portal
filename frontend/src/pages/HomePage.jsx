@@ -42,6 +42,14 @@ export default function HomePage() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    if (!loading && window.location.hash === '#classes') {
+      const el = document.getElementById('classes')
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' })
+      }
+    }
+  }, [loading])
 
   return (
     <div>
@@ -63,8 +71,26 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Choose Your Class ── */}
+      <section id="classes" className="max-w-6xl mx-auto px-4 py-14 scroll-mt-16">
+        <div className="flex items-end justify-between mb-8">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Choose Your Class</h2>
+            <p className="text-gray-500 text-sm mt-1">Select your class to browse subjects and exam papers</p>
+          </div>
+        </div>
+
+        {loading ? (
+          <LoadingSpinner text="Loading classes…" />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {classes.map(cls => <ClassCard key={cls.id} cls={cls} />)}
+          </div>
+        )}
+      </section>
+
       {/* Submit Material CTA */}
-      <section className="bg-blue-50 border-b border-blue-100">
+      <section className="bg-blue-50 border-y border-blue-100">
         <div className="max-w-4xl mx-auto px-4 py-8 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-left">
             <h3 className="text-xl font-bold text-gray-900">Have a question paper or answer key?</h3>
@@ -205,23 +231,6 @@ export default function HomePage() {
           </div>
         </section>
       )}
-
-      <section className="max-w-6xl mx-auto px-4 py-14">
-        <div className="flex items-end justify-between mb-8">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Choose Your Class</h2>
-            <p className="text-gray-500 text-sm mt-1">Select your class to browse subjects and exam papers</p>
-          </div>
-        </div>
-
-        {loading ? (
-          <LoadingSpinner text="Loading classes…" />
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {classes.map(cls => <ClassCard key={cls.id} cls={cls} />)}
-          </div>
-        )}
-      </section>
 
 
       {/* Recently Added Papers */}

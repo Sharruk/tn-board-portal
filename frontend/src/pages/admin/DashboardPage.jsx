@@ -5,6 +5,7 @@ import { useAdminAuth } from '../../contexts/AdminAuthContext'
 import UserAvatar from '../../components/common/UserAvatar'
 import AdminUsersTab from '../../components/admin/AdminUsersTab'
 import AdminInboxTab from '../../components/admin/AdminInboxTab'
+import AdminTeamChatTab from '../../components/admin/AdminTeamChatTab'
 import AdminRolesTab from '../../components/admin/AdminRolesTab'
 import { getAdminConversationStats } from '../../services/adminConversations'
 import { getAdminPapers, getAdminStats, getSearchAnalytics, getRecentUploads, getAdminMe, getAuditLogs } from '../../services/admin'
@@ -53,10 +54,20 @@ const ACTION_META = {
   bulk_upload:    { label: 'Bulk upload',        icon: '📦', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   edit:           { label: 'Edited paper',       icon: '✏️',  cls: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
   delete:         { label: 'Deleted paper',      icon: '🗑️',  cls: 'bg-red-50 text-red-600 border-red-200' },
+  'admin.promote_user':       { label: 'Promoted User',     icon: '👑', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+  'admin.demote_user':        { label: 'Demoted User',      icon: '👤', cls: 'bg-gray-50 text-gray-700 border-gray-200' },
+  'admin.claim_appointment':  { label: 'Claimed Role',      icon: '🤝', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  'admin.approve_submission': { label: 'Approved Sub',      icon: '✅', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  'admin.reject_submission':  { label: 'Rejected Sub',      icon: '❌', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  'admin.paper_created':      { label: 'Created Paper',     icon: '📄', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  'admin.paper_updated':      { label: 'Updated Paper',     icon: '📝', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  'admin.paper_deleted':      { label: 'Deleted Paper',     icon: '🗑️', cls: 'bg-red-50 text-red-600 border-red-200' },
+  'admin.moderate_post':      { label: 'Moderated Post',    icon: '🛡️', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
 }
 
 function ActionBadge({ action }) {
-  const m = ACTION_META[action] || { label: action, icon: '⚙️', cls: 'bg-gray-50 text-gray-600 border-gray-200' }
+  const formattedAction = action ? action.replace(/^admin\./, '').replace(/_/g, ' ') : 'action'
+  const m = ACTION_META[action] || { label: formattedAction, icon: '⚙️', cls: 'bg-gray-50 text-gray-600 border-gray-200' }
   return (
     <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${m.cls}`}>
       <span>{m.icon}</span>{m.label}
@@ -79,7 +90,7 @@ function StatCard({ label, value, color, icon }) {
 export default function DashboardPage({ defaultTab = 'overview' }) {
   const { user } = useAuth()
   const { isSuperAdmin } = useAdminAuth()
-  const [activeTab, setActiveTab] = useState(defaultTab) // 'overview' | 'users' | 'inbox' | 'analytics' | 'moderation' | 'roles'
+  const [activeTab, setActiveTab] = useState(defaultTab) // 'overview' | 'users' | 'inbox' | 'team-chat' | 'analytics' | 'moderation' | 'roles'
   const [inboxUnread, setInboxUnread] = useState(0)
 
   useEffect(() => {
@@ -99,6 +110,8 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
   const [recentUploads, setRecentUploads] = useState([])
   const [adminMe, setAdminMe]           = useState(null)
   const [auditLogs, setAuditLogs]       = useState([])
+  const [auditLogsLoading, setAuditLogsLoading] = useState(true)
+  const [auditLogsError, setAuditLogsError] = useState(null)
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
 
@@ -121,14 +134,21 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
       getAdminMe(),
       getAuditLogs(30),
     ]).then(([papersR, statsR, analyticsR, recentR, meR, logsR]) => {
-      if (papersR.status === 'fulfilled')   setPapers(papersR.value.data)
-      if (statsR.status === 'fulfilled')    setStats(statsR.value.data)
-      if (analyticsR.status === 'fulfilled') setAnalytics(analyticsR.value.data)
-      if (recentR.status === 'fulfilled')  setRecentUploads(recentR.value.data)
-      if (meR.status === 'fulfilled')      setAdminMe(meR.value.data)
-      if (logsR.status === 'fulfilled')    setAuditLogs(logsR.value.data)
-      if (papersR.status === 'rejected')   setError(papersR.reason?.message || 'Failed to load')
-    }).finally(() => setLoading(false))
+      if (papersR.status === 'fulfilled')    setPapers(papersR.value.data)
+      if (statsR.status === 'fulfilled')     setStats(statsR.value.data)
+      if (analyticsR.status === 'fulfilled')  setAnalytics(analyticsR.value.data)
+      if (recentR.status === 'fulfilled')   setRecentUploads(recentR.value.data)
+      if (meR.status === 'fulfilled')       setAdminMe(meR.value.data)
+      if (logsR.status === 'fulfilled') {
+        setAuditLogs(logsR.value?.data || [])
+      } else {
+        setAuditLogsError(logsR.reason?.message || 'Failed to load audit logs')
+      }
+      if (papersR.status === 'rejected')    setError(papersR.reason?.message || 'Failed to load')
+    }).finally(() => {
+      setLoading(false)
+      setAuditLogsLoading(false)
+    })
   }, [])
 
   // Load analytics when analytics tab is clicked or period changes
@@ -259,6 +279,16 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
               {inboxUnread}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab('team-chat')}
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 ${
+            activeTab === 'team-chat'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <span>📢</span> Admin Team Chat
         </button>
         <button
           onClick={() => setActiveTab('analytics')}
@@ -415,7 +445,16 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
                 <p className="text-xs text-gray-400 mt-0.5">Last 30 recorded security actions</p>
               </div>
             </div>
-            {auditLogs.length === 0 ? (
+            {auditLogsLoading ? (
+              <div className="text-center py-12 text-gray-400 text-sm flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                Loading audit logs...
+              </div>
+            ) : auditLogsError ? (
+              <div className="text-center py-8 text-amber-600 text-sm px-4">
+                ⚠️ Unable to load audit logs: {auditLogsError}
+              </div>
+            ) : auditLogs.length === 0 ? (
               <div className="text-center py-12 text-gray-400 text-sm">No actions logged yet.</div>
             ) : (
               <div className="overflow-x-auto">
@@ -423,6 +462,7 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase">
                       <th className="px-5 py-3 text-left">Action</th>
+                      <th className="px-4 py-3 text-left">Admin</th>
                       <th className="px-4 py-3 text-left">Details</th>
                       <th className="px-4 py-3 text-left">IP</th>
                       <th className="px-4 py-3 text-left">When</th>
@@ -432,8 +472,11 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
                     {auditLogs.map(log => (
                       <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-5 py-3 whitespace-nowrap"><ActionBadge action={log.action} /></td>
+                        <td className="px-4 py-3 text-gray-700 text-xs font-medium whitespace-nowrap">
+                          {log.actor_name || log.actor_email || '—'}
+                        </td>
                         <td className="px-4 py-3 text-gray-600 max-w-xs truncate text-xs font-medium">
-                          {log.target_details?.title || log.target_details?.identifier || (log.target_paper_id ? `Paper ID ${log.target_paper_id}` : '—')}
+                          {log.target_title || log.reason || log.target_id || (log.target_details?.title || log.target_details?.identifier || (log.target_paper_id ? `Paper ID ${log.target_paper_id}` : '—'))}
                         </td>
                         <td className="px-4 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">{maskIp(log.ip_address)}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{timeAgo(log.created_at)}</td>
@@ -452,6 +495,9 @@ export default function DashboardPage({ defaultTab = 'overview' }) {
 
       {/* ── TAB: MESSAGES & INBOX ── */}
       {activeTab === 'inbox' && <AdminInboxTab />}
+
+      {/* ── TAB: ADMIN TEAM CHAT ── */}
+      {activeTab === 'team-chat' && <AdminTeamChatTab />}
 
       {/* ── TAB 2: ANALYTICS & TELEMETRY ── */}
       {activeTab === 'analytics' && (

@@ -6,7 +6,7 @@ import logging
 from typing import Any, Optional
 from sqlalchemy.orm import Session
 
-from app.repositories.conversations_repository import ConversationsRepository
+from app.repositories.conversations_repository import ConversationsRepository, format_admin_display_name
 from app.repositories.submissions_repository import SubmissionsRepository
 from app.repositories.admin_users_repository import AdminUsersRepository
 from app.services.leaderboard_service import LeaderboardService
@@ -235,7 +235,7 @@ class ConversationsService:
     def admin_reply(
         self, admin_user: dict[str, Any], conversation_id: str, req: MessageCreateRequest
     ) -> MessageResponse:
-        """Post a reply as the TN Board Admin and set status to awaiting_user."""
+        """Post a reply with the authenticated Admin's identity and set status to awaiting_user."""
         conv = self._repo.get_conversation_by_id(conversation_id)
         if not conv:
             raise NotFoundError(resource="Conversation", identifier=conversation_id)
@@ -245,7 +245,11 @@ class ConversationsService:
             raise ValidationError("Message cannot be empty.")
 
         admin_uid = admin_user.get("firebase_uid") or admin_user.get("id") or "admin"
-        admin_name = "TN Board Admin"
+        admin_name = format_admin_display_name(
+            role=admin_user.get("role"),
+            display_name=admin_user.get("display_name"),
+            email=admin_user.get("email"),
+        )
 
         msg_dict = self._repo.add_message(
             conversation_id=conversation_id,

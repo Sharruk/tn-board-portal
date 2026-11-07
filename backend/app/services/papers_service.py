@@ -15,17 +15,22 @@ Business rules implemented:
 """
 
 import logging
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.repositories.admin_activity_repository import AdminActivityRepository
+from app.repositories.outbox_repository import OutboxRepository
 from app.repositories.papers_repository import PapersRepository
 from app.schemas.paper import (
+    PaperCreate,
     PaperDeleteResponse,
     PaperListResponse,
     PaperResponse,
     PaperSearchResult,
     PaperSummary,
+    PaperUpdate,
     SearchResponse,
 )
 from app.utils.exceptions import NotFoundError
@@ -102,7 +107,10 @@ class PapersService:
     """Business logic for the papers domain."""
 
     def __init__(self, db: Session, storage: Any = None) -> None:
+        self._db = db
         self._repo = PapersRepository(db, storage=storage)
+        self._activity_repo = AdminActivityRepository(db)
+        self._outbox_repo = OutboxRepository(db)
 
     # ------------------------------------------------------------------ #
     # GET /api/v1/papers/{id}
@@ -248,31 +256,220 @@ class PapersService:
             raise NotFoundError(resource="Paper", identifier=paper_id) from exc
 
     # ------------------------------------------------------------------ #
+    # POST /api/v1/papers (Admin)
+    # ------------------------------------------------------------------ #
+
+    def create_paper(
+        self,
+        req: PaperCreate,
+        current_user: dict,
+        ip_address: Optional[str] = None,
+    ) -> PaperResponse:
+        """Create a paper and log PAPER_CREATED admin activity."""
+        actor_id = current_user.get("user_id") or current_user.get("firebase_uid") or current_user.get("id") or "system"
+        actor_email = current_user.get("email") or "system@hungrylearner.internal"
+        actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+        actor_role = current_user.get("role") or "ADMIN"
+
+        try:
+            created = self._repo.create_paper(
+                subject_id=req.subject_id,
+                exam_type=req.exam_type,
+                year=req.year,
+                month=req.month,
+                district=req.district,
+                title=req.title,
+                description=req.description,
+                paper_type=req.paper_type,
+                file_path=req.file_path,
+                public_url=req.public_url,
+                youtube_url=req.youtube_url,
+                original_filename=req.original_filename,
+                is_visible=req.is_visible,
+                status=req.status,
+                contributor_name=req.contributor_name,
+                auto_commit=False,
+            )
+            paper_id = created["id"]
+
+            paper = self._repo.get_by_id(paper_id, published_only=False)
+            if not paper:
+                paper = created
+
+            self._activity_repo.log_activity(
+                actor_uid=actor_id,
+                actor_email=actor_email,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                action="PAPER_CREATED",
+                target_type="paper",
+                target_id=str(paper_id),
+                target_title=paper.get("title") or f"Paper {paper_id}",
+                reason=None,
+                metadata={
+                    "paper_id": paper_id,
+                    "title": paper.get("title"),
+                    "subject_id": req.subject_id,
+                    "exam_type": req.exam_type,
+                    "year": req.year,
+                    "file_path": req.file_path,
+                },
+                ip_address=ip_address,
+            )
+            self._db.commit()
+            return PaperResponse(**paper)
+        except Exception:
+            self._db.rollback()
+            raise
+
+    # ------------------------------------------------------------------ #
+    # PATCH /api/v1/papers/{id} (Admin)
+    # ------------------------------------------------------------------ #
+
+    def update_paper(
+        self,
+        paper_id: int,
+        req: PaperUpdate,
+        current_user: dict,
+        ip_address: Optional[str] = None,
+    ) -> PaperResponse:
+        """Update a paper, enqueue storage outbox if file replaced, and log PAPER_UPDATED admin activity."""
+        actor_id = current_user.get("user_id") or current_user.get("firebase_uid") or current_user.get("id") or "system"
+        actor_email = current_user.get("email") or "system@hungrylearner.internal"
+        actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+        actor_role = current_user.get("role") or "ADMIN"
+
+        existing = self._repo.get_by_id(paper_id, published_only=False)
+        if not existing:
+            raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        updates = req.model_dump(exclude_unset=True)
+
+        try:
+            # If file_path is being replaced, enqueue deletion of old file_path to outbox
+            new_file_path = updates.get("file_path")
+            old_file_path = existing.get("file_path")
+            if new_file_path and old_file_path and new_file_path != old_file_path:
+                self._outbox_repo.enqueue(
+                    bucket_name="papers",
+                    object_path=old_file_path,
+                    operation="DELETE",
+                    idempotency_key=f"replace:papers:{paper_id}:{old_file_path}",
+                )
+
+            self._repo.update_paper(paper_id=paper_id, updates=updates, auto_commit=False)
+            updated = self._repo.get_by_id(paper_id, published_only=False)
+            if not updated:
+                raise NotFoundError(resource="Paper", identifier=paper_id)
+
+            self._activity_repo.log_activity(
+                actor_uid=actor_id,
+                actor_email=actor_email,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                action="PAPER_UPDATED",
+                target_type="paper",
+                target_id=str(paper_id),
+                target_title=updated.get("title") or f"Paper {paper_id}",
+                reason=None,
+                metadata={
+                    "paper_id": paper_id,
+                    "updated_fields": list(updates.keys()),
+                    "title": updated.get("title"),
+                },
+                ip_address=ip_address,
+            )
+            self._db.commit()
+            return PaperResponse(**updated)
+        except Exception:
+            self._db.rollback()
+            raise
+
+    # ------------------------------------------------------------------ #
     # DELETE /api/v1/papers/{id} (Admin)
     # ------------------------------------------------------------------ #
 
-    def delete_paper(self, paper_id: int, current_user: dict | None = None) -> PaperDeleteResponse:
+    def delete_paper(
+        self,
+        paper_id: int,
+        current_user: dict | None = None,
+        ip_address: Optional[str] = None,
+    ) -> PaperDeleteResponse:
         """
         Permanently delete a paper and its associated storage file in the 'papers' bucket.
 
         Args:
             paper_id: Primary key of the paper.
             current_user: Admin user dict from require_admin dependency.
+            ip_address: Client IP address.
 
         Raises:
             NotFoundError if the paper does not exist.
         """
         logger.info("PapersService.delete_paper(paper_id=%s)", paper_id)
-        admin_id = current_user.get("firebase_uid") if current_user else None
+        admin_id = ((current_user.get("user_id") or current_user.get("firebase_uid")) if current_user else None)
         admin_email = current_user.get("email") if current_user else None
 
-        db_deleted, storage_deleted = self._repo.delete_paper(
-            paper_id=paper_id,
-            admin_id=admin_id,
-            admin_email=admin_email,
-        )
-        if not db_deleted:
+        # Fetch paper details first for audit logging
+        paper = self._repo.get_by_id(paper_id, published_only=False)
+        if not paper:
             raise NotFoundError(resource="Paper", identifier=paper_id)
+
+        try:
+            # Enqueue storage deletion into transactional outbox
+            file_path = paper.get("file_path")
+            if not file_path and paper.get("public_url"):
+                pub_url = paper["public_url"]
+                if "/papers/" in pub_url:
+                    file_path = pub_url.split("/papers/")[-1].split("?")[0]
+            if file_path:
+                self._outbox_repo.enqueue(
+                    bucket_name="papers",
+                    object_path=file_path,
+                    operation="DELETE",
+                    idempotency_key=f"delete:papers:{paper_id}:{file_path}",
+                )
+
+            db_deleted, storage_deleted = self._repo.delete_paper(
+                paper_id=paper_id,
+                admin_id=admin_id,
+                admin_email=admin_email,
+                auto_commit=False,
+            )
+            if not db_deleted:
+                raise NotFoundError(resource="Paper", identifier=paper_id)
+
+            if current_user:
+                actor_id = current_user.get("user_id") or current_user.get("firebase_uid") or current_user.get("id") or "system"
+                actor_email = current_user.get("email") or "system@hungrylearner.internal"
+                actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+                actor_role = current_user.get("role") or "ADMIN"
+                self._activity_repo.log_activity(
+                    actor_uid=actor_id,
+                    actor_email=actor_email,
+                    actor_name=actor_name,
+                    actor_role=actor_role,
+                    action="PAPER_DELETED",
+                    target_type="paper",
+                    target_id=str(paper_id),
+                    target_title=paper.get("title") or f"Paper {paper_id}",
+                    reason=None,
+                    metadata={
+                        "paper_id": paper_id,
+                        "title": paper.get("title"),
+                        "exam_type": paper.get("exam_type"),
+                        "year": paper.get("year"),
+                        "file_path": paper.get("file_path"),
+                        "original_filename": paper.get("original_filename"),
+                        "storage_deleted": storage_deleted,
+                    },
+                    ip_address=ip_address,
+                )
+
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
 
         msg = (
             "Paper and its uploaded file deleted successfully."
@@ -357,10 +554,54 @@ class PapersService:
             author_avatar=author_avatar,
         )
 
-    def delete_comment(self, comment_id: str, current_user: dict) -> dict:
+    def delete_comment(
+        self,
+        comment_id: str,
+        current_user: dict,
+        ip_address: Optional[str] = None,
+    ) -> dict:
         """Delete a comment (owner or admin)."""
-        is_admin = current_user.get("role") == "ADMIN"
-        self._repo.delete_paper_comment(comment_id, hard_delete=is_admin)
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
+
+        chk_stmt = text("SELECT id, paper_id, firebase_uid, content FROM paper_comments WHERE id::text = :cid")
+        row = self._db.execute(chk_stmt, {"cid": str(comment_id)}).fetchone()
+        if not row:
+            raise NotFoundError(resource="Comment", identifier=comment_id)
+
+        comment_dict = dict(row._mapping)
+        user_uid = current_user.get("firebase_uid") or current_user.get("user_id")
+        if not is_admin and comment_dict.get("firebase_uid") != user_uid:
+            from app.utils.exceptions import ForbiddenError
+            raise ForbiddenError(message="You do not have permission to delete this comment.")
+
+        try:
+            self._repo.delete_paper_comment(comment_id, hard_delete=is_admin, auto_commit=False)
+            if is_admin:
+                actor_id = current_user.get("user_id") or current_user.get("firebase_uid") or current_user.get("id") or "system"
+                actor_email = current_user.get("email") or "system@hungrylearner.internal"
+                actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+                actor_role = current_user.get("role") or "ADMIN"
+                self._activity_repo.log_activity(
+                    actor_uid=actor_id,
+                    actor_email=actor_email,
+                    actor_name=actor_name,
+                    actor_role=actor_role,
+                    action="PAPER_COMMENT_DELETED",
+                    target_type="paper_comment",
+                    target_id=str(comment_id),
+                    target_title=f"Comment {comment_id}",
+                    reason=None,
+                    metadata={
+                        "comment_id": str(comment_id),
+                        "paper_id": comment_dict.get("paper_id"),
+                        "comment_author_uid": comment_dict.get("firebase_uid"),
+                        "hard_delete": is_admin,
+                    },
+                    ip_address=ip_address,
+                )
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
+
         return {"success": True, "message": "Comment deleted"}
-
-

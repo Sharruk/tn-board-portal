@@ -17,11 +17,12 @@ Rules enforced:
 
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from app.repositories.admin_activity_repository import AdminActivityRepository
 from app.repositories.submissions_repository import (
     ALLOWED_EXTENSIONS,
     MAX_FILE_SIZE_BYTES,
@@ -79,6 +80,7 @@ class SubmissionsService:
     def __init__(self, db: Session, storage: Any = None) -> None:
         self._db = db
         self._repo = SubmissionsRepository(db, storage=storage)
+        self._activity_repo = AdminActivityRepository(db)
 
     # ------------------------------------------------------------------ #
     # PUBLIC: Create a new submission
@@ -273,6 +275,8 @@ class SubmissionsService:
         submission_id: str,
         req: ApproveRequest,
         prepared_file: UploadFile | tuple[str, bytes, str] | None = None,
+        current_user: Optional[dict[str, Any]] = None,
+        ip_address: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Approve a pending submission:
@@ -423,6 +427,34 @@ class SubmissionsService:
             thank_you_message=thank_you,
         )
 
+        # Record centralized audit log event
+        if current_user:
+            actor_uid = current_user.get("firebase_uid") or current_user.get("id") or "unknown"
+            actor_email = current_user.get("email") or "admin@example.com"
+            actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+            actor_role = current_user.get("role") or "ADMIN"
+            self._activity_repo.log_activity(
+                actor_uid=actor_uid,
+                actor_email=actor_email,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                action="SUBMISSION_APPROVED",
+                target_type="submission",
+                target_id=submission_id,
+                target_title=f"Submission {submission_id} approved",
+                reason=None,
+                metadata={
+                    "paper_ids": paper_ids,
+                    "subject_id": req.subject_id,
+                    "year": req.year,
+                    "exam_type": req.exam_type,
+                    "paper_type": req.paper_type,
+                    "has_prepared_file": prepared_file is not None,
+                },
+                ip_address=ip_address,
+            )
+            self._db.commit()
+
         logger.info(
             "Submission %s approved — created paper ids: %s",
             submission_id,
@@ -445,6 +477,8 @@ class SubmissionsService:
         self,
         submission_id: str,
         req: RejectRequest,
+        current_user: Optional[dict[str, Any]] = None,
+        ip_address: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Reject a pending submission:
@@ -474,6 +508,28 @@ class SubmissionsService:
             rejection_reason=req.rejection_reason,
         )
 
+        if current_user:
+            actor_uid = current_user.get("firebase_uid") or current_user.get("id") or "unknown"
+            actor_email = current_user.get("email") or "admin@example.com"
+            actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+            actor_role = current_user.get("role") or "ADMIN"
+            self._activity_repo.log_activity(
+                actor_uid=actor_uid,
+                actor_email=actor_email,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                action="SUBMISSION_REJECTED",
+                target_type="submission",
+                target_id=submission_id,
+                target_title=f"Submission {submission_id} rejected",
+                reason=req.rejection_reason,
+                metadata={
+                    "rejection_reason": req.rejection_reason,
+                },
+                ip_address=ip_address,
+            )
+            self._db.commit()
+
         logger.info("Submission %s rejected", submission_id)
         return {
             "submission_id": submission_id,
@@ -489,6 +545,8 @@ class SubmissionsService:
     def restore_submission(
         self,
         submission_id: str,
+        current_user: Optional[dict[str, Any]] = None,
+        ip_address: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Restore a rejected submission back to pending so it can be
@@ -514,6 +572,26 @@ class SubmissionsService:
             )
 
         self._repo.restore_to_pending(submission_id)
+
+        if current_user:
+            actor_uid = current_user.get("firebase_uid") or current_user.get("id") or "unknown"
+            actor_email = current_user.get("email") or "admin@example.com"
+            actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+            actor_role = current_user.get("role") or "ADMIN"
+            self._activity_repo.log_activity(
+                actor_uid=actor_uid,
+                actor_email=actor_email,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                action="SUBMISSION_RESTORED",
+                target_type="submission",
+                target_id=submission_id,
+                target_title=f"Submission {submission_id} restored to pending",
+                reason="Restored to pending for re-review",
+                metadata={},
+                ip_address=ip_address,
+            )
+            self._db.commit()
 
         logger.info("Submission %s restored to pending", submission_id)
         return {
@@ -641,14 +719,17 @@ class SubmissionsService:
     # ------------------------------------------------------------------ #
 
     def delete_submission(
-        self, submission_id: str, current_user: dict | None = None
+        self,
+        submission_id: str,
+        current_user: dict | None = None,
+        ip_address: Optional[str] = None,
     ) -> SubmissionDeleteResponse:
         """
         Permanently delete a submission (pending, rejected, or approved):
           1. Load submission — raise 404 if not found
           2. Delete attached private files from Supabase Storage, delete any linked published
              papers from public storage and PostgreSQL, and delete submission records.
-          3. Record deletion in audit log.
+          3. Record deletion in centralized audit log.
 
         Returns a SubmissionDeleteResponse.
         """
@@ -667,6 +748,28 @@ class SubmissionsService:
             submission_id, admin_id=admin_id, admin_email=admin_email
         )
 
+        if current_user:
+            actor_uid = current_user.get("firebase_uid") or current_user.get("id") or "unknown"
+            actor_email = current_user.get("email") or "admin@example.com"
+            actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+            actor_role = current_user.get("role") or "ADMIN"
+            self._activity_repo.log_activity(
+                actor_uid=actor_uid,
+                actor_email=actor_email,
+                actor_name=actor_name,
+                actor_role=actor_role,
+                action="SUBMISSION_DELETED",
+                target_type="submission",
+                target_id=submission_id,
+                target_title=f"Submission {submission_id} deleted",
+                reason="Admin permanently deleted submission",
+                metadata={
+                    "deleted_paper_ids": deleted_paper_ids,
+                },
+                ip_address=ip_address,
+            )
+            self._db.commit()
+
         logger.info(
             "Submission %s deleted successfully (linked papers: %s)",
             submission_id,
@@ -678,5 +781,3 @@ class SubmissionsService:
             deleted_paper_ids=deleted_paper_ids,
             message="Submission and associated published papers deleted successfully.",
         )
-
-

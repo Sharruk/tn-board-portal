@@ -186,6 +186,9 @@ def _make_table_db(table_data: dict[str, list]) -> MagicMock:
                 return MockResult(matches)
             return MockResult(rows)
 
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
+
         return MockResult([])
 
     mock_db.execute.side_effect = _execute
@@ -543,14 +546,14 @@ class TestApproveSubmission:
         papers_bucket_mock = MagicMock()
         papers_bucket_mock.upload.return_value = MagicMock()
         papers_bucket_mock.get_public_url.return_value = MOCK_PAPER["public_url"]
-        
+
         def from_side_effect(bucket_name):
             if bucket_name == "submissions":
                 return submissions_bucket_mock
             elif bucket_name == "papers":
                 return papers_bucket_mock
             return MagicMock()
-            
+
         mock_db.storage.from_.side_effect = from_side_effect
 
         app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
@@ -2042,7 +2045,173 @@ class TestSubmissionUXEnhancements:
         assert data[0]["thank_you_message"] == "🎉 Your contribution is now public! Thank you ❤️"
 
 
+class TestStage3B3SubmissionAuditIntegration:
+    """Stage 3B.3: Tests for centralized admin activity logging in submissions."""
 
+    def test_approve_submission_audit_logged(self, monkeypatch):
+        logged_calls = []
 
+        def mock_log_activity(self, **kwargs):
+            logged_calls.append(kwargs)
+            return {"id": "log-1", **kwargs}
 
+        monkeypatch.setattr(
+            "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+            mock_log_activity,
+        )
 
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [MOCK_PAPER],
+        })
+        mock_db.storage = MagicMock()
+        mock_db.storage.from_.return_value.download.return_value = b"file content"
+        mock_db.storage.from_.return_value.upload.return_value = MagicMock()
+        mock_db.storage.from_.return_value.get_public_url.return_value = MOCK_PAPER["public_url"]
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid-99",
+            "email": "admin99@example.com",
+            "display_name": "Admin Tester",
+        }
+        client = TestClient(app)
+        res = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json={
+                "class_id": 10,
+                "subject_id": 8,
+                "exam_type": "Annual Exam",
+                "year": 2024,
+                "paper_type": "question",
+            },
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+        assert res.status_code == 200
+        assert len(logged_calls) == 1
+        call = logged_calls[0]
+        assert call["action"] == "SUBMISSION_APPROVED"
+        assert call["actor_uid"] == "admin-uid-99"
+        assert call["actor_email"] == "admin99@example.com"
+        assert call["target_type"] == "submission"
+        assert call["target_id"] == _SUB_ID
+        assert "paper_ids" in call["metadata"]
+        assert mock_db.commit.called
+
+    def test_reject_submission_audit_logged(self, monkeypatch):
+        logged_calls = []
+
+        def mock_log_activity(self, **kwargs):
+            logged_calls.append(kwargs)
+            return {"id": "log-2", **kwargs}
+
+        monkeypatch.setattr(
+            "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+            mock_log_activity,
+        )
+
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+        })
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid-99",
+            "email": "admin99@example.com",
+            "display_name": "Admin Tester",
+        }
+        client = TestClient(app)
+        res = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/reject",
+            json={"rejection_reason": "Low image quality."},
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+        assert res.status_code == 200
+        assert len(logged_calls) == 1
+        call = logged_calls[0]
+        assert call["action"] == "SUBMISSION_REJECTED"
+        assert call["reason"] == "Low image quality."
+        assert call["target_id"] == _SUB_ID
+        assert mock_db.commit.called
+
+    def test_restore_submission_audit_logged(self, monkeypatch):
+        logged_calls = []
+
+        def mock_log_activity(self, **kwargs):
+            logged_calls.append(kwargs)
+            return {"id": "log-3", **kwargs}
+
+        monkeypatch.setattr(
+            "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+            mock_log_activity,
+        )
+
+        rejected_sub = {**MOCK_SUBMISSION, "status": "rejected"}
+        mock_db = _make_table_db({
+            "submissions": [rejected_sub],
+            "submission_files": [MOCK_FILE],
+        })
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid-99",
+            "email": "admin99@example.com",
+            "display_name": "Admin Tester",
+        }
+        client = TestClient(app)
+        res = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/restore",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+        assert res.status_code == 200
+        assert len(logged_calls) == 1
+        call = logged_calls[0]
+        assert call["action"] == "SUBMISSION_RESTORED"
+        assert call["target_id"] == _SUB_ID
+        assert mock_db.commit.called
+
+    def test_delete_submission_audit_logged(self, monkeypatch):
+        logged_calls = []
+
+        def mock_log_activity(self, **kwargs):
+            logged_calls.append(kwargs)
+            return {"id": "log-4", **kwargs}
+
+        monkeypatch.setattr(
+            "app.repositories.admin_activity_repository.AdminActivityRepository.log_activity",
+            mock_log_activity,
+        )
+
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+        })
+        mock_db.storage = MagicMock()
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {
+            "role": "ADMIN",
+            "firebase_uid": "admin-uid-99",
+            "email": "admin99@example.com",
+            "display_name": "Admin Tester",
+        }
+        client = TestClient(app)
+        res = client.delete(
+            f"/api/v1/submissions/{_SUB_ID}",
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+        assert res.status_code == 200
+        assert len(logged_calls) == 1
+        call = logged_calls[0]
+        assert call["action"] == "SUBMISSION_DELETED"
+        assert call["target_id"] == _SUB_ID
+        assert mock_db.commit.called

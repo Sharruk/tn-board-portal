@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
+from app.repositories.admin_activity_repository import AdminActivityRepository
 from app.repositories.community_repository import CommunityRepository
 from app.schemas.community import (
     CommentCreate,
@@ -62,7 +63,9 @@ class CommunityService:
     """Service layer for community forum."""
 
     def __init__(self, db: Session) -> None:
+        self._db = db
         self._repo = CommunityRepository(db)
+        self._activity_repo = AdminActivityRepository(db)
 
     def create_post(
         self,
@@ -218,18 +221,51 @@ class CommunityService:
         post_id: str,
         current_user: dict[str, Any],
         hard_delete: bool = False,
+        ip_address: Optional[str] = None,
     ) -> dict[str, Any]:
         """Delete a post (author or admin)."""
         post = self._repo.get_post_by_id(post_id, allow_deleted=True)
         if not post:
             raise NotFoundError(resource="Post", identifier=post_id)
 
-        is_admin = current_user.get("role") == "ADMIN"
-        is_owner = current_user.get("firebase_uid") == post.get("firebase_uid")
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
+        is_owner = bool(
+            current_user.get("firebase_uid")
+            and current_user.get("firebase_uid") == post.get("firebase_uid")
+        )
         if not (is_admin or is_owner):
             raise ForbiddenError("You can only delete your own posts.")
 
-        self._repo.delete_post(post_id, hard_delete=hard_delete and is_admin)
+        try:
+            self._repo.delete_post(post_id, hard_delete=hard_delete and is_admin, auto_commit=False)
+            if is_admin:
+                actor_id = current_user.get("user_id") or current_user.get("firebase_uid") or current_user.get("id") or "system"
+                actor_email = current_user.get("email") or "system@hungrylearner.internal"
+                actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+                actor_role = current_user.get("role") or "ADMIN"
+                self._activity_repo.log_activity(
+                    actor_uid=actor_id,
+                    actor_email=actor_email,
+                    actor_name=actor_name,
+                    actor_role=actor_role,
+                    action="COMMUNITY_POST_DELETED",
+                    target_type="community_post",
+                    target_id=str(post_id),
+                    target_title=post.get("title") or f"Post {post_id}",
+                    reason=None,
+                    metadata={
+                        "post_id": str(post_id),
+                        "title": post.get("title"),
+                        "author_uid": post.get("firebase_uid"),
+                        "hard_delete": hard_delete and is_admin,
+                    },
+                    ip_address=ip_address,
+                )
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
+
         return {"success": True, "message": "Post deleted"}
 
     def add_comment(
@@ -276,10 +312,51 @@ class CommunityService:
         comment_id: str,
         current_user: dict[str, Any],
         hard_delete: bool = False,
+        ip_address: Optional[str] = None,
     ) -> dict[str, Any]:
         """Delete a comment (author or admin)."""
-        is_admin = current_user.get("role") == "ADMIN"
-        self._repo.delete_comment(comment_id, hard_delete=hard_delete and is_admin)
+        comment = self._repo.get_comment_by_id(comment_id, allow_deleted=False)
+        if not comment:
+            raise NotFoundError(resource="Comment", identifier=comment_id)
+
+        is_admin = current_user.get("role") in ("ADMIN", "SUPER_ADMIN")
+        is_owner = bool(
+            current_user.get("firebase_uid")
+            and current_user.get("firebase_uid") == comment.get("firebase_uid")
+        )
+        if not (is_admin or is_owner):
+            raise ForbiddenError("You can only delete your own comments.")
+
+        try:
+            self._repo.delete_comment(comment_id, hard_delete=hard_delete and is_admin, auto_commit=False)
+            if is_admin:
+                actor_id = current_user.get("user_id") or current_user.get("firebase_uid") or current_user.get("id") or "system"
+                actor_email = current_user.get("email") or "system@hungrylearner.internal"
+                actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+                actor_role = current_user.get("role") or "ADMIN"
+                self._activity_repo.log_activity(
+                    actor_uid=actor_id,
+                    actor_email=actor_email,
+                    actor_name=actor_name,
+                    actor_role=actor_role,
+                    action="COMMUNITY_COMMENT_DELETED",
+                    target_type="community_comment",
+                    target_id=str(comment_id),
+                    target_title=f"Comment {comment_id}",
+                    reason=None,
+                    metadata={
+                        "comment_id": str(comment_id),
+                        "post_id": str(comment.get("post_id")),
+                        "author_uid": comment.get("firebase_uid"),
+                        "hard_delete": hard_delete and is_admin,
+                    },
+                    ip_address=ip_address,
+                )
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
+
         return {"success": True, "message": "Comment deleted"}
 
     def toggle_upvote(self, post_id: str, firebase_uid: str) -> dict[str, Any]:
@@ -307,9 +384,42 @@ class CommunityService:
         """List content reports for admin review."""
         return self._repo.list_reports(status=status)
 
-    def update_report_status(self, report_id: str, status: str) -> dict[str, Any]:
+    def update_report_status(
+        self,
+        report_id: str,
+        status: str,
+        current_user: Optional[dict[str, Any]] = None,
+        ip_address: Optional[str] = None,
+    ) -> dict[str, Any]:
         """Update report status."""
-        success = self._repo.update_report_status(report_id, status)
+        try:
+            success = self._repo.update_report_status(report_id, status, auto_commit=False)
+            if current_user and success:
+                actor_id = current_user.get("user_id") or current_user.get("firebase_uid") or current_user.get("id") or "system"
+                actor_email = current_user.get("email") or "system@hungrylearner.internal"
+                actor_name = current_user.get("display_name") or current_user.get("name") or actor_email
+                actor_role = current_user.get("role") or "ADMIN"
+                self._activity_repo.log_activity(
+                    actor_uid=actor_id,
+                    actor_email=actor_email,
+                    actor_name=actor_name,
+                    actor_role=actor_role,
+                    action="CONTENT_REPORT_RESOLVED",
+                    target_type="content_report",
+                    target_id=str(report_id),
+                    target_title=f"Report {report_id} status updated to {status}",
+                    reason=f"Status changed to {status}",
+                    metadata={
+                        "report_id": str(report_id),
+                        "status": status,
+                    },
+                    ip_address=ip_address,
+                )
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
+
         return {"success": success}
 
     # ── Paper Requests ────────────────────────────────────────────────────────
