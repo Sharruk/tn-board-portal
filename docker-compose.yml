@@ -2,12 +2,16 @@
 # TN Board Portal — Full-Application Local Docker Environment
 # ======================================================================
 # Usage:
-#   docker compose up --build
+#   docker compose up --build -d
 #
 # Endpoints:
-#   Frontend: http://localhost:5000
-#   Backend:  http://localhost:8000
-#   Health:   http://localhost:8000/health
+#   Frontend (React + Vite):  http://localhost:5000
+#   Backend (FastAPI):        http://localhost:8000
+#   Health Check:             http://localhost:8000/health
+#   Swagger OpenAPI Docs:     http://localhost:8000/docs
+#
+# Optional Background Worker:
+#   docker compose --profile worker up -d
 # ======================================================================
 
 services:
@@ -24,9 +28,11 @@ services:
         required: false
       - path: ./backend/.env
         required: false
+    volumes:
+      - ./backend/app:/app/app:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
@@ -47,6 +53,9 @@ services:
         required: false
       - path: ./frontend/.env.local
         required: false
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
     depends_on:
       backend:
         condition: service_healthy
@@ -54,6 +63,27 @@ services:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5000"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
+
+  outbox-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: tn-board-backend:latest
+    container_name: tn-board-outbox-worker
+    command: ["python", "-m", "app.workers.outbox_worker", "--interval", "10", "--batch-size", "10"]
+    env_file:
+      - path: ./.env
+        required: false
+      - path: ./backend/.env
+        required: false
+    volumes:
+      - ./backend/app:/app/app:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - worker
