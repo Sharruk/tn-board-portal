@@ -1,117 +1,133 @@
 # TN Board Portal — Backend API
 
-Production-ready FastAPI backend for the TN Board Portal, deployed serverlessly on Vercel alongside the Vite/React frontend.
-
-## Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | FastAPI 0.115 |
-| Server / Runtime | Vercel Serverless (Python runtime) / Uvicorn (local) |
-| Database client | Supabase Python SDK |
-| Auth | Firebase Admin SDK |
-| Config | pydantic-settings |
-| Deployment | Vercel (unified monorepo) |
+Production-ready FastAPI backend for the TN Board Portal, deployed serverlessly on Vercel alongside the Vite/React frontend, with full-stack local container execution via Docker Compose.
 
 ---
 
-## Local Development
+## 1. Stack & Architecture
 
-### Prerequisites
+| Layer | Technology | Description |
+|---|---|---|
+| **Framework** | FastAPI 0.115 | Asynchronous REST API framework |
+| **Server / Runtime** | Uvicorn (local/Docker) / Vercel Serverless (prod) | HTTP server & serverless function runtime |
+| **Database ORM** | SQLAlchemy 2.0 + psycopg2-binary | Direct PostgreSQL data access via connection pooler |
+| **Database & Storage** | Supabase PostgreSQL + Supabase Storage | Managed cloud database & asset storage buckets |
+| **Authentication** | Firebase Admin SDK | Google Sign-In verification & role claims |
+| **Transactional Outbox** | PostgreSQL `storage_outbox` table | Durable asynchronous storage side-effect queue |
+| **Config** | pydantic-settings | Strictly typed environment configuration |
 
-- Python 3.10+
-- pip
+```
+HTTP Request
+  │
+  ▼
+FastAPI Router (app/api/v1/endpoints/)
+  │  Input validation & authentication dependencies
+  ▼
+Service Layer (app/services/)
+  │  Business logic, atomic audit logging, & outbox queueing
+  ▼
+Repository Layer (app/repositories/)
+  │  SQLAlchemy parameterized SQL & connection pooling
+  ▼
+Supabase PostgreSQL / Supabase Storage
+```
 
-### Setup
+---
 
+## 2. Local Execution
+
+### Option A: Full-Stack Docker Compose (Recommended)
+From the repository root, start both frontend and backend together:
+```bash
+docker compose up --build -d
+```
+- **Backend API**: [http://localhost:8000](http://localhost:8000)
+- **Health Check**: [http://localhost:8000/health](http://localhost:8000/health)
+- **Swagger Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Frontend**: [http://localhost:5000](http://localhost:5000)
+
+### Option B: Standalone Local Virtualenv
 ```bash
 # 1. Navigate to backend directory
 cd backend
 
-# 2. Create a virtual environment
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# macOS / Linux
-source .venv/bin/activate
+# 2. Activate virtual environment
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # 3. Install dependencies
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
-# 4. Create your local .env file
-cp .env.example .env
-# Edit .env and fill in SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY
-
-# 5. Start the development server
+# 4. Start development server with hot-reload
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Endpoints
+---
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/` | Project metadata |
-| GET | `/health` | Health check alias |
-| GET | `/api/v1/health` | Versioned health check |
-| GET | `/api/v1/classes` | Classes list |
-| GET | `/api/v1/subjects` | Subjects list |
-| GET | `/api/v1/papers` | Papers list |
-| GET | `/api/v1/submissions` | Admin submissions list |
-| POST | `/api/v1/submissions` | Contributor material submission |
-| GET | `/api/v1/leaderboard` | Contributor leaderboard |
-| GET | `/api/v1/community/posts` | Community discussions |
-| GET | `/docs` | Swagger UI |
-| GET | `/redoc` | ReDoc |
+## 3. Transactional Outbox Background Worker
+
+When entities with attached storage files (question papers, official notices, educational news) are deleted or updated, file removals are enqueued in `storage_outbox` inside the exact same database transaction.
+
+### Running the Worker Daemon:
+```bash
+# Continuous polling loop (10-second interval):
+python -m app.workers.outbox_worker --interval 10 --batch-size 10
+
+# Single batch run (for cron jobs or testing):
+python -m app.workers.outbox_worker --once
+
+# In Docker Compose (using the worker profile):
+docker compose --profile worker up -d
+```
+
+### Manual Trigger via API:
+Super Admins can trigger immediate outbox processing via HTTP:
+```bash
+curl -X POST "http://localhost:8000/api/v1/admin/outbox/process?batch_size=10" \
+  -H "Authorization: Bearer <SUPER_ADMIN_JWT>"
+```
 
 ---
 
-## Running Tests
+## 4. Testing & Verification
+
+The backend includes a comprehensive 298-test test suite covering role governance, submission workflows, community moderation, centralized audit logging, and outbox concurrency:
 
 ```bash
-cd backend
-pip install pytest
+# Run all tests
 pytest tests/ -v
+
+# Run specific test modules
+pytest tests/test_admin_roles.py -v
+pytest tests/test_submissions.py -v
+pytest tests/test_notices.py -v
+pytest tests/test_news.py -v
+pytest tests/test_outbox.py -v
 ```
 
 ---
 
-## Vercel Deployment
+## 5. API Endpoints Reference
 
-The FastAPI backend is served via Vercel Serverless Functions (`api/index.py`).
-Root `vercel.json` routes `/api/*`, `/health`, and `/docs` directly to the FastAPI app.
-
-### Environment Variables in Vercel Dashboard
-
-Configure the following variables under **Vercel Dashboard → Project Settings → Environment Variables**:
-
-| Variable | Required | Description |
-|---|---|---|
-| `SUPABASE_URL` | ✅ | Supabase project URL |
-| `SUPABASE_ANON_KEY` | ✅ | Supabase anon/public key |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service role key (for server-side ops) |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | ✅ | Complete JSON string of Firebase service account |
-| `ADMIN_EMAIL` | ✅ | Authorized super admin Google email address |
-| `ENVIRONMENT` | ⬜ | `production` / `preview` |
-| `LOG_LEVEL` | ⬜ | `INFO` |
-
----
-
-## Architecture
-
-```
-Request
-  │
-  ▼
-Route (app/api/v1/endpoints/)
-  │  Thin — validates input, calls service
-  ▼
-Service (app/services/)
-  │  Business logic — testable independently
-  ▼
-Repository (app/repositories/)
-  │  Data access — abstracts Supabase calls
-  ▼
-Supabase (PostgreSQL + Storage) / Firebase Auth
-```
+| Domain | Method | Path | Access | Description |
+|---|---|---|:---:|---|
+| **Meta** | `GET` | `/` | Public | API metadata and documentation links |
+| **Health** | `GET` | `/health`, `/api/v1/health` | Public | Application health check probe |
+| **Classes** | `GET` | `/api/v1/classes` | Public | List Classes 9, 10, 11, 12 |
+| **Subjects** | `GET` | `/api/v1/subjects` | Public | List subjects by class |
+| **Papers** | `GET` | `/api/v1/papers` | Public | List recent/popular published papers |
+| **Papers** | `GET` | `/api/v1/papers/search` | Public | Multi-field search with alias expansion |
+| **Papers** | `POST` | `/api/v1/papers` | Admin | Create paper with centralized audit log |
+| **Papers** | `PATCH`| `/api/v1/papers/{id}` | Admin | Update paper metadata and outbox storage |
+| **Papers** | `DELETE`|`/api/v1/papers/{id}` | Admin | Delete paper, audit log, & queue outbox file |
+| **Notices**| `GET` | `/api/v1/notices` | Public | Browse official government circulars |
+| **Notices**| `POST` | `/api/v1/notices` | Admin | Create official notice with audit log |
+| **Notices**| `PATCH`| `/api/v1/notices/{id}` | Admin | Update notice with audit log |
+| **Notices**| `DELETE`|`/api/v1/notices/{id}` | Admin | Delete notice, audit log, & queue outbox file |
+| **News** | `GET` | `/api/v1/news` | Public | Browse education news updates |
+| **News** | `POST` | `/api/v1/news` | Admin | Create article with audit log |
+| **News** | `PATCH`| `/api/v1/news/{id}` | Admin | Update article with audit log |
+| **News** | `DELETE`|`/api/v1/news/{id}` | Admin | Delete article, audit log, & queue outbox file |
+| **Outbox** | `POST` | `/api/v1/admin/outbox/process` | Super Admin | Process claimed outbox batch |
+| **Outbox** | `GET` | `/api/v1/admin/outbox/status` | Admin | Inspect queue status and failed tasks |
+| **Roles** | `POST` | `/api/v1/admin/roles/claim-appointment` | Admin | Atomic appointment claiming via RPC |
+| **Audit** | `GET` | `/api/v1/admin/activity-logs` | Admin | Centralized audit log inspection |
