@@ -26,6 +26,7 @@ import { getFirebaseToken } from '../lib/firebase'
 export const EXAM_TYPES = [
   'Monthly Test',
   'First Mid Term Test',
+  'Second Mid Term Test',
   'Unit Test 1',
   'Unit Test 2',
   'Unit Test 3',

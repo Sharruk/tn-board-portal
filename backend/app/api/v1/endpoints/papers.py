@@ -230,7 +230,7 @@ async def search_papers(
     ] = None,
     exam_type: Annotated[
         str | None,
-        Query(description="Filter by exam type (e.g. 'Annual Exam', 'First Mid Term Test')"),
+        Query(description="Filter by exam type (e.g. 'Annual Exam', 'First Mid Term Test', 'Second Mid Term Test')"),
     ] = None,
     paper_type: Annotated[
         str | None,

@@ -34,6 +34,7 @@ export default function ContentStatusPage() {
       'Annual Exam': 'Annual',
       'Half Yearly Exam': 'Half Yearly',
       'Quarterly Exam': 'Quarterly',
+      'Second Mid Term Test': '2nd Mid Term',
       'Unit Test 1': 'UT 1',
       'Unit Test 2': 'UT 2',
       'Unit Test 3': 'UT 3',

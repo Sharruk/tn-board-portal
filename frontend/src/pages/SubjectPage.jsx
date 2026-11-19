@@ -11,6 +11,7 @@ const EXAM_CATEGORY_GROUPS = [
   { label: 'First Mid Term Test',    types: ['First Mid Term Test'],                                  icon: '📝' },
   { label: 'Unit Tests',             types: ['Unit Test 1', 'Unit Test 2', 'Unit Test 3'],             icon: '📝' },
   { label: 'Quarterly Exam',         types: ['Quarterly Exam'],                                       icon: '📅' },
+  { label: 'Second Mid Term Test',   types: ['Second Mid Term Test'],                                  icon: '📝' },
   { label: 'Half Yearly Exam',       types: ['Half Yearly Exam'],                                     icon: '📆' },
   { label: 'Annual / Public Exam',   types: ['Annual Exam', 'Public Exam', 'Model Exam'],              icon: '🎯' },
   { label: 'Practical Exam',         types: ['Practical Exam'],                                       icon: '🔬', practicalOnly: true },

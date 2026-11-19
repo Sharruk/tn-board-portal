@@ -49,10 +49,28 @@ Tamil Nadu State Board school students (Classes 9, 10, 11, and 12) preparing for
 
 ### Key Capabilities
 - 📚 **Academic Hierarchy**: Seamless navigation across Classes 9, 10, 11, and 12, categorized by subject and practical lab requirements.
-- 🔍 **Full-Text Multi-Field Search**: High-performance search across titles, exam types (Annual, Half-Yearly, Quarterly, Mid-Term, Unit Tests), districts, and subjects with automatic query alias expansion (e.g., `maths` → `mathematics`).
+- 🔍 **Full-Text Multi-Field Search**: High-performance search across titles, exam types (Annual, Half-Yearly, Quarterly, First & Second Mid-Term, Unit Tests), districts, and subjects with automatic query alias expansion (e.g., `maths` → `mathematics`, `2nd mid term` → `Second Mid Term Test`).
 - 📄 **Rich Paper Viewer & Direct Downloads**: In-browser PDF rendering, structured study notes, and YouTube video embeds, with approved, human-readable download filenames served via HTTP `Content-Disposition`.
 - 📢 **Official Circulars & Education News**: Dedicated sections for government examination notifications and education updates.
 - 🛡️ **Role-Based Admin Governance**: Multi-user administrative governance (Super Admin, Admin, Contributor) with atomic appointment claims, material review queues, and immutable audit logging.
+
+### Supported Exam Categories
+The platform categorizes past question papers and answer keys according to the Tamil Nadu State Board academic calendar sequence:
+1. **Monthly Test**
+2. **First Mid Term Test**
+3. **Unit Tests** (`Unit Test 1`, `Unit Test 2`, `Unit Test 3`)
+4. **Quarterly Exam**
+5. **Second Mid Term Test**
+6. **Half Yearly Exam**
+7. **Annual / Public Exam** (`Annual Exam`, `Public Exam`, `Model Exam`)
+8. **Practical Exam** *(Restricted to practical/laboratory subjects)*
+
+Each category is fully integrated across:
+- **Public Subject Category Cards**: Dynamic paper counters with automatic "Coming soon" state when zero papers are published.
+- **Admin Management**: Form dropdowns in Single Paper Upload, Paper Edit, and Contributor Material Submission Approval.
+- **Bulk Upload**: Intelligent filename token extraction supporting aliases like `secondmidterm`, `second mid term`, `secondmidtermtest`, `2nd mid term`, and `2nd midterm`.
+- **Search Expansion**: Client- and server-side alias expansion matching terms like `second mid term` and `2nd mid term`.
+- **Content Status Tracking**: Class × Subject × Exam Category coverage matrix via PostgreSQL RPC (`get_content_status`).
 
 ---
 

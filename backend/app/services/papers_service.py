@@ -65,6 +65,7 @@ _SUBJECT_ALIASES: dict[str, str] = {
 _EXAM_PATTERNS: list[str] = [
     "monthly test",
     "first mid term test", "first mid term",
+    "second mid term test", "second mid term", "2nd mid term",
     "unit test 1", "unit test 2", "unit test 3",
     "quarterly exam", "quarterly",
     "half yearly exam", "half yearly",

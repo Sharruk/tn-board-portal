@@ -132,7 +132,7 @@ class ApproveRequest(BaseModel):
     subject_id: int = Field(..., description="Subject FK — from the subjects table", gt=0)
     exam_type: str = Field(
         ...,
-        description="Exam category (e.g. 'Annual Exam', 'First Mid Term Test')",
+        description="Exam category (e.g. 'Annual Exam', 'First Mid Term Test', 'Second Mid Term Test')",
         min_length=1,
         max_length=100,
     )

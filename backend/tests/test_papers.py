@@ -302,6 +302,18 @@ def test_list_by_subject_with_exam_type_filter():
         app.dependency_overrides.clear()
 
 
+def test_list_by_subject_with_second_mid_term_filter():
+    mock_db = _make_list_db([MOCK_PAPER_LIST_ROW])
+    app.dependency_overrides[get_db] = lambda: mock_db
+    try:
+        client = TestClient(app)
+        resp = client.get("/api/v1/papers/by-subject/8?exam_type=Second+Mid+Term+Test")
+        assert resp.status_code == 200
+        assert "data" in resp.json()
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_list_by_subject_with_multi_exam_type_filter():
     """Verify comma-separated multi-type filter creates IN clause and succeeds."""
     mock_db = MagicMock()
@@ -435,6 +447,17 @@ def test_term_expansion_empty_string():
     from app.services.papers_service import _expand_terms
     terms = _expand_terms("")
     assert "" in terms
+
+
+def test_term_expansion_second_mid_term():
+    from app.services.papers_service import _expand_terms
+    terms = _expand_terms("second mid term test")
+    assert "second mid term test" in terms
+    assert "second mid term" in terms
+
+    terms_2nd = _expand_terms("maths 2nd mid term")
+    assert "2nd mid term" in terms_2nd
+    assert "mathematics" in terms_2nd
 
 
 # ── Download file GET endpoint tests & Privacy checks ───────────────────────────
@@ -1015,6 +1038,7 @@ def test_create_paper_admin_success():
         app.dependency_overrides.clear()
 
 
+
 def test_update_paper_admin_success():
     from app.dependencies.auth import require_admin
     from app.dependencies.supabase import get_db
@@ -1048,6 +1072,53 @@ def test_update_paper_admin_success():
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == 42
+        assert mock_db.commit.called
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_paper_admin_second_mid_term_success():
+    from app.dependencies.auth import require_admin
+    from app.dependencies.supabase import get_db
+
+    mock_db = MagicMock()
+    paper_row = dict(MOCK_PAPER_DETAIL_ROW)
+    paper_row["exam_type"] = "Second Mid Term Test"
+
+    def execute_handler(stmt, params=None):
+        sql = str(stmt).lower()
+        if "insert into papers" in sql:
+            return MockResult([paper_row])
+        if "from papers" in sql:
+            return MockResult([paper_row])
+        if "admin_activity_logs" in sql:
+            return MockResult([{"id": "activity-mock-1", "metadata": "{}"}])
+        return MockResult([])
+
+    mock_db.execute.side_effect = execute_handler
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[require_admin] = lambda: {
+        "user_id": "admin-1",
+        "email": "admin@example.com",
+        "role": "ADMIN",
+    }
+
+    payload = {
+        "subject_id": 8,
+        "exam_type": "Second Mid Term Test",
+        "year": 2026,
+        "title": "Class 10 Maths Second Mid Term Test 2026",
+        "paper_type": "question",
+        "file_path": "uuid.pdf",
+    }
+
+    try:
+        client = TestClient(app)
+        resp = client.post("/api/v1/papers", json=payload)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["id"] == 42
+        assert data["exam_type"] == "Second Mid Term Test"
         assert mock_db.commit.called
     finally:
         app.dependency_overrides.clear()

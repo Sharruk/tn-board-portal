@@ -572,6 +572,45 @@ class TestApproveSubmission:
         assert body["submission_id"] == _SUB_ID
         assert "paper_ids" in body
 
+    def test_approve_submission_with_second_mid_term_exam_type(self):
+        """Verify approving a submission with exam_type 'Second Mid Term Test' succeeds and creates paper."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+            "papers": [dict(MOCK_PAPER, exam_type="Second Mid Term Test")],
+        })
+        mock_db.storage = MagicMock()
+        submissions_bucket_mock = MagicMock()
+        submissions_bucket_mock.download.return_value = b"file content"
+        papers_bucket_mock = MagicMock()
+        papers_bucket_mock.upload.return_value = MagicMock()
+        papers_bucket_mock.get_public_url.return_value = MOCK_PAPER["public_url"]
+
+        def from_side_effect(bucket_name):
+            if bucket_name == "submissions":
+                return submissions_bucket_mock
+            elif bucket_name == "papers":
+                return papers_bucket_mock
+            return MagicMock()
+
+        mock_db.storage.from_.side_effect = from_side_effect
+
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+        approve_payload = dict(self.APPROVE_BODY, exam_type="Second Mid Term Test")
+        response = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json=approve_payload,
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "approved"
+        assert body["submission_id"] == _SUB_ID
+
     def test_approve_not_found(self):
         """Non-existent submission → 404."""
         mock_db = _make_table_db({"submissions": [], "submission_files": []})
