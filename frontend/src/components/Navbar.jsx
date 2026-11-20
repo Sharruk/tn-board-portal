@@ -116,6 +116,10 @@ export default function Navbar() {
               )}
             </div>
 
+            <NavLink to="/study-materials" className={({ isActive }) => `text-sm font-medium transition-colors ${isActive ? 'text-blue-600 font-semibold' : 'text-gray-600 hover:text-gray-900'}`}>
+              Study Materials
+            </NavLink>
+
             <NavLink to="/official-notices" className={({ isActive }) => `text-sm font-medium transition-colors ${isActive ? 'text-indigo-600 font-semibold' : 'text-gray-600 hover:text-gray-900'}`}>
               Official Notices
             </NavLink>
@@ -277,6 +281,7 @@ export default function Navbar() {
               Class {c}
             </Link>
           ))}
+          <Link to="/study-materials" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Study Materials</Link>
           <Link to="/official-notices" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Official Notices</Link>
           <Link to="/news" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">News</Link>
           <Link to="/leaderboard" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Leaderboard</Link>
