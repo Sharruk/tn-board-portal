@@ -57,6 +57,8 @@ class SubmissionListItem(BaseModel):
     firebase_uid: str | None = None
     details: str | None = None
     status: SubmissionStatus
+    destination_type: str | None = None
+    target_id: str | None = None
     file_count: int = Field(default=0, description="Number of files attached")
     rejection_reason: str | None = None
     thank_you_message: str | None = None
@@ -76,6 +78,8 @@ class SubmissionOut(BaseModel):
     firebase_uid: str | None = None
     details: str | None = None
     status: SubmissionStatus
+    destination_type: str | None = None
+    target_id: str | None = None
     rejection_reason: str | None = None
     thank_you_message: str | None = None
     reviewed_at: datetime | None = None
@@ -93,30 +97,40 @@ class SubmissionListResponse(BaseModel):
 
 # ── Admin action request schemas ──────────────────────────────────────────────
 
+DestinationType = Literal["paper", "study_material", "notice", "news"]
+
+
 class ApproveRequest(BaseModel):
     """
     Body for POST /api/v1/submissions/{id}/approve.
 
     The admin supplies the human-readable title, approved download filename,
-    description, optional YouTube URL, and metadata (subject, exam type, year, paper type, month, district).
+    description, optional YouTube URL, and metadata based on destination_type:
+      - paper (default): subject_id, exam_type, year, paper_type, month, district
+      - study_material: class_id, subject_id, category_id, medium, question_formats, tags, academic_year, author_name, author_organization
+      - notice: notice_category, year, class_id, is_pinned
+      - news: news_category, summary, content, class_id, district, tags, is_pinned
     """
 
+    destination_type: DestinationType = Field(
+        default="paper",
+        description="Target destination module: 'paper', 'study_material', 'notice', 'news'",
+    )
     title: str | None = Field(
         None,
         min_length=1,
-        max_length=255,
-        description="Admin-entered human-readable title for the paper",
+        max_length=400,
+        description="Admin-entered human-readable title",
     )
     download_filename: str | None = Field(
         None,
-        min_length=1,
         max_length=255,
-        description="Approved download filename for students (e.g. Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf)",
+        description="Approved download filename for students",
     )
     description: str | None = Field(
         None,
-        max_length=2000,
-        description="Editable description/notes for the published paper",
+        max_length=5000,
+        description="Editable description/notes",
     )
     thank_you_message: str | None = Field(
         None,
@@ -128,20 +142,39 @@ class ApproveRequest(BaseModel):
         max_length=500,
         description="Optional YouTube explanation video URL",
     )
+
+    # ── Paper fields ──
     class_id: int | None = Field(None, description="Class ID (optional)")
-    subject_id: int = Field(..., description="Subject FK — from the subjects table", gt=0)
-    exam_type: str = Field(
-        ...,
-        description="Exam category (e.g. 'Annual Exam', 'First Mid Term Test', 'Second Mid Term Test')",
-        min_length=1,
+    subject_id: int | None = Field(None, description="Subject FK (required for paper)", gt=0)
+    exam_type: str | None = Field(
+        None,
+        description="Exam category (e.g. 'Annual Exam', 'First Mid Term Test')",
         max_length=100,
     )
-    year: int = Field(..., description="Academic year", ge=2000, le=2100)
-    paper_type: Literal["question", "answer_key"] = Field(
-        ..., description='"question" or "answer_key"'
+    year: int | None = Field(None, description="Academic year", ge=2000, le=2100)
+    paper_type: Literal["question", "answer_key"] | None = Field(
+        None, description='"question" or "answer_key"'
     )
     month: str | None = Field(None, description="Month the exam was held (optional)")
     district: str | None = Field(None, description="TN district (optional)")
+
+    # ── Study Material fields ──
+    category_id: int | None = Field(None, description="Material category FK")
+    medium: Literal["tamil", "english", "both"] | None = Field("both", description="Language medium")
+    question_formats: list[str] = Field(default_factory=list, description="Question formats list")
+    tags: list[str] = Field(default_factory=list, description="Tags list")
+    academic_year: str | None = Field(None, max_length=50, description="Academic year (e.g. 2024-2025)")
+    author_name: str | None = Field(None, max_length=150, description="Author attribution")
+    author_organization: str | None = Field(None, max_length=200, description="Author school or org")
+
+    # ── Notice fields ──
+    notice_category: str | None = Field(None, max_length=100, description="Official notice category")
+    is_pinned: bool = Field(default=False, description="Whether pinned to top")
+
+    # ── News fields ──
+    news_category: str | None = Field(None, max_length=100, description="News category")
+    summary: str | None = Field(None, description="Short summary snippet")
+    content: str | None = Field(None, description="Full markdown/html body")
 
     @classmethod
     def validate_youtube_link(cls, v: str | None) -> str | None:
@@ -209,8 +242,10 @@ class UserSubmissionFile(BaseModel):
 class UserSubmissionPaper(BaseModel):
     """Linked published paper details when approved."""
 
-    id: int
+    id: int | str
     title: str
+    destination_type: Optional[str] = "paper"
+    slug: Optional[str] = None
     subject_name: Optional[str] = None
     class_name: Optional[str] = None
     exam_type: Optional[str] = None
@@ -226,6 +261,8 @@ class UserSubmissionItem(BaseModel):
     publisher_name: str
     details: Optional[str] = None
     status: SubmissionStatus
+    destination_type: Optional[str] = None
+    target_id: Optional[str] = None
     rejection_reason: Optional[str] = None
     thank_you_message: Optional[str] = None
     reviewed_at: Optional[datetime] = None

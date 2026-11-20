@@ -274,9 +274,17 @@ export default function NoticeDetailPage() {
             {icon}
           </div>
           <div className="flex-1 min-w-0">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 mb-2">
-              {notice.category}
-            </span>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                {notice.category}
+              </span>
+              {notice.contributor_name && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200/70 rounded-full">
+                  <span>🏆 Contributed by:</span>
+                  <strong className="text-amber-900">{notice.contributor_name}</strong>
+                </span>
+              )}
+            </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 leading-snug">
               {notice.title}
             </h1>

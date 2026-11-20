@@ -54,6 +54,8 @@ class StudyMaterialBase(BaseModel):
     academic_year: Optional[str] = Field(None, max_length=20, description="Academic year (e.g. 2024-2025)")
     author_name: Optional[str] = Field(None, max_length=150, description="Author or teacher attribution")
     author_organization: Optional[str] = Field(None, max_length=200, description="School, district forum, or publisher")
+    contributor_name: Optional[str] = Field(None, max_length=150, description="Contributor attribution from submission")
+    submission_id: Optional[UUID] = Field(None, description="Linked submission UUID")
     status: MaterialStatus = Field(default="draft", description="draft | published | archived")
 
 
@@ -100,6 +102,7 @@ class StudyMaterialSummary(BaseModel):
     tags: List[str] = Field(default_factory=list)
     academic_year: Optional[str] = None
     author_name: Optional[str] = None
+    contributor_name: Optional[str] = None
     status: MaterialStatus
     file_count: int = 0
     total_size_bytes: int = 0

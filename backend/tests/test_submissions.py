@@ -186,6 +186,104 @@ def _make_table_db(table_data: dict[str, list]) -> MagicMock:
                 return MockResult(matches)
             return MockResult(rows)
 
+        if "study_materials" in sql:
+            import uuid
+            row = {
+                "id": uuid.uuid4(),
+                "title": params.get("title", "Mock Material"),
+                "slug": params.get("slug", "mock-material"),
+                "description": params.get("description"),
+                "class_id": params.get("class_id", 10),
+                "subject_id": params.get("subject_id"),
+                "category_id": params.get("category_id"),
+                "medium": params.get("medium", "both"),
+                "question_formats": params.get("question_formats", []),
+                "tags": params.get("tags", []),
+                "academic_year": params.get("academic_year"),
+                "author_name": params.get("author_name"),
+                "author_organization": params.get("author_organization"),
+                "contributor_name": params.get("contributor_name"),
+                "submission_id": params.get("submission_id"),
+                "status": params.get("status", "published"),
+                "view_count": 0,
+                "download_count": 0,
+                "created_by": params.get("created_by"),
+                "updated_by": params.get("created_by"),
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+            return MockResult([row])
+
+        if "material_files" in sql:
+            import uuid
+            row = {
+                "id": uuid.uuid4(),
+                "material_id": params.get("material_id"),
+                "file_title": params.get("file_title"),
+                "display_filename": params.get("display_filename"),
+                "file_type": params.get("file_type", "pdf"),
+                "mime_type": params.get("mime_type"),
+                "file_size": params.get("file_size", 100),
+                "bucket_name": params.get("bucket_name"),
+                "storage_path": params.get("storage_path"),
+                "external_url": params.get("external_url"),
+                "sort_order": params.get("sort_order", 0),
+                "download_count": 0,
+                "created_at": "2026-01-01T00:00:00Z",
+            }
+            return MockResult([row])
+
+        if "official_notices" in sql:
+            row = {
+                "id": 101,
+                "title": params.get("title", "Mock Notice"),
+                "category": params.get("category", "General"),
+                "class_id": params.get("class_id"),
+                "year": params.get("year", 2026),
+                "description": params.get("description"),
+                "file_path": params.get("file_path"),
+                "public_url": params.get("public_url"),
+                "file_type": params.get("file_type", "pdf"),
+                "youtube_url": params.get("youtube_url"),
+                "contributor_name": params.get("contributor_name"),
+                "submission_id": params.get("submission_id"),
+                "is_visible": True,
+                "is_pinned": params.get("is_pinned", False),
+                "expires_at": None,
+                "view_count": 0,
+                "download_count": 0,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+            return MockResult([row])
+
+        if "news_updates" in sql:
+            import uuid
+            row = {
+                "id": str(uuid.uuid4()),
+                "title": params.get("title", "Mock News"),
+                "slug": params.get("slug", "mock-news"),
+                "summary": params.get("summary"),
+                "content": params.get("content"),
+                "category": params.get("category", "General"),
+                "tags": params.get("tags", []),
+                "thumbnail_url": params.get("thumbnail_url"),
+                "thumbnail_alt": params.get("thumbnail_alt"),
+                "youtube_url": params.get("youtube_url"),
+                "pdf_url": params.get("pdf_url"),
+                "class_id": params.get("class_id"),
+                "district": params.get("district"),
+                "contributor_name": params.get("contributor_name"),
+                "submission_id": params.get("submission_id"),
+                "status": "published",
+                "is_pinned": False,
+                "view_count": 0,
+                "published_at": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+            return MockResult([row])
+
         if "admin_activity_logs" in sql:
             return MockResult([{"id": "audit-mock-1", "metadata": "{}"}])
 
@@ -750,6 +848,100 @@ class TestApproveSubmission:
 
         assert response.status_code == 422
         assert "youtube" in str(response.json()).lower()
+
+    def test_approve_as_study_material(self):
+        """Admin approves a submission into the study_materials module."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+
+        body = {
+            "destination_type": "study_material",
+            "title": "Class 10 Science Formula Handbook",
+            "class_id": 10,
+            "subject_id": 1,
+            "medium": "both",
+            "academic_year": "2024-2025",
+            "author_name": "Teacher Ramanathan",
+            "download_filename": "Class10_Science_Handbook.pdf",
+            "description": "Comprehensive revision notes for board exam preparation.",
+        }
+        res = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json=body,
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "approved"
+        assert data["destination_type"] == "study_material"
+        assert data.get("target_id") is not None
+
+    def test_approve_as_official_notice(self):
+        """Admin approves a submission into the official_notices module."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+
+        body = {
+            "destination_type": "notice",
+            "title": "TN DGE Time Table March 2026",
+            "notice_category": "Time Table",
+            "year": 2026,
+            "class_id": 10,
+            "is_pinned": True,
+        }
+        res = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json=body,
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "approved"
+        assert data["destination_type"] == "notice"
+        assert data.get("target_id") is not None
+
+    def test_approve_as_news(self):
+        """Admin approves a submission into the news_updates module."""
+        mock_db = _make_table_db({
+            "submissions": [MOCK_SUBMISSION],
+            "submission_files": [MOCK_FILE],
+        })
+        app.dependency_overrides[get_supabase_admin_client] = lambda: mock_db
+        app.dependency_overrides[get_current_user] = lambda: {"role": "ADMIN", "firebase_uid": "admin-uid", "email": "admin@example.com"}
+        client = TestClient(app)
+
+        body = {
+            "destination_type": "news",
+            "title": "Education Department Announces New Syllabus Guidelines",
+            "news_category": "Announcements",
+            "summary": "Key syllabus highlights for 2026 exams.",
+            "content": "Full announcement text regarding curriculum updates.",
+            "class_id": 10,
+            "is_pinned": False,
+        }
+        res = client.post(
+            f"/api/v1/submissions/{_SUB_ID}/approve",
+            json=body,
+            headers=ADMIN_HEADERS,
+        )
+        app.dependency_overrides.clear()
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "approved"
+        assert data["destination_type"] == "news"
+        assert data.get("target_id") is not None
 
 
 # ============================================================================

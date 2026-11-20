@@ -46,6 +46,7 @@ class StudyMaterialsRepository:
                 sm.medium, sm.question_formats, sm.tags, sm.academic_year, sm.author_name, sm.author_organization,
                 sm.status, sm.view_count, sm.download_count, sm.created_by, sm.updated_by,
                 sm.created_at, sm.updated_at,
+                sm.contributor_name, sm.submission_id,
                 c.name AS class_name,
                 s.name AS subject_name,
                 mc.name AS category_name,
@@ -81,6 +82,7 @@ class StudyMaterialsRepository:
                 sm.medium, sm.question_formats, sm.tags, sm.academic_year, sm.author_name, sm.author_organization,
                 sm.status, sm.view_count, sm.download_count, sm.created_by, sm.updated_by,
                 sm.created_at, sm.updated_at,
+                sm.contributor_name, sm.submission_id,
                 c.name AS class_name,
                 s.name AS subject_name,
                 mc.name AS category_name,
@@ -180,6 +182,7 @@ class StudyMaterialsRepository:
                 sm.medium, sm.question_formats, sm.tags, sm.academic_year, sm.author_name,
                 sm.status, sm.view_count, sm.download_count,
                 sm.created_at, sm.updated_at,
+                sm.contributor_name, sm.submission_id,
                 c.name AS class_name,
                 s.name AS subject_name,
                 mc.name AS category_name,
@@ -214,6 +217,8 @@ class StudyMaterialsRepository:
         academic_year: Optional[str] = None,
         author_name: Optional[str] = None,
         author_organization: Optional[str] = None,
+        contributor_name: Optional[str] = None,
+        submission_id: Optional[UUID | str] = None,
         status: str = "draft",
         created_by: Optional[UUID | str] = None,
         slug: Optional[str] = None,
@@ -231,15 +236,18 @@ class StudyMaterialsRepository:
             INSERT INTO study_materials (
                 title, slug, description, class_id, subject_id, category_id,
                 medium, question_formats, tags, academic_year, author_name, author_organization,
+                contributor_name, submission_id,
                 status, view_count, download_count, created_by, updated_by, created_at, updated_at
             )
             VALUES (
                 :title, :slug, :description, :class_id, :subject_id, :category_id,
                 :medium, :question_formats, :tags, :academic_year, :author_name, :author_organization,
+                :contributor_name, :submission_id,
                 :status, 0, 0, :created_by, :created_by, NOW(), NOW()
             )
             RETURNING id, title, slug, description, class_id, subject_id, category_id,
                       medium, question_formats, tags, academic_year, author_name, author_organization,
+                      contributor_name, submission_id,
                       status, view_count, download_count, created_by, updated_by, created_at, updated_at
             """
         )
@@ -258,6 +266,8 @@ class StudyMaterialsRepository:
                 "academic_year": academic_year,
                 "author_name": author_name,
                 "author_organization": author_organization,
+                "contributor_name": contributor_name,
+                "submission_id": str(submission_id) if submission_id else None,
                 "status": status,
                 "created_by": str(created_by) if created_by else None,
             },

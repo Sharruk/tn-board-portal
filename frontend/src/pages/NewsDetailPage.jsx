@@ -190,9 +190,17 @@ export default function NewsDetailPage() {
 
           {/* Category + title */}
           <div className="mb-5">
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 mb-3">
-              {icon} {article.category}
-            </span>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                {icon} {article.category}
+              </span>
+              {article.contributor_name && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200/70 rounded-full">
+                  <span>🏆 Contributed by:</span>
+                  <strong className="text-amber-900">{article.contributor_name}</strong>
+                </span>
+              )}
+            </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 leading-snug">
               {article.title}
             </h1>

@@ -28,6 +28,8 @@ class NoticesRepository:
         public_url: Optional[str] = None,
         file_type: Optional[str] = None,
         youtube_url: Optional[str] = None,
+        contributor_name: Optional[str] = None,
+        submission_id: Optional[str] = None,
         is_visible: bool = True,
         is_pinned: bool = False,
         expires_at: Optional[Any] = None,
@@ -38,17 +40,17 @@ class NoticesRepository:
             """
             INSERT INTO official_notices (
                 title, category, class_id, year, description, file_path,
-                public_url, file_type, youtube_url, is_visible, is_pinned,
-                expires_at, view_count, download_count, created_at, updated_at
+                public_url, file_type, youtube_url, contributor_name, submission_id,
+                is_visible, is_pinned, expires_at, view_count, download_count, created_at, updated_at
             )
             VALUES (
                 :title, :category, :class_id, :year, :description, :file_path,
-                :public_url, :file_type, :youtube_url, :is_visible, :is_pinned,
-                :expires_at, 0, 0, NOW(), NOW()
+                :public_url, :file_type, :youtube_url, :contributor_name, :submission_id,
+                :is_visible, :is_pinned, :expires_at, 0, 0, NOW(), NOW()
             )
             RETURNING id, title, category, class_id, year, description, file_path,
-                      public_url, file_type, youtube_url, is_visible, is_pinned,
-                      expires_at, view_count, download_count, created_at, updated_at
+                      public_url, file_type, youtube_url, contributor_name, submission_id,
+                      is_visible, is_pinned, expires_at, view_count, download_count, created_at, updated_at
             """
         )
         res = self._db.execute(
@@ -63,6 +65,8 @@ class NoticesRepository:
                 "public_url": public_url,
                 "file_type": file_type,
                 "youtube_url": youtube_url,
+                "contributor_name": contributor_name,
+                "submission_id": str(submission_id) if submission_id else None,
                 "is_visible": is_visible,
                 "is_pinned": is_pinned,
                 "expires_at": expires_at,

@@ -315,9 +315,8 @@ class SubmissionsService:
             except ValueError as e:
                 raise ValidationError(str(e))
 
-        paper_ids: list[int] = []
-
-        # ── PATH A: Admin-Prepared File Upload ──────────────────────────
+        # ── Pre-process prepared file if provided ──────────────────────
+        prepared_file_data: tuple[str, bytes, str] | None = None
         if prepared_file is not None:
             if isinstance(prepared_file, UploadFile):
                 raw_filename = prepared_file.filename or "prepared.pdf"
@@ -342,51 +341,100 @@ class SubmissionsService:
                 raise ValidationError(
                     f"Prepared file has unsupported extension '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}."
                 )
+            prepared_file_data = (raw_filename, content, content_type)
 
+        paper_ids: list[int] = []
+        target_id: str | None = None
+        slug: str | None = None
+
+        # ── 1. ROUTE BY DESTINATION TYPE ──────────────────────────────
+
+        if req.destination_type == "study_material":
+            if not req.class_id:
+                raise ValidationError("class_id is required to publish as Study Material.")
+            mat_title = (req.title or "").strip() or f"{sub.get('publisher_name', 'Student')} Study Material"
             try:
-                paper = self._repo.create_paper_from_prepared_file(
-                    file_bytes=content,
-                    subject_id=req.subject_id,
-                    exam_type=req.exam_type,
-                    year=req.year,
-                    paper_type=req.paper_type,
-                    month=req.month,
-                    district=req.district,
+                material = self._repo.create_study_material_from_submission(
                     submission=sub,
-                    title=req.title,
-                    download_filename=req.download_filename,
+                    class_id=req.class_id,
+                    title=mat_title,
+                    subject_id=req.subject_id,
+                    category_id=req.category_id,
+                    medium=req.medium or "both",
+                    question_formats=req.question_formats,
+                    tags=req.tags,
+                    academic_year=req.academic_year,
+                    author_name=req.author_name or sub.get("publisher_name"),
+                    author_organization=req.author_organization,
                     description=req.description,
-                    youtube_url=youtube_url,
-                    file_type=ext,
+                    download_filename=req.download_filename,
+                    prepared_file_data=prepared_file_data,
+                    created_by=current_user.get("id") if current_user else None,
                 )
-                paper_ids.append(paper["id"])
+                target_id = str(material["id"])
+                slug = material.get("slug")
             except Exception as exc:
-                logger.exception(
-                    "Failed to create paper from prepared file for submission %s: %s",
-                    submission_id,
-                    exc,
-                )
-                err_msg = str(exc).strip()
-                if "duplicate key" in err_msg.lower() or "unique constraint" in err_msg.lower():
-                    clean_reason = "A paper with this title, subject, year, and exam type already exists."
-                else:
-                    clean_reason = err_msg.split("\n")[0]
-                raise DatabaseError(
-                    f"Failed to publish prepared paper: {clean_reason}"
-                ) from exc
+                logger.exception("Failed to publish study material from submission %s: %s", submission_id, exc)
+                raise DatabaseError(f"Failed to publish Study Material: {exc}") from exc
 
-        # ── PATH B: Original Contributor Uploaded File(s) ───────────────
+        elif req.destination_type == "notice":
+            notice_title = (req.title or "").strip()
+            if not notice_title:
+                raise ValidationError("title is required to publish as Official Notice.")
+            try:
+                from datetime import datetime
+                notice = self._repo.create_notice_from_submission(
+                    submission=sub,
+                    title=notice_title,
+                    category=req.notice_category or "General",
+                    year=req.year or datetime.now().year,
+                    description=req.description,
+                    class_id=req.class_id,
+                    youtube_url=youtube_url,
+                    is_pinned=req.is_pinned,
+                    prepared_file_data=prepared_file_data,
+                )
+                target_id = str(notice["id"])
+            except Exception as exc:
+                logger.exception("Failed to publish official notice from submission %s: %s", submission_id, exc)
+                raise DatabaseError(f"Failed to publish Official Notice: {exc}") from exc
+
+        elif req.destination_type == "news":
+            news_title = (req.title or "").strip()
+            if not news_title:
+                raise ValidationError("title is required to publish as News.")
+            try:
+                news = self._repo.create_news_from_submission(
+                    submission=sub,
+                    title=news_title,
+                    category=req.news_category or "Announcements",
+                    summary=req.summary,
+                    content=req.content,
+                    tags=req.tags,
+                    class_id=req.class_id,
+                    district=req.district,
+                    youtube_url=youtube_url,
+                    is_pinned=req.is_pinned,
+                    prepared_file_data=prepared_file_data,
+                )
+                target_id = str(news["id"])
+                slug = news.get("slug")
+            except Exception as exc:
+                logger.exception("Failed to publish news from submission %s: %s", submission_id, exc)
+                raise DatabaseError(f"Failed to publish News Article: {exc}") from exc
+
         else:
-            files = self._repo.get_files(submission_id)
-            if not files:
-                raise ValidationError(
-                    "Submission has no files — cannot approve a submission without files."
-                )
+            # ── Default: Question Paper / Answer Key ───────────────────
+            if not req.subject_id or not req.exam_type or not req.year or not req.paper_type:
+                raise ValidationError("subject_id, exam_type, year, and paper_type are required to publish a Question Paper.")
 
-            for file_row in files:
+            # PATH A: Prepared File Upload
+            if prepared_file_data is not None:
+                raw_filename, content, content_type = prepared_file_data
+                ext = raw_filename.rsplit(".", 1)[-1].lower() if "." in raw_filename else "pdf"
                 try:
-                    paper = self._repo.create_paper_from_file(
-                        file_row=file_row,
+                    paper = self._repo.create_paper_from_prepared_file(
+                        file_bytes=content,
                         subject_id=req.subject_id,
                         exam_type=req.exam_type,
                         year=req.year,
@@ -398,24 +446,67 @@ class SubmissionsService:
                         download_filename=req.download_filename,
                         description=req.description,
                         youtube_url=youtube_url,
+                        file_type=ext,
                     )
                     paper_ids.append(paper["id"])
                 except Exception as exc:
                     logger.exception(
-                        "Failed to create paper for file %s in submission %s: %s",
-                        file_row.get("id"),
+                        "Failed to create paper from prepared file for submission %s: %s",
                         submission_id,
                         exc,
                     )
-                    filename = file_row.get("original_filename") or file_row.get("id")
                     err_msg = str(exc).strip()
                     if "duplicate key" in err_msg.lower() or "unique constraint" in err_msg.lower():
                         clean_reason = "A paper with this title, subject, year, and exam type already exists."
                     else:
                         clean_reason = err_msg.split("\n")[0]
                     raise DatabaseError(
-                        f"Failed to publish paper '{filename}': {clean_reason}"
+                        f"Failed to publish prepared paper: {clean_reason}"
                     ) from exc
+
+            # PATH B: Original Contributor Uploaded File(s)
+            else:
+                files = self._repo.get_files(submission_id)
+                if not files:
+                    raise ValidationError(
+                        "Submission has no files — cannot approve a submission without files."
+                    )
+
+                for file_row in files:
+                    try:
+                        paper = self._repo.create_paper_from_file(
+                            file_row=file_row,
+                            subject_id=req.subject_id,
+                            exam_type=req.exam_type,
+                            year=req.year,
+                            paper_type=req.paper_type,
+                            month=req.month,
+                            district=req.district,
+                            submission=sub,
+                            title=req.title,
+                            download_filename=req.download_filename,
+                            description=req.description,
+                            youtube_url=youtube_url,
+                        )
+                        paper_ids.append(paper["id"])
+                    except Exception as exc:
+                        logger.exception(
+                            "Failed to create paper for file %s in submission %s: %s",
+                            file_row.get("id"),
+                            submission_id,
+                            exc,
+                        )
+                        filename = file_row.get("original_filename") or file_row.get("id")
+                        err_msg = str(exc).strip()
+                        if "duplicate key" in err_msg.lower() or "unique constraint" in err_msg.lower():
+                            clean_reason = "A paper with this title, subject, year, and exam type already exists."
+                        else:
+                            clean_reason = err_msg.split("\n")[0]
+                        raise DatabaseError(
+                            f"Failed to publish paper '{filename}': {clean_reason}"
+                        ) from exc
+
+            target_id = str(paper_ids[0]) if paper_ids else None
 
         # Resolve thank-you message
         thank_you = (req.thank_you_message or "").strip() or DEFAULT_THANK_YOU_MESSAGE
@@ -425,6 +516,8 @@ class SubmissionsService:
             submission_id=submission_id,
             status="approved",
             thank_you_message=thank_you,
+            destination_type=req.destination_type,
+            target_id=target_id,
         )
 
         # Record centralized audit log event
@@ -441,10 +534,13 @@ class SubmissionsService:
                 action="SUBMISSION_APPROVED",
                 target_type="submission",
                 target_id=submission_id,
-                target_title=f"Submission {submission_id} approved",
+                target_title=f"Submission {submission_id} approved into {req.destination_type}",
                 reason=None,
                 metadata={
+                    "destination_type": req.destination_type,
+                    "target_id": target_id,
                     "paper_ids": paper_ids,
+                    "slug": slug,
                     "subject_id": req.subject_id,
                     "year": req.year,
                     "exam_type": req.exam_type,
@@ -456,13 +552,18 @@ class SubmissionsService:
             self._db.commit()
 
         logger.info(
-            "Submission %s approved — created paper ids: %s",
+            "Submission %s approved into %s — target_id=%s, paper_ids=%s",
             submission_id,
+            req.destination_type,
+            target_id,
             paper_ids,
         )
         return {
             "submission_id": submission_id,
             "status": "approved",
+            "destination_type": req.destination_type,
+            "target_id": target_id,
+            "slug": slug,
             "paper_ids": paper_ids,
             "thank_you_message": thank_you,
         }

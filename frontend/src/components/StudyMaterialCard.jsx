@@ -62,6 +62,11 @@ export default function StudyMaterialCard({
               {mediumLabel}
             </span>
           )}
+          {item.contributor_name && (
+            <span className="badge bg-amber-50 text-amber-800 font-medium border border-amber-200/70" title={`Contributed by ${item.contributor_name}`}>
+              🏆 {item.contributor_name}
+            </span>
+          )}
           {(item.chapter_name || item.unit) && (
             <span className="badge bg-blue-50 text-blue-700 font-medium">
               {[item.unit, item.chapter_name].filter(Boolean).join(' • ')}

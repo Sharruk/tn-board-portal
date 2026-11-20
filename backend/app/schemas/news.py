@@ -21,6 +21,8 @@ class NewsBase(BaseModel):
     pdf_url: Optional[str] = Field(None, description="Optional attached PDF CDN URL")
     class_id: Optional[int] = Field(None, description="Target class id (null for all)")
     district: Optional[str] = Field(None, description="Target district")
+    contributor_name: Optional[str] = Field(None, max_length=150, description="Contributor attribution")
+    submission_id: Optional[str] = Field(None, description="Linked submission UUID")
     status: NewsStatus = Field("draft", description="draft | published | archived")
     is_pinned: bool = Field(False, description="Whether article is pinned")
     published_at: Optional[datetime] = Field(None, description="Publish date")

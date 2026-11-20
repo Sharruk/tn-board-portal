@@ -18,6 +18,7 @@ All business logic lives in SubmissionsService.
 All database access lives in SubmissionsRepository.
 """
 
+import json
 import logging
 import urllib.parse
 from typing import Annotated
@@ -289,28 +290,79 @@ async def approve_submission(
             prepared_file = raw_file
             form_dict.pop("prepared_file", None)
 
+        dest_type = str(form_dict.get("destination_type") or "paper").strip()
         subject_id_raw = form_dict.get("subject_id")
         year_raw = form_dict.get("year")
-        if not subject_id_raw or not year_raw or not form_dict.get("exam_type") or not form_dict.get("paper_type"):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="subject_id, exam_type, year, and paper_type are required.",
-            )
+        class_id_raw = form_dict.get("class_id")
+
+        if dest_type == "paper":
+            if not subject_id_raw or not year_raw or not form_dict.get("exam_type") or not form_dict.get("paper_type"):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="subject_id, exam_type, year, and paper_type are required for Question Paper.",
+                )
+        elif dest_type == "study_material":
+            if not class_id_raw:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="class_id is required for Study Material.",
+                )
+        elif dest_type == "notice":
+            if not form_dict.get("title"):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="title is required for Official Notice.",
+                )
+        elif dest_type == "news":
+            if not form_dict.get("title"):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="title is required for News article.",
+                )
+
+        tags_raw = form_dict.get("tags")
+        tags_list = []
+        if tags_raw:
+            try:
+                tags_list = json.loads(tags_raw) if str(tags_raw).startswith("[") else [t.strip() for t in str(tags_raw).split(",") if t.strip()]
+            except Exception:
+                tags_list = [t.strip() for t in str(tags_raw).split(",") if t.strip()]
+
+        qf_raw = form_dict.get("question_formats")
+        qf_list = []
+        if qf_raw:
+            try:
+                qf_list = json.loads(qf_raw) if str(qf_raw).startswith("[") else [q.strip() for q in str(qf_raw).split(",") if q.strip()]
+            except Exception:
+                qf_list = [q.strip() for q in str(qf_raw).split(",") if q.strip()]
 
         try:
             req = ApproveRequest(
+                destination_type=dest_type,
                 title=str(form_dict["title"]).strip() if form_dict.get("title") else None,
                 download_filename=str(form_dict["download_filename"]).strip() if form_dict.get("download_filename") else None,
                 description=str(form_dict["description"]).strip() if form_dict.get("description") else None,
                 thank_you_message=str(form_dict["thank_you_message"]).strip() if form_dict.get("thank_you_message") else None,
                 youtube_url=str(form_dict["youtube_url"]).strip() if form_dict.get("youtube_url") else None,
-                class_id=int(form_dict["class_id"]) if form_dict.get("class_id") else None,
-                subject_id=int(subject_id_raw),
-                exam_type=str(form_dict["exam_type"]),
-                year=int(year_raw),
-                paper_type=str(form_dict["paper_type"]),
+                class_id=int(class_id_raw) if class_id_raw else None,
+                subject_id=int(subject_id_raw) if subject_id_raw else None,
+                exam_type=str(form_dict["exam_type"]) if form_dict.get("exam_type") else None,
+                year=int(year_raw) if year_raw else None,
+                paper_type=str(form_dict["paper_type"]) if form_dict.get("paper_type") else None,
                 month=str(form_dict["month"]).strip() if form_dict.get("month") else None,
                 district=str(form_dict["district"]).strip() if form_dict.get("district") else None,
+                category_id=int(form_dict["category_id"]) if form_dict.get("category_id") else None,
+                medium=str(form_dict["medium"]) if form_dict.get("medium") else "both",
+                question_formats=qf_list,
+                tags=tags_list,
+                academic_year=str(form_dict["academic_year"]).strip() if form_dict.get("academic_year") else None,
+                author_name=str(form_dict["author_name"]).strip() if form_dict.get("author_name") else None,
+                author_organization=str(form_dict["author_organization"]).strip() if form_dict.get("author_organization") else None,
+                notice_category=str(form_dict["notice_category"]).strip() if form_dict.get("notice_category") else None,
+                is_pinned=str(form_dict.get("is_pinned", "")).lower() in ("true", "1"),
+                news_category=str(form_dict["news_category"]).strip() if form_dict.get("news_category") else None,
+                summary=str(form_dict["summary"]).strip() if form_dict.get("summary") else None,
+                content=str(form_dict["content"]).strip() if form_dict.get("content") else None,
             )
         except Exception as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))

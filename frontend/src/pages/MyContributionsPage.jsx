@@ -273,25 +273,45 @@ export default function MyContributionsPage() {
                         </p>
                       </div>
 
-                      {/* Published Papers Links */}
+                      {/* Published Papers / Resources Links */}
                       {sub.published_papers && sub.published_papers.length > 0 && (
                         <div className="divide-y divide-emerald-100/80 pt-1">
-                          {sub.published_papers.map((paper) => (
-                            <div key={paper.id} className="pt-2 first:pt-0 flex items-center justify-between gap-3 flex-wrap">
-                              <div>
-                                <p className="text-xs font-bold text-gray-900">{paper.title}</p>
-                                <p className="text-[11px] text-emerald-700">
-                                  {[paper.class_name, paper.subject_name, paper.exam_type, paper.year].filter(Boolean).join(' • ')}
-                                </p>
+                          {sub.published_papers.map((item) => {
+                            let itemUrl = `/paper/${item.id}`
+                            let itemLabel = 'View Published Paper ↗'
+                            let itemIcon = '📄'
+
+                            if (item.destination_type === 'study_material') {
+                              itemUrl = `/study-materials/${item.slug || item.id}`
+                              itemLabel = 'View Study Material ↗'
+                              itemIcon = '📚'
+                            } else if (item.destination_type === 'notice') {
+                              itemUrl = `/notice/${item.id}`
+                              itemLabel = 'View Notice ↗'
+                              itemIcon = '📢'
+                            } else if (item.destination_type === 'news') {
+                              itemUrl = `/news/${item.slug || item.id}`
+                              itemLabel = 'View News ↗'
+                              itemIcon = '📰'
+                            }
+
+                            return (
+                              <div key={item.id} className="pt-2 first:pt-0 flex items-center justify-between gap-3 flex-wrap">
+                                <div>
+                                  <p className="text-xs font-bold text-gray-900">{item.title}</p>
+                                  <p className="text-[11px] text-emerald-700">
+                                    {[item.class_name, item.subject_name, item.exam_type, item.year].filter(Boolean).join(' • ')}
+                                  </p>
+                                </div>
+                                <Link
+                                  to={itemUrl}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-2xs"
+                                >
+                                  <span>{itemIcon}</span> {itemLabel}
+                                </Link>
                               </div>
-                              <Link
-                                to={`/paper/${paper.id}`}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-2xs"
-                              >
-                                <span>📄</span> View Published Paper ↗
-                              </Link>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       )}
                     </div>
