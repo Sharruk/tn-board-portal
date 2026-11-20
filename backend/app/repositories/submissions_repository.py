@@ -159,7 +159,7 @@ class SubmissionsRepository:
             limit,
         )
         sql = """
-            SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, thank_you_message, reviewed_at, created_at
+            SELECT id, publisher_name, email, firebase_uid, details, status, destination_type, target_id, rejection_reason, thank_you_message, reviewed_at, created_at
             FROM submissions
         """
         params: dict[str, Any] = {"limit": limit}
@@ -236,7 +236,7 @@ class SubmissionsRepository:
         )
         stmt = text(
             """
-            SELECT id, publisher_name, email, firebase_uid, details, status, rejection_reason, thank_you_message, reviewed_at, created_at
+            SELECT id, publisher_name, email, firebase_uid, details, status, destination_type, target_id, rejection_reason, thank_you_message, reviewed_at, created_at
             FROM submissions
             WHERE id::text = :submission_id
             """
@@ -401,22 +401,31 @@ class SubmissionsRepository:
         status: str,
         rejection_reason: str | None = None,
         thank_you_message: str | None = None,
+        destination_type: str | None = None,
+        target_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Update the status + reviewed_at of a submission.
         """
         logger.debug(
-            "SubmissionsRepository.update_status(submission_id=%s, status=%s)",
+            "SubmissionsRepository.update_status(submission_id=%s, status=%s, destination_type=%s, target_id=%s)",
             submission_id,
             status,
+            destination_type,
+            target_id,
         )
         now = datetime.now(timezone.utc)
         stmt = text(
             """
             UPDATE submissions
-            SET status = :status, reviewed_at = :reviewed_at, rejection_reason = :rejection_reason, thank_you_message = :thank_you_message
+            SET status = :status,
+                reviewed_at = :reviewed_at,
+                rejection_reason = :rejection_reason,
+                thank_you_message = :thank_you_message,
+                destination_type = COALESCE(:destination_type, destination_type),
+                target_id = COALESCE(:target_id, target_id)
             WHERE id::text = :submission_id
-            RETURNING id, publisher_name, email, firebase_uid, details, status, rejection_reason, thank_you_message, reviewed_at, created_at
+            RETURNING id, publisher_name, email, firebase_uid, details, status, destination_type, target_id, rejection_reason, thank_you_message, reviewed_at, created_at
             """
         )
         try:
@@ -428,13 +437,15 @@ class SubmissionsRepository:
                     "reviewed_at": now,
                     "rejection_reason": rejection_reason,
                     "thank_you_message": thank_you_message,
+                    "destination_type": destination_type,
+                    "target_id": str(target_id) if target_id else None,
                 },
             )
             self._db.commit()
             row = result.fetchone()
         except Exception as exc:
             err_msg = str(exc).lower()
-            if "thank_you_message" in err_msg or "undefinedcolumn" in err_msg or "no such column" in err_msg:
+            if "thank_you_message" in err_msg or "destination_type" in err_msg or "undefinedcolumn" in err_msg or "no such column" in err_msg:
                 self._db.rollback()
                 fallback_stmt = text(
                     """
@@ -462,6 +473,8 @@ class SubmissionsRepository:
         d = dict(row._mapping)
         d["id"] = str(d["id"])
         d.setdefault("thank_you_message", thank_you_message)
+        d.setdefault("destination_type", destination_type)
+        d.setdefault("target_id", str(target_id) if target_id else None)
         return d
 
 
@@ -957,6 +970,300 @@ class SubmissionsRepository:
                 raise
 
     # ------------------------------------------------------------------ #
+    # Multi-Category Approval Destinations
+    # ------------------------------------------------------------------ #
+
+    def create_study_material_from_submission(
+        self,
+        submission: dict[str, Any],
+        class_id: int,
+        title: str,
+        subject_id: int | None = None,
+        category_id: int | None = None,
+        medium: str = "both",
+        question_formats: list[str] | None = None,
+        tags: list[str] | None = None,
+        academic_year: str | None = None,
+        author_name: str | None = None,
+        author_organization: str | None = None,
+        description: str | None = None,
+        download_filename: str | None = None,
+        prepared_file_data: tuple[str, bytes, str] | None = None,
+        created_by: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Promote submission to a published Study Material with attached files.
+        Files are copied from private submissions bucket to public study-materials bucket.
+        Preserves contributor_name and submission_id.
+        """
+        from app.repositories.study_materials_repository import StudyMaterialsRepository
+
+        study_repo = StudyMaterialsRepository(self._db)
+        uploaded_paths: list[str] = []
+
+        try:
+            # 1. Create study material record
+            material = study_repo.create_material(
+                title=title,
+                class_id=class_id,
+                subject_id=subject_id,
+                category_id=category_id,
+                description=description,
+                medium=medium,
+                question_formats=question_formats or [],
+                tags=tags or [],
+                academic_year=academic_year,
+                author_name=author_name or submission.get("publisher_name"),
+                author_organization=author_organization,
+                contributor_name=submission.get("publisher_name"),
+                submission_id=submission.get("id"),
+                status="published",
+                created_by=created_by,
+            )
+            mat_id = material["id"]
+
+            # 2. Handle files
+            if prepared_file_data:
+                p_filename, p_content, p_content_type = prepared_file_data
+                p_ext = p_filename.rsplit(".", 1)[-1].lower() if "." in p_filename else "pdf"
+                file_uuid = uuid.uuid4().hex
+                storage_path = f"materials/{class_id}/{mat_id}/{file_uuid}.{p_ext}"
+
+                self._storage.from_("study-materials").upload(
+                    path=storage_path,
+                    file=p_content,
+                    file_options={"content-type": p_content_type, "upsert": "true"},
+                )
+                uploaded_paths.append(storage_path)
+
+                clean_fn = download_filename or p_filename
+                study_repo.add_file(
+                    material_id=mat_id,
+                    file_title=title,
+                    display_filename=clean_fn,
+                    file_type=p_ext if p_ext in ["pdf", "image", "word"] else "pdf",
+                    mime_type=p_content_type,
+                    file_size=len(p_content),
+                    bucket_name="study-materials",
+                    storage_path=storage_path,
+                )
+            else:
+                files = self.get_files(submission["id"])
+                if not files:
+                    raise ValueError("Submission has no files to publish as study material.")
+
+                for idx, f in enumerate(files):
+                    file_bytes = self.download_file_bytes(f["storage_path"])
+                    raw_name = f.get("original_filename") or f"file_{idx+1}.pdf"
+                    f_ext = (f.get("file_type") or "pdf").lstrip(".").lower()
+                    if f_ext == "pdf":
+                        c_type = "application/pdf"
+                    elif f_ext in ["jpg", "jpeg"]:
+                        c_type = "image/jpeg"
+                    elif f_ext == "png":
+                        c_type = "image/png"
+                    elif f_ext in ["doc", "docx"]:
+                        c_type = "application/msword"
+                    else:
+                        c_type = "application/octet-stream"
+
+                    file_uuid = uuid.uuid4().hex
+                    storage_path = f"materials/{class_id}/{mat_id}/{file_uuid}.{f_ext}"
+
+                    self._storage.from_("study-materials").upload(
+                        path=storage_path,
+                        file=file_bytes,
+                        file_options={"content-type": c_type, "upsert": "true"},
+                    )
+                    uploaded_paths.append(storage_path)
+
+                    dl_name = download_filename if (download_filename and idx == 0) else raw_name
+                    study_repo.add_file(
+                        material_id=mat_id,
+                        file_title=raw_name.rsplit(".", 1)[0].replace("_", " ").title()[:255],
+                        display_filename=dl_name,
+                        file_type=f_ext if f_ext in ["pdf", "image", "word"] else "pdf",
+                        mime_type=c_type,
+                        file_size=len(file_bytes),
+                        bucket_name="study-materials",
+                        storage_path=storage_path,
+                        sort_order=idx,
+                    )
+
+            self._db.commit()
+            return material
+        except Exception as exc:
+            self._db.rollback()
+            for up in uploaded_paths:
+                try:
+                    self._storage.from_("study-materials").remove([up])
+                except Exception as ce:
+                    logger.warning("Compensating cleanup failed for study material storage object %s: %s", up, ce)
+            raise
+
+    def create_notice_from_submission(
+        self,
+        submission: dict[str, Any],
+        title: str,
+        category: str,
+        year: int,
+        description: str | None = None,
+        class_id: int | None = None,
+        youtube_url: str | None = None,
+        is_pinned: bool = False,
+        prepared_file_data: tuple[str, bytes, str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Promote submission to a published Official Notice.
+        File is copied from private submissions bucket to public official-updates bucket.
+        Preserves contributor_name and submission_id.
+        """
+        from app.repositories.notices_repository import NoticesRepository
+
+        notice_repo = NoticesRepository(self._db)
+        uploaded_path: str | None = None
+
+        try:
+            if prepared_file_data:
+                p_filename, file_bytes, content_type = prepared_file_data
+                ext = p_filename.rsplit(".", 1)[-1].lower() if "." in p_filename else "pdf"
+            else:
+                files = self.get_files(submission["id"])
+                if not files:
+                    raise ValueError("Submission has no files to publish as official notice.")
+                first_file = files[0]
+                file_bytes = self.download_file_bytes(first_file["storage_path"])
+                ext = (first_file.get("file_type") or "pdf").lstrip(".").lower()
+                content_type = "application/pdf" if ext == "pdf" else ("image/jpeg" if ext in ["jpg", "jpeg"] else "application/octet-stream")
+
+            storage_path = f"notices/{uuid.uuid4().hex}.{ext}"
+            self._storage.from_("official-updates").upload(
+                path=storage_path,
+                file=file_bytes,
+                file_options={"content-type": content_type, "upsert": "false"},
+            )
+            uploaded_path = storage_path
+
+            url_response = self._storage.from_("official-updates").get_public_url(storage_path)
+            public_url = url_response if isinstance(url_response, str) else (url_response.get("publicUrl") if isinstance(url_response, dict) else None)
+
+            file_type_cat = "pdf" if ext == "pdf" else ("image" if ext in ["jpg", "jpeg", "png", "webp"] else ext)
+
+            notice = notice_repo.create_notice(
+                title=title,
+                category=category,
+                year=year,
+                description=description,
+                class_id=class_id,
+                file_path=storage_path,
+                public_url=public_url,
+                file_type=file_type_cat,
+                youtube_url=youtube_url,
+                contributor_name=submission.get("publisher_name"),
+                submission_id=submission.get("id"),
+                is_visible=True,
+                is_pinned=is_pinned,
+                auto_commit=True,
+            )
+            return notice
+        except Exception as exc:
+            self._db.rollback()
+            if uploaded_path:
+                try:
+                    self._storage.from_("official-updates").remove([uploaded_path])
+                except Exception as ce:
+                    logger.warning("Compensating cleanup failed for notice storage object %s: %s", uploaded_path, ce)
+            raise
+
+    def create_news_from_submission(
+        self,
+        submission: dict[str, Any],
+        title: str,
+        category: str,
+        summary: str | None = None,
+        content: str | None = None,
+        tags: list[str] | None = None,
+        class_id: int | None = None,
+        district: str | None = None,
+        youtube_url: str | None = None,
+        is_pinned: bool = False,
+        prepared_file_data: tuple[str, bytes, str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Promote submission to a published News Article.
+        Media is copied to public news-media bucket.
+        Preserves contributor_name and submission_id.
+        """
+        from app.repositories.news_repository import NewsRepository
+
+        news_repo = NewsRepository(self._db)
+        uploaded_path: str | None = None
+
+        try:
+            thumbnail_url: str | None = None
+            pdf_url: str | None = None
+
+            file_bytes: bytes | None = None
+            ext: str | None = None
+            content_type: str = "application/octet-stream"
+
+            if prepared_file_data:
+                p_filename, file_bytes, content_type = prepared_file_data
+                ext = p_filename.rsplit(".", 1)[-1].lower() if "." in p_filename else "pdf"
+            else:
+                files = self.get_files(submission["id"])
+                if files:
+                    first_file = files[0]
+                    file_bytes = self.download_file_bytes(first_file["storage_path"])
+                    ext = (first_file.get("file_type") or "pdf").lstrip(".").lower()
+                    content_type = "application/pdf" if ext == "pdf" else ("image/jpeg" if ext in ["jpg", "jpeg"] else "application/octet-stream")
+
+            if file_bytes and ext:
+                storage_path = f"news/{uuid.uuid4().hex}.{ext}"
+                self._storage.from_("news-media").upload(
+                    path=storage_path,
+                    file=file_bytes,
+                    file_options={"content-type": content_type, "upsert": "false"},
+                )
+                uploaded_path = storage_path
+
+                url_response = self._storage.from_("news-media").get_public_url(storage_path)
+                pub_url = url_response if isinstance(url_response, str) else (url_response.get("publicUrl") if isinstance(url_response, dict) else None)
+
+                if ext in ["jpg", "jpeg", "png", "webp", "gif"]:
+                    thumbnail_url = pub_url
+                elif ext == "pdf":
+                    pdf_url = pub_url
+
+            news = news_repo.create_news(
+                title=title,
+                category=category,
+                summary=summary,
+                content=content,
+                tags=tags or [],
+                thumbnail_url=thumbnail_url,
+                pdf_url=pdf_url,
+                youtube_url=youtube_url,
+                class_id=class_id,
+                district=district,
+                contributor_name=submission.get("publisher_name"),
+                submission_id=submission.get("id"),
+                status="published",
+                is_pinned=is_pinned,
+                published_at=datetime.now(timezone.utc),
+                auto_commit=True,
+            )
+            return news
+        except Exception as exc:
+            self._db.rollback()
+            if uploaded_path:
+                try:
+                    self._storage.from_("news-media").remove([uploaded_path])
+                except Exception as ce:
+                    logger.warning("Compensating cleanup failed for news storage object %s: %s", uploaded_path, ce)
+            raise
+
+    # ------------------------------------------------------------------ #
     # User's own submissions & contribution history
     # ------------------------------------------------------------------ #
 
@@ -1042,34 +1349,118 @@ class SubmissionsRepository:
             s_id = str(fd["submission_id"])
             files_map.setdefault(s_id, []).append(fd)
 
-        # 2. Fetch linked published papers
-        papers_stmt = text(
-            """
-            SELECT p.id, p.title, p.submission_id, p.exam_type, p.year, p.paper_type, p.public_url,
-                   s.name AS subject_name, c.name AS class_name
-            FROM papers p
-            LEFT JOIN subjects s ON p.subject_id = s.id
-            LEFT JOIN classes c ON s.class_id = c.id
-            WHERE p.submission_id::text IN :sub_ids
-            """
-        ).bindparams(bindparam("sub_ids", expanding=True))
+        # 2. Fetch linked published items across all destinations
+        papers_map: dict[str, list[dict[str, Any]]] = {}
 
+        # 2a. Papers
         try:
+            papers_stmt = text(
+                """
+                SELECT p.id, p.title, p.submission_id::text AS submission_id, p.exam_type, p.year, p.paper_type, p.public_url,
+                       s.name AS subject_name, c.name AS class_name
+                FROM papers p
+                LEFT JOIN subjects s ON p.subject_id = s.id
+                LEFT JOIN classes c ON s.class_id = c.id
+                WHERE p.submission_id::text IN :sub_ids
+                """
+            ).bindparams(bindparam("sub_ids", expanding=True))
             papers_res = self._db.execute(papers_stmt, {"sub_ids": sub_ids})
-            papers_map: dict[str, list[dict[str, Any]]] = {}
             for r in papers_res.fetchall():
                 pd = dict(r._mapping)
+                pd["destination_type"] = "paper"
                 s_id = str(pd["submission_id"])
                 papers_map.setdefault(s_id, []).append(pd)
         except Exception as e:
             logger.debug("Failed to query linked papers for user submissions: %s", e)
-            papers_map = {}
 
-        # Merge files and published papers into submissions
+        # 2b. Study Materials
+        try:
+            sm_stmt = text(
+                """
+                SELECT sm.id::text AS id, sm.title, sm.slug, sm.submission_id::text AS submission_id,
+                       sm.academic_year, c.name AS class_name, s.name AS subject_name
+                FROM study_materials sm
+                LEFT JOIN classes c ON sm.class_id = c.id
+                LEFT JOIN subjects s ON sm.subject_id = s.id
+                WHERE sm.submission_id::text IN :sub_ids
+                """
+            ).bindparams(bindparam("sub_ids", expanding=True))
+            sm_res = self._db.execute(sm_stmt, {"sub_ids": sub_ids})
+            for r in sm_res.fetchall():
+                smd = dict(r._mapping)
+                s_id = str(smd["submission_id"])
+                papers_map.setdefault(s_id, []).append({
+                    "id": smd["id"],
+                    "title": smd["title"],
+                    "destination_type": "study_material",
+                    "slug": smd.get("slug"),
+                    "class_name": smd.get("class_name"),
+                    "subject_name": smd.get("subject_name"),
+                    "year": int(smd["academic_year"][:4]) if smd.get("academic_year") and smd["academic_year"][:4].isdigit() else None,
+                })
+        except Exception as e:
+            logger.debug("Failed to query linked study materials for user submissions: %s", e)
+
+        # 2c. Official Notices
+        try:
+            n_stmt = text(
+                """
+                SELECT n.id, n.title, n.submission_id::text AS submission_id, n.year, n.category, n.public_url,
+                       c.name AS class_name
+                FROM official_notices n
+                LEFT JOIN classes c ON n.class_id = c.id
+                WHERE n.submission_id::text IN :sub_ids
+                """
+            ).bindparams(bindparam("sub_ids", expanding=True))
+            n_res = self._db.execute(n_stmt, {"sub_ids": sub_ids})
+            for r in n_res.fetchall():
+                nd = dict(r._mapping)
+                s_id = str(nd["submission_id"])
+                papers_map.setdefault(s_id, []).append({
+                    "id": nd["id"],
+                    "title": nd["title"],
+                    "destination_type": "notice",
+                    "class_name": nd.get("class_name"),
+                    "exam_type": nd.get("category"),
+                    "year": nd.get("year"),
+                    "public_url": nd.get("public_url"),
+                })
+        except Exception as e:
+            logger.debug("Failed to query linked notices for user submissions: %s", e)
+
+        # 2d. News Articles
+        try:
+            nw_stmt = text(
+                """
+                SELECT nw.id::text AS id, nw.title, nw.slug, nw.submission_id::text AS submission_id,
+                       nw.category, c.name AS class_name
+                FROM news_updates nw
+                LEFT JOIN classes c ON nw.class_id = c.id
+                WHERE nw.submission_id::text IN :sub_ids
+                """
+            ).bindparams(bindparam("sub_ids", expanding=True))
+            nw_res = self._db.execute(nw_stmt, {"sub_ids": sub_ids})
+            for r in nw_res.fetchall():
+                nwd = dict(r._mapping)
+                s_id = str(nwd["submission_id"])
+                papers_map.setdefault(s_id, []).append({
+                    "id": nwd["id"],
+                    "title": nwd["title"],
+                    "destination_type": "news",
+                    "slug": nwd.get("slug"),
+                    "class_name": nwd.get("class_name"),
+                    "exam_type": nwd.get("category"),
+                })
+        except Exception as e:
+            logger.debug("Failed to query linked news for user submissions: %s", e)
+
+        # Merge files and published items into submissions
         for sub in submissions:
             s_id = sub["id"]
             sub["files"] = files_map.get(s_id, [])
             sub["published_papers"] = papers_map.get(s_id, [])
+            sub.setdefault("destination_type", None)
+            sub.setdefault("target_id", None)
 
         return submissions
 

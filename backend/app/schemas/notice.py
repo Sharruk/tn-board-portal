@@ -17,6 +17,8 @@ class NoticeBase(BaseModel):
     public_url: Optional[str] = Field(None, description="Supabase storage public URL")
     file_type: Optional[str] = Field(None, description="File extension/type (pdf, image, etc.)")
     youtube_url: Optional[str] = Field(None, description="Optional YouTube embed URL")
+    contributor_name: Optional[str] = Field(None, max_length=150, description="Contributor attribution")
+    submission_id: Optional[str] = Field(None, description="Linked submission UUID")
     is_visible: bool = Field(True, description="Public visibility flag")
     is_pinned: bool = Field(False, description="Whether notice is pinned to top")
     expires_at: Optional[datetime] = Field(None, description="Expiry date after which notice is hidden")

@@ -498,6 +498,12 @@ export default function StudyMaterialDetailPage() {
                   <span>{material.category_name}</span>
                 </span>
               )}
+              {material.contributor_name && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200/70 rounded-full">
+                  <span>🏆 Contributed by:</span>
+                  <strong className="text-amber-900">{material.contributor_name}</strong>
+                </span>
+              )}
               {material.author_name && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200/70 rounded-full">
                   <span>✍️ Prepared by:</span>

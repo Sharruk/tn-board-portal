@@ -9,11 +9,27 @@ import {
   downloadSubmissionFile,
 } from '../../services/submissions'
 import { getClasses, getSubjectsForClass } from '../../services/classes'
+import { getMaterialCategories } from '../../services/materialCategories'
 import { EXAM_TYPES, MONTHS, TN_DISTRICTS } from '../../services/papers'
 import { viewPdf } from '../../utils/download'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i)
+
+const DESTINATION_OPTIONS = [
+  { id: 'paper', label: 'Question Paper / Key', icon: '📄', description: 'Past papers & answer keys' },
+  { id: 'study_material', label: 'Study Material', icon: '📚', description: 'Notes, guides & solutions' },
+  { id: 'notice', label: 'Official Notice', icon: '📢', description: 'Circulars, dates & notifications' },
+  { id: 'news', label: 'News & Updates', icon: '📰', description: 'Articles & educational updates' },
+]
+
+const NOTICE_CATEGORIES = [
+  'General', 'Exams', 'Time Table', 'Results', 'Admission', 'Syllabus', 'Government Orders'
+]
+
+const NEWS_CATEGORIES = [
+  'Announcements', 'Exam Updates', 'Syllabus & Curriculum', 'Education News', 'Results', 'General'
+]
 
 const DEFAULT_THANK_YOU_MESSAGE =
   "🎉 Your contribution is now public!\nThank you for contributing to the TN Board community. Your contribution may help another student prepare better. ❤️"
@@ -350,6 +366,9 @@ function extractYouTubeId(url) {
 
 function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onRequestDelete }) {
   const initialFileName = submission.files?.[0]?.original_filename || ''
+  const [destinationType, setDestinationType] = useState('paper')
+  const [materialCategories, setMaterialCategories] = useState([])
+
   const [approveForm, setApproveForm] = useState({
     title: '',
     downloadFilename: initialFileName,
@@ -363,6 +382,27 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
     month: '',
     district: '',
   })
+
+  const [studyForm, setStudyForm] = useState({
+    categoryId: '',
+    medium: 'both',
+    academicYear: '',
+    authorName: submission.publisher_name || '',
+    authorOrganization: '',
+  })
+
+  const [noticeForm, setNoticeForm] = useState({
+    category: 'General',
+    isPinned: false,
+  })
+
+  const [newsForm, setNewsForm] = useState({
+    category: 'Announcements',
+    summary: submission.details ? submission.details.slice(0, 250) : '',
+    content: submission.details || '',
+    isPinned: false,
+  })
+
   const [publishSource, setPublishSource]     = useState('original') // 'original' | 'prepared'
   const [preparedFile, setPreparedFile]       = useState(null)
   const [thankYouMessage, setThankYouMessage] = useState(DEFAULT_THANK_YOU_MESSAGE)
@@ -377,56 +417,134 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
   const [error, setError]                     = useState(null)
 
   useEffect(() => {
+    getMaterialCategories().then(r => setMaterialCategories(r.data || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
     if (!approveForm.classId) { setSubjects([]); return }
     getSubjectsForClass(approveForm.classId).then(r => setSubjects(r.data || []))
   }, [approveForm.classId])
 
-  // Automatically construct clean default title and download filename when metadata changes
+  // Automatically construct clean default title when metadata changes
   useEffect(() => {
+    if (titleManuallyEdited) return
     const cls = classes.find(c => String(c.id) === String(approveForm.classId))?.name || ''
     const sub = subjects.find(s => String(s.id) === String(approveForm.subjectId))?.name || ''
-    const typeStr = approveForm.paperType === 'question' ? 'Question Paper' : 'Answer Key'
-    const parts = [
-      cls,
-      sub,
-      approveForm.examType,
-      approveForm.month,
-      approveForm.year,
-      approveForm.district,
-      typeStr,
-    ].filter(Boolean)
-    if (parts.length >= 2) {
-      const genTitle = parts.join(' ')
-      if (!titleManuallyEdited) {
-        setApproveForm(f => ({ ...f, title: genTitle }))
+
+    if (destinationType === 'paper') {
+      const typeStr = approveForm.paperType === 'question' ? 'Question Paper' : 'Answer Key'
+      const parts = [
+        cls,
+        sub,
+        approveForm.examType,
+        approveForm.month,
+        approveForm.year,
+        approveForm.district,
+        typeStr,
+      ].filter(Boolean)
+      if (parts.length >= 2) {
+        setApproveForm(f => ({ ...f, title: parts.join(' ') }))
       }
-      if (!filenameManuallyEdited && !initialFileName) {
-        const typeCode = approveForm.paperType === 'question' ? 'QP' : 'Key'
-        const fnParts = [
-          cls.replace(/\s+/g, ''),
-          sub.replace(/\s+/g, ''),
-          (approveForm.examType || '').replace(/\s+/g, ''),
-          approveForm.month || '',
-          approveForm.year || '',
-          (approveForm.district || '').replace(/\s+/g, ''),
-          typeCode,
-        ].filter(Boolean)
+    } else if (destinationType === 'study_material') {
+      const catObj = materialCategories.find(c => String(c.id) === String(studyForm.categoryId))
+      const catName = catObj ? catObj.name : ''
+      const parts = [cls, sub, catName, 'Study Material'].filter(Boolean)
+      if (parts.length >= 2) {
+        setApproveForm(f => ({ ...f, title: parts.join(' ') }))
+      }
+    } else if (destinationType === 'notice') {
+      const parts = [cls, 'Official Notice', noticeForm.category, approveForm.year].filter(Boolean)
+      setApproveForm(f => ({ ...f, title: parts.join(' ') }))
+    } else if (destinationType === 'news') {
+      const parts = ['TN Board Education Update', newsForm.category, approveForm.year].filter(Boolean)
+      setApproveForm(f => ({ ...f, title: parts.join(' - ') }))
+    }
+  }, [
+    destinationType,
+    approveForm.classId,
+    approveForm.subjectId,
+    approveForm.examType,
+    approveForm.month,
+    approveForm.year,
+    approveForm.district,
+    approveForm.paperType,
+    studyForm.categoryId,
+    noticeForm.category,
+    newsForm.category,
+    classes,
+    subjects,
+    materialCategories,
+    titleManuallyEdited,
+  ])
+
+  // Construct download filename for paper and study materials
+  useEffect(() => {
+    if (filenameManuallyEdited || initialFileName) return
+    const cls = classes.find(c => String(c.id) === String(approveForm.classId))?.name || ''
+    const sub = subjects.find(s => String(s.id) === String(approveForm.subjectId))?.name || ''
+
+    if (destinationType === 'paper') {
+      const typeCode = approveForm.paperType === 'question' ? 'QP' : 'Key'
+      const fnParts = [
+        cls.replace(/\s+/g, ''),
+        sub.replace(/\s+/g, ''),
+        (approveForm.examType || '').replace(/\s+/g, ''),
+        approveForm.month || '',
+        approveForm.year || '',
+        (approveForm.district || '').replace(/\s+/g, ''),
+        typeCode,
+      ].filter(Boolean)
+      if (fnParts.length >= 2) {
+        setApproveForm(f => ({ ...f, downloadFilename: `${fnParts.join('_')}.pdf` }))
+      }
+    } else if (destinationType === 'study_material') {
+      const fnParts = [
+        cls.replace(/\s+/g, ''),
+        sub.replace(/\s+/g, ''),
+        'StudyMaterial',
+        approveForm.year || '',
+      ].filter(Boolean)
+      if (fnParts.length >= 2) {
         setApproveForm(f => ({ ...f, downloadFilename: `${fnParts.join('_')}.pdf` }))
       }
     }
-  }, [approveForm.classId, approveForm.subjectId, approveForm.examType, approveForm.month, approveForm.year, approveForm.district, approveForm.paperType, classes, subjects, titleManuallyEdited, filenameManuallyEdited, initialFileName])
+  }, [
+    destinationType,
+    approveForm.classId,
+    approveForm.subjectId,
+    approveForm.examType,
+    approveForm.month,
+    approveForm.year,
+    approveForm.district,
+    approveForm.paperType,
+    classes,
+    subjects,
+    filenameManuallyEdited,
+    initialFileName,
+  ])
 
   const ytId = extractYouTubeId(approveForm.youtubeUrl)
 
   const handleApprove = async () => {
     if (loading) return
     setError(null)
-    if (!approveForm.classId)   return setError('Please select a class.')
-    if (!approveForm.subjectId) return setError('Please select a subject.')
-    if (!approveForm.examType)  return setError('Please select an exam type.')
-    if (!approveForm.year)      return setError('Please select a year.')
-    if (!approveForm.title.trim()) return setError('Please enter a paper title.')
-    if (!approveForm.downloadFilename.trim()) return setError('Please enter a download file name.')
+
+    if (destinationType === 'paper') {
+      if (!approveForm.classId)   return setError('Please select a class.')
+      if (!approveForm.subjectId) return setError('Please select a subject.')
+      if (!approveForm.examType)  return setError('Please select an exam type.')
+      if (!approveForm.year)      return setError('Please select a year.')
+      if (!approveForm.title.trim()) return setError('Please enter a paper title.')
+      if (!approveForm.downloadFilename.trim()) return setError('Please enter a download file name.')
+    } else if (destinationType === 'study_material') {
+      if (!approveForm.classId)   return setError('Please select a target class for the study material.')
+      if (!approveForm.title.trim()) return setError('Please enter a study material title.')
+    } else if (destinationType === 'notice') {
+      if (!approveForm.title.trim()) return setError('Please enter an official notice title.')
+    } else if (destinationType === 'news') {
+      if (!approveForm.title.trim()) return setError('Please enter a news article title.')
+    }
+
     if (approveForm.youtubeUrl.trim() && !extractYouTubeId(approveForm.youtubeUrl.trim())) {
       return setError('Please enter a valid YouTube video URL (e.g. https://youtube.com/watch?v=... or https://youtu.be/...) or leave it blank.')
     }
@@ -438,36 +556,80 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
     try {
       if (publishSource === 'prepared' && preparedFile) {
         const formData = new FormData()
+        formData.append('destination_type', destinationType)
         formData.append('title', approveForm.title.trim())
-        formData.append('download_filename', approveForm.downloadFilename.trim())
+        if (approveForm.downloadFilename?.trim()) formData.append('download_filename', approveForm.downloadFilename.trim())
         if (approveForm.description.trim()) formData.append('description', approveForm.description.trim())
         if (thankYouMessage.trim()) formData.append('thank_you_message', thankYouMessage.trim())
         if (approveForm.youtubeUrl.trim()) formData.append('youtube_url', approveForm.youtubeUrl.trim())
-        formData.append('class_id', String(approveForm.classId))
-        formData.append('subject_id', String(approveForm.subjectId))
-        formData.append('exam_type', approveForm.examType)
-        formData.append('year', String(approveForm.year))
-        formData.append('paper_type', approveForm.paperType)
-        if (approveForm.month) formData.append('month', approveForm.month)
-        if (approveForm.district) formData.append('district', approveForm.district)
-        formData.append('prepared_file', preparedFile)
+        if (approveForm.classId) formData.append('class_id', String(approveForm.classId))
 
+        if (destinationType === 'paper') {
+          formData.append('subject_id', String(approveForm.subjectId))
+          formData.append('exam_type', approveForm.examType)
+          formData.append('year', String(approveForm.year))
+          formData.append('paper_type', approveForm.paperType)
+          if (approveForm.month) formData.append('month', approveForm.month)
+          if (approveForm.district) formData.append('district', approveForm.district)
+        } else if (destinationType === 'study_material') {
+          if (approveForm.subjectId) formData.append('subject_id', String(approveForm.subjectId))
+          if (studyForm.categoryId) formData.append('category_id', String(studyForm.categoryId))
+          formData.append('medium', studyForm.medium || 'both')
+          if (studyForm.academicYear) formData.append('academic_year', studyForm.academicYear)
+          if (studyForm.authorName) formData.append('author_name', studyForm.authorName)
+          if (studyForm.authorOrganization) formData.append('author_organization', studyForm.authorOrganization)
+        } else if (destinationType === 'notice') {
+          formData.append('notice_category', noticeForm.category)
+          formData.append('year', String(approveForm.year || CURRENT_YEAR))
+          formData.append('is_pinned', String(noticeForm.isPinned))
+        } else if (destinationType === 'news') {
+          formData.append('news_category', newsForm.category)
+          if (newsForm.summary) formData.append('summary', newsForm.summary)
+          if (newsForm.content) formData.append('content', newsForm.content)
+          if (approveForm.district) formData.append('district', approveForm.district)
+          formData.append('is_pinned', String(newsForm.isPinned))
+        }
+
+        formData.append('prepared_file', preparedFile)
         await approveSubmission(submission.id, formData)
       } else {
-        await approveSubmission(submission.id, {
+        const payload = {
+          destination_type:   destinationType,
           title:              approveForm.title.trim(),
-          download_filename:  approveForm.downloadFilename.trim(),
+          download_filename:  approveForm.downloadFilename?.trim() || null,
           description:        approveForm.description.trim() || null,
           thank_you_message:  thankYouMessage.trim() || null,
           youtube_url:        approveForm.youtubeUrl.trim() || null,
-          class_id:           parseInt(approveForm.classId, 10),
-          subject_id:         parseInt(approveForm.subjectId, 10),
-          exam_type:          approveForm.examType,
-          year:               parseInt(approveForm.year, 10),
-          paper_type:         approveForm.paperType,
-          month:              approveForm.month || null,
-          district:           approveForm.district || null,
-        })
+          class_id:           approveForm.classId ? parseInt(approveForm.classId, 10) : null,
+        }
+
+        if (destinationType === 'paper') {
+          payload.subject_id = parseInt(approveForm.subjectId, 10)
+          payload.exam_type  = approveForm.examType
+          payload.year       = parseInt(approveForm.year, 10)
+          payload.paper_type = approveForm.paperType
+          payload.month      = approveForm.month || null
+          payload.district   = approveForm.district || null
+        } else if (destinationType === 'study_material') {
+          payload.subject_id = approveForm.subjectId ? parseInt(approveForm.subjectId, 10) : null
+          payload.category_id = studyForm.categoryId ? parseInt(studyForm.categoryId, 10) : null
+          payload.medium = studyForm.medium || 'both'
+          payload.academic_year = studyForm.academicYear || null
+          payload.author_name = studyForm.authorName || null
+          payload.author_organization = studyForm.authorOrganization || null
+        } else if (destinationType === 'notice') {
+          payload.notice_category = noticeForm.category
+          payload.year = parseInt(approveForm.year, 10) || CURRENT_YEAR
+          payload.is_pinned = Boolean(noticeForm.isPinned)
+        } else if (destinationType === 'news') {
+          payload.news_category = newsForm.category
+          payload.summary = newsForm.summary || null
+          payload.content = newsForm.content || null
+          payload.district = approveForm.district || null
+          payload.is_pinned = Boolean(newsForm.isPinned)
+        }
+
+        await approveSubmission(submission.id, payload)
       }
       onReviewed('approved', submission.id)
       onClose()
@@ -592,17 +754,32 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
                     <span>✅</span> Approved &amp; Published
                   </p>
                   <p className="text-xs text-emerald-700 mt-1">
-                    This submission has been approved and published to the public materials catalog. Contributor attribution remains preserved.
+                    This submission was approved as <strong>{
+                      submission.destination_type === 'study_material' ? 'Study Material' :
+                      submission.destination_type === 'notice' ? 'Official Notice' :
+                      submission.destination_type === 'news' ? 'News Article' :
+                      'Question Paper'
+                    }</strong> and published to the live portal. Contributor attribution ({submission.publisher_name}) is preserved.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <a
-                    href="/admin/papers"
+                    href={
+                      submission.destination_type === 'study_material' ? '/admin/study-materials' :
+                      submission.destination_type === 'notice' ? '/admin/official-notices' :
+                      submission.destination_type === 'news' ? '/admin/news' :
+                      '/admin/papers'
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs font-semibold text-emerald-800 bg-white border border-emerald-300 hover:bg-emerald-100 px-4 py-2.5 rounded-xl transition-colors shrink-0 flex items-center justify-center gap-1.5 shadow-2xs"
                   >
-                    <span>📄</span> View Published Paper ↗
+                    <span>{
+                      submission.destination_type === 'study_material' ? '📚' :
+                      submission.destination_type === 'notice' ? '📢' :
+                      submission.destination_type === 'news' ? '📰' :
+                      '📄'
+                    }</span> View Published Module ↗
                   </a>
                   <button
                     id="delete-approved-submission-btn"
@@ -658,11 +835,47 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
             <div className="border border-emerald-200 bg-emerald-50/70 rounded-2xl p-5 sm:p-6 space-y-5">
               <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
                 <p className="text-base font-bold text-emerald-900 flex items-center gap-2">
-                  <span>✅</span> Approve &amp; Publish Paper
+                  <span>✅</span> Approve &amp; Publish Submission
                 </p>
                 <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full">
                   Admin Action
                 </span>
+              </div>
+
+              {/* ── 0. Destination Module Selector ── */}
+              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                    Select Destination Module <span className="text-red-500">*</span>
+                  </p>
+                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60">
+                    Category Routing
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {DESTINATION_OPTIONS.map(dest => {
+                    const active = destinationType === dest.id
+                    return (
+                      <button
+                        key={dest.id}
+                        type="button"
+                        onClick={() => {
+                          setDestinationType(dest.id)
+                          setTitleManuallyEdited(false)
+                        }}
+                        className={`text-left p-3 rounded-xl border transition-all flex flex-col justify-between ${
+                          active
+                            ? 'bg-emerald-50/70 border-emerald-500 ring-2 ring-emerald-500 font-bold shadow-xs'
+                            : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                        }`}
+                      >
+                        <div className="text-xl mb-1">{dest.icon}</div>
+                        <p className={`text-xs ${active ? 'text-emerald-950 font-bold' : 'font-semibold text-gray-900'}`}>{dest.label}</p>
+                        <p className={`text-[10px] mt-0.5 ${active ? 'text-emerald-700' : 'text-gray-400'}`}>{dest.description}</p>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
 
               {/* ── Publication Choice: Original Files vs Admin Prepared PDF ── */}
@@ -732,10 +945,10 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
                 )}
               </div>
 
-              {/* ── 1. Paper Title (Admin Editable) ── */}
+              {/* ── 1. Title (Admin Editable) ── */}
               <div>
                 <label className="block text-xs font-bold text-gray-800 mb-1">
-                  Paper Title <span className="text-red-500">*</span>
+                  Title <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -744,55 +957,346 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
                     setTitleManuallyEdited(true)
                     setApproveForm(f => ({ ...f, title: e.target.value }))
                   }}
-                  placeholder="e.g. Class 10 Science Monthly Test Question Paper August 2026 - Chennai District"
+                  placeholder={
+                    destinationType === 'paper' ? 'e.g. Class 10 Science Monthly Test Question Paper August 2026 - Chennai District' :
+                    destinationType === 'study_material' ? 'e.g. Class 10 Mathematics Complete Formula Notes & 1-Mark Guide' :
+                    destinationType === 'notice' ? 'e.g. TN DGE Notification: Public Exam March 2026 Time Table & Instructions' :
+                    'e.g. TN State Board Announces Class 10 & 12 Examination Schedule 2026'
+                  }
                   className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white font-medium text-gray-900 placeholder:text-gray-400 shadow-2xs"
-                  maxLength={255}
+                  maxLength={400}
                   required
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
-                  The public paper will be published with this human-readable title.
+                  The item will be published with this human-readable title.
                 </p>
               </div>
 
-              {/* ── 2. Download File Name (Admin Editable) ── */}
-              <div>
-                <label className="block text-xs font-bold text-gray-800 mb-1">
-                  Download File Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={approveForm.downloadFilename}
-                  onChange={e => {
-                    setFilenameManuallyEdited(true)
-                    setApproveForm(f => ({ ...f, downloadFilename: e.target.value }))
-                  }}
-                  placeholder="e.g. Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf"
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white font-mono text-gray-900 placeholder:text-gray-400 shadow-2xs"
-                  maxLength={255}
-                  required
-                />
-                <p className="text-[11px] text-gray-500 mt-1">
-                  This is the clean filename students receive when clicking Download (browser download).
-                </p>
-              </div>
+              {/* ── 2. Download File Name (for Papers & Study Materials) ── */}
+              {(destinationType === 'paper' || destinationType === 'study_material') && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
+                    Download File Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={approveForm.downloadFilename}
+                    onChange={e => {
+                      setFilenameManuallyEdited(true)
+                      setApproveForm(f => ({ ...f, downloadFilename: e.target.value }))
+                    }}
+                    placeholder="e.g. Class10_Science_MonthlyTest_August2026_Chennai_QP.pdf"
+                    className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white font-mono text-gray-900 placeholder:text-gray-400 shadow-2xs"
+                    maxLength={255}
+                    required
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    This is the clean filename students receive when clicking Download (browser download).
+                  </p>
+                </div>
+              )}
 
-              {/* ── 3. Description (Admin Editable) ── */}
+              {/* ── 3. Destination-Specific Metadata ── */}
+
+              {/* Destination A: Question Paper */}
+              {destinationType === 'paper' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
+                    <select
+                      value={approveForm.classId}
+                      onChange={e => setApproveForm(f => ({ ...f, classId: e.target.value, subjectId: '' }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">Select class…</option>
+                      {classes.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Subject <span className="text-red-500">*</span></label>
+                    <select
+                      value={approveForm.subjectId}
+                      onChange={e => setApproveForm(f => ({ ...f, subjectId: e.target.value }))}
+                      disabled={!approveForm.classId}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none disabled:opacity-50 bg-white font-medium"
+                    >
+                      <option value="">Select subject…</option>
+                      {subjects.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Exam Type <span className="text-red-500">*</span></label>
+                    <select
+                      value={approveForm.examType}
+                      onChange={e => setApproveForm(f => ({ ...f, examType: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">Select exam type…</option>
+                      {EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Year <span className="text-red-500">*</span></label>
+                    <select
+                      value={approveForm.year}
+                      onChange={e => setApproveForm(f => ({ ...f, year: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Paper Type <span className="text-red-500">*</span></label>
+                    <select
+                      value={approveForm.paperType}
+                      onChange={e => setApproveForm(f => ({ ...f, paperType: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="question">Question Paper</option>
+                      <option value="answer_key">Answer Key</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Month <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <select
+                      value={approveForm.month}
+                      onChange={e => setApproveForm(f => ({ ...f, month: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">Select month…</option>
+                      {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 mb-1">District <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <select
+                      value={approveForm.district}
+                      onChange={e => setApproveForm(f => ({ ...f, district: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">No specific district (State-wide)</option>
+                      {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Destination B: Study Material */}
+              {destinationType === 'study_material' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Target Class <span className="text-red-500">*</span></label>
+                    <select
+                      value={approveForm.classId}
+                      onChange={e => setApproveForm(f => ({ ...f, classId: e.target.value, subjectId: '' }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">Select class…</option>
+                      {classes.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Subject <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <select
+                      value={approveForm.subjectId}
+                      onChange={e => setApproveForm(f => ({ ...f, subjectId: e.target.value }))}
+                      disabled={!approveForm.classId}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none disabled:opacity-50 bg-white font-medium"
+                    >
+                      <option value="">General (All / Class-level)</option>
+                      {subjects.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Category <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <select
+                      value={studyForm.categoryId}
+                      onChange={e => setStudyForm(f => ({ ...f, categoryId: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">General Study Material</option>
+                      {materialCategories.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Language Medium</label>
+                    <select
+                      value={studyForm.medium}
+                      onChange={e => setStudyForm(f => ({ ...f, medium: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="both">Both (Tamil &amp; English)</option>
+                      <option value="tamil">Tamil Medium</option>
+                      <option value="english">English Medium</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Prepared By / Author Name <span className="text-gray-400 font-normal">(teacher/org)</span></label>
+                    <input
+                      type="text"
+                      value={studyForm.authorName}
+                      onChange={e => setStudyForm(f => ({ ...f, authorName: e.target.value }))}
+                      placeholder="e.g. Mr. K. Ramanathan M.Sc., B.Ed."
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Author Organization / School <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <input
+                      type="text"
+                      value={studyForm.authorOrganization}
+                      onChange={e => setStudyForm(f => ({ ...f, authorOrganization: e.target.value }))}
+                      placeholder="e.g. GHSS Chennai / District Resource Group"
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Destination C: Official Notice */}
+              {destinationType === 'notice' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Notice Category <span className="text-red-500">*</span></label>
+                    <select
+                      value={noticeForm.category}
+                      onChange={e => setNoticeForm(f => ({ ...f, category: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      {NOTICE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Academic Year <span className="text-red-500">*</span></label>
+                    <select
+                      value={approveForm.year}
+                      onChange={e => setApproveForm(f => ({ ...f, year: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Target Class <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <select
+                      value={approveForm.classId}
+                      onChange={e => setApproveForm(f => ({ ...f, classId: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">All Classes (State-wide)</option>
+                      {classes.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center pt-6">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-gray-800">
+                      <input
+                        type="checkbox"
+                        checked={noticeForm.isPinned}
+                        onChange={e => setNoticeForm(f => ({ ...f, isPinned: e.target.checked }))}
+                        className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                      />
+                      <span>Pin this notice to top of notices feed</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* Destination D: News & Updates */}
+              {destinationType === 'news' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">News Category <span className="text-red-500">*</span></label>
+                    <select
+                      value={newsForm.category}
+                      onChange={e => setNewsForm(f => ({ ...f, category: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      {NEWS_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Target Class <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <select
+                      value={approveForm.classId}
+                      onChange={e => setApproveForm(f => ({ ...f, classId: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">All Classes</option>
+                      {classes.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Target District <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <select
+                      value={approveForm.district}
+                      onChange={e => setApproveForm(f => ({ ...f, district: e.target.value }))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">All Districts</option>
+                      {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-center pt-6">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-gray-800">
+                      <input
+                        type="checkbox"
+                        checked={newsForm.isPinned}
+                        onChange={e => setNewsForm(f => ({ ...f, isPinned: e.target.checked }))}
+                        className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                      />
+                      <span>Pin this article to top of news feed</span>
+                    </label>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Summary Snippet <span className="text-gray-400 font-normal">(shown in cards)</span></label>
+                    <input
+                      type="text"
+                      value={newsForm.summary}
+                      onChange={e => setNewsForm(f => ({ ...f, summary: e.target.value }))}
+                      placeholder="Brief headline summary..."
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* ── 4. Description / Content (Admin Editable) ── */}
               <div>
                 <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
-                  <span>Description <span className="text-gray-400 font-normal">(optional)</span></span>
-                  <span className="text-[11px] text-gray-400 font-normal">Shown on public paper detail page</span>
+                  <span>{destinationType === 'news' ? 'Full Article Content' : 'Description / Notes'} <span className="text-gray-400 font-normal">(optional)</span></span>
+                  <span className="text-[11px] text-gray-400 font-normal">Shown on public detail page</span>
                 </label>
                 <textarea
                   rows={3}
-                  value={approveForm.description}
-                  onChange={e => setApproveForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="Official Class 10 Science Monthly Test Question Paper for Chennai District conducted in August 2026. Download the question paper PDF and watch the explanation video for additional guidance."
+                  value={destinationType === 'news' ? newsForm.content : approveForm.description}
+                  onChange={e => {
+                    if (destinationType === 'news') {
+                      setNewsForm(f => ({ ...f, content: e.target.value }))
+                    } else {
+                      setApproveForm(f => ({ ...f, description: e.target.value }))
+                    }
+                  }}
+                  placeholder="Additional syllabus notes, instructions, or details..."
                   className="w-full text-sm border border-gray-200 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white text-gray-900 placeholder:text-gray-400 shadow-2xs resize-none"
-                  maxLength={2000}
+                  maxLength={5000}
                 />
               </div>
 
-              {/* ── 4. Approval Thank-You Message (Admin Editable) ── */}
+              {/* ── 5. Approval Thank-You Message (Admin Editable) ── */}
               <div>
                 <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
                   <span>Approval Thank-You Message <span className="text-gray-400 font-normal">(shown to contributor)</span></span>
@@ -805,7 +1309,7 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
                   </button>
                 </label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={thankYouMessage}
                   onChange={e => setThankYouMessage(e.target.value)}
                   placeholder="Thank-you note displayed to the contributor upon approval…"
@@ -814,11 +1318,11 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
                 />
               </div>
 
-              {/* ── 5. YouTube Explanation Video URL (Optional) ── */}
+              {/* ── 6. YouTube Explanation Video URL (Optional) ── */}
               <div>
                 <label className="block text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
-                  <span>YouTube Explanation Video <span className="text-gray-400 font-normal">(optional)</span></span>
-                  <span className="text-[11px] text-gray-400 font-normal">Embeds video on paper page</span>
+                  <span>YouTube Video URL <span className="text-gray-400 font-normal">(optional)</span></span>
+                  <span className="text-[11px] text-gray-400 font-normal">Embeds video on detail page</span>
                 </label>
                 <input
                   type="url"
@@ -835,94 +1339,9 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
                       className="w-full h-32 object-cover"
                       onError={e => { e.currentTarget.style.display = 'none' }}
                     />
-                    <p className="px-3 py-1.5 text-xs text-gray-600 bg-gray-50 font-medium">▶ Video preview ready for published paper</p>
+                    <p className="px-3 py-1.5 text-xs text-gray-600 bg-gray-50 font-medium">▶ Video preview ready for published resource</p>
                   </div>
                 )}
-              </div>
-
-              {/* ── Paper Academic Metadata ── */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
-                  <select
-                    value={approveForm.classId}
-                    onChange={e => setApproveForm(f => ({ ...f, classId: e.target.value, subjectId: '' }))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
-                  >
-                    <option value="">Select class…</option>
-                    {classes.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Subject <span className="text-red-500">*</span></label>
-                  <select
-                    value={approveForm.subjectId}
-                    onChange={e => setApproveForm(f => ({ ...f, subjectId: e.target.value }))}
-                    disabled={!approveForm.classId}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none disabled:opacity-50 bg-white font-medium"
-                  >
-                    <option value="">Select subject…</option>
-                    {subjects.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Exam Type <span className="text-red-500">*</span></label>
-                  <select
-                    value={approveForm.examType}
-                    onChange={e => setApproveForm(f => ({ ...f, examType: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
-                  >
-                    <option value="">Select exam type…</option>
-                    {EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Year <span className="text-red-500">*</span></label>
-                  <select
-                    value={approveForm.year}
-                    onChange={e => setApproveForm(f => ({ ...f, year: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
-                  >
-                    {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Paper Type <span className="text-red-500">*</span></label>
-                  <select
-                    value={approveForm.paperType}
-                    onChange={e => setApproveForm(f => ({ ...f, paperType: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
-                  >
-                    <option value="question">Question Paper</option>
-                    <option value="answer_key">Answer Key</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Month <span className="text-gray-400 font-normal">(optional)</span></label>
-                  <select
-                    value={approveForm.month}
-                    onChange={e => setApproveForm(f => ({ ...f, month: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
-                  >
-                    <option value="">Select month…</option>
-                    {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-gray-700 mb-1">District <span className="text-gray-400 font-normal">(optional)</span></label>
-                  <select
-                    value={approveForm.district}
-                    onChange={e => setApproveForm(f => ({ ...f, district: e.target.value }))}
-                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-emerald-500 outline-none bg-white font-medium"
-                  >
-                    <option value="">No specific district (State-wide)</option>
-                    {TN_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
               </div>
 
               {error && (
@@ -941,7 +1360,7 @@ function SubmissionDetailModal({ submission, classes, onClose, onReviewed, onReq
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm shadow-emerald-200"
                   >
                     {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '✅'}
-                    Approve &amp; Publish
+                    Approve &amp; Publish to {DESTINATION_OPTIONS.find(d => d.id === destinationType)?.label || 'Module'}
                   </button>
                   <button
                     onClick={() => { setShowRejectForm(true); setError(null) }}
@@ -1345,6 +1764,14 @@ export default function SubmissionsPage() {
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(sub.created_at)}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={sub.status} />
+                      {sub.status === 'approved' && sub.destination_type && (
+                        <span className="block mt-1 text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60 w-fit">
+                          {sub.destination_type === 'study_material' ? '📚 Study Material' :
+                           sub.destination_type === 'notice' ? '📢 Notice' :
+                           sub.destination_type === 'news' ? '📰 News' :
+                           '📄 Paper'}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">

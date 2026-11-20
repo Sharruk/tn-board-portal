@@ -40,6 +40,8 @@ class NewsRepository:
         pdf_url: Optional[str] = None,
         class_id: Optional[int] = None,
         district: Optional[str] = None,
+        contributor_name: Optional[str] = None,
+        submission_id: Optional[str] = None,
         status: str = "draft",
         is_pinned: bool = False,
         published_at: Optional[Any] = None,
@@ -59,18 +61,21 @@ class NewsRepository:
             INSERT INTO news_updates (
                 title, slug, summary, content, category, tags,
                 thumbnail_url, thumbnail_alt, youtube_url, pdf_url,
-                class_id, district, status, is_pinned, view_count,
+                class_id, district, contributor_name, submission_id,
+                status, is_pinned, view_count,
                 published_at, created_at, updated_at
             )
             VALUES (
                 :title, :slug, :summary, :content, :category, :tags,
                 :thumbnail_url, :thumbnail_alt, :youtube_url, :pdf_url,
-                :class_id, :district, :status, :is_pinned, 0,
+                :class_id, :district, :contributor_name, :submission_id,
+                :status, :is_pinned, 0,
                 :published_at, NOW(), NOW()
             )
             RETURNING id, title, slug, summary, content, category, tags,
                       thumbnail_url, thumbnail_alt, youtube_url, pdf_url,
-                      class_id, district, status, is_pinned, view_count,
+                      class_id, district, contributor_name, submission_id,
+                      status, is_pinned, view_count,
                       published_at, created_at, updated_at
             """
         )
@@ -89,6 +94,8 @@ class NewsRepository:
                 "pdf_url": pdf_url,
                 "class_id": class_id,
                 "district": district,
+                "contributor_name": contributor_name,
+                "submission_id": str(submission_id) if submission_id else None,
                 "status": status,
                 "is_pinned": is_pinned,
                 "published_at": published_at,
