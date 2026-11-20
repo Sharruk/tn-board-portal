@@ -20,9 +20,11 @@ from app.api.v1.endpoints.admin_team_chat import router as admin_team_chat_route
 from app.api.v1.endpoints.admin_users import router as admin_users_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.leaderboard import router as leaderboard_router
+from app.api.v1.endpoints.material_categories import router as material_categories_router
 from app.api.v1.endpoints.news import router as news_router
 from app.api.v1.endpoints.notices import router as notices_router
 from app.api.v1.endpoints.papers import router as papers_router
+from app.api.v1.endpoints.study_materials import router as study_materials_router
 from app.api.v1.endpoints.subjects import router as subjects_router
 from app.api.v1.endpoints.submissions import router as submissions_router
 from app.api.v1.endpoints.user_profile import router as user_profile_router
@@ -36,6 +38,8 @@ router.include_router(health_router)
 router.include_router(classes_router)
 router.include_router(subjects_router)
 router.include_router(papers_router)
+router.include_router(study_materials_router)
+router.include_router(material_categories_router)
 router.include_router(notices_router)
 router.include_router(news_router)
 router.include_router(submissions_router)

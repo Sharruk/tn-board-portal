@@ -113,6 +113,34 @@ export async function downloadPaper(url, title, filename) {
 }
 
 // =============================================================================
+// downloadFile — generic blob downloader for any file type (PDF, img, zip)
+// =============================================================================
+/**
+ * Generic file downloader that respects same-origin blob download.
+ *
+ * @param {string} url - Public storage URL
+ * @param {string} [filename] - Desired download filename
+ */
+export async function downloadFile(url, filename = 'download') {
+  if (!url) return
+  try {
+    const blob = await _fetchBlob(url)
+    const blobUrl = URL.createObjectURL(blob)
+
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = filename || 'download'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 15000)
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+}
+
+// =============================================================================
 // viewPdf — open the PDF in a new browser tab via a blob URL
 // =============================================================================
 /**

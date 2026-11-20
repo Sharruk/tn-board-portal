@@ -13,6 +13,8 @@ import OfficialNoticesPage from '../pages/OfficialNoticesPage'
 import NoticeDetailPage from '../pages/NoticeDetailPage'
 import NewsPage from '../pages/NewsPage'
 import NewsDetailPage from '../pages/NewsDetailPage'
+import StudyMaterialsPage from '../pages/StudyMaterialsPage'
+import StudyMaterialDetailPage from '../pages/StudyMaterialDetailPage'
 import SearchPage from '../pages/SearchPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import SubmitMaterialPage from '../pages/SubmitMaterialPage'
@@ -29,6 +31,7 @@ import AdminOfficialNoticesPage from '../pages/admin/OfficialNoticesPage'
 import AdminNewsPage from '../pages/admin/NewsPage'
 import ContentStatusPage from '../pages/admin/ContentStatusPage'
 import SubmissionsPage from '../pages/admin/SubmissionsPage'
+import AdminStudyMaterialsPage from '../pages/admin/StudyMaterialsPage'
 import MessagesPage from '../pages/MessagesPage'
 
 const router = createBrowserRouter([
@@ -48,6 +51,8 @@ const router = createBrowserRouter([
       { path: 'notice/:id', element: <NoticeDetailPage /> },
       { path: 'news', element: <NewsPage /> },
       { path: 'news/:slug', element: <NewsDetailPage /> },
+      { path: 'study-materials', element: <StudyMaterialsPage /> },
+      { path: 'study-materials/:slug', element: <StudyMaterialDetailPage /> },
       { path: 'search', element: <SearchPage /> },
       { path: 'contributors', element: <LeaderboardPage /> },
       { path: 'leaderboard', element: <LeaderboardPage /> },
@@ -81,6 +86,7 @@ const router = createBrowserRouter([
       { path: 'messages', element: <DashboardPage defaultTab="inbox" /> },
       { path: 'team-chat', element: <DashboardPage defaultTab="team-chat" /> },
       { path: 'papers', element: <PapersPage /> },
+      { path: 'study-materials', element: <AdminStudyMaterialsPage /> },
       { path: 'official-notices', element: <AdminOfficialNoticesPage /> },
       { path: 'news', element: <AdminNewsPage /> },
       { path: 'content-status', element: <ContentStatusPage /> },
