@@ -642,19 +642,15 @@ export default function StudyMaterialDetailPage() {
         )}
       </div>
 
-      {/* ── Download Attachments Section ── */}
-      <div className="card p-6 sm:p-8 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <span>📥</span> Download Attachments ({physicalFiles.length})
-          </h2>
-        </div>
-
-        {physicalFiles.length === 0 ? (
-          <div className="bg-gray-50 rounded-2xl p-6 text-center border border-gray-200/80 text-sm text-gray-500">
-            No direct file attachments for this study material. Check external learning resources below.
+      {/* ── Download Attachments Section (multi-file materials only) ── */}
+      {physicalFiles.length > 1 && (
+        <div className="card p-6 sm:p-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <span>📥</span> Download Attachments ({physicalFiles.length})
+            </h2>
           </div>
-        ) : (
+
           <div className="space-y-3">
             {physicalFiles.map((file) => {
               const isPdf = file.file_type === 'pdf' || 
@@ -717,8 +713,8 @@ export default function StudyMaterialDetailPage() {
               )
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── External Learning Resources & YouTube Video ── */}
       {externalLinkFiles.length > 0 && (
